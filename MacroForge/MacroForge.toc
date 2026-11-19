@@ -1,0 +1,16 @@
+## Interface: 11509, 16001
+## Title: MacroForge
+## Notes: Éditeur de macros par blocs et bibliothèque de macros par classe. /mf
+## Version: 0.2.0
+## SavedVariables: MacroForgeDB
+## IconTexture: Interface\Icons\INV_Misc_Book_09
+## AddonCompartmentFunc: MacroForge_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: MacroForge_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: MacroForge_OnAddonCompartmentLeave
+
+Core.lua
+Library.lua
+SpellIDs.lua
+Settings.lua
+UI.lua
+Minimap.lua
