@@ -1,5 +1,6 @@
 -- MacroForge : interface (editeur par blocs + bibliotheque + parametres). Ouvrir avec /mf
 local ADDON, ns = ...
+local L = ns.L
 
 local MAX_ROWS = 12    -- shortcut: 12 lignes max sans defilement, a revoir si 255 caracteres en demandent plus
 local MAX_CLAUSES = 4
@@ -19,7 +20,7 @@ local GREY = { 0.3, 0.3, 0.34 }
 local MUTED = { 0.62, 0.62, 0.66 }
 -- une couleur par groupe de conditions (meme ordre que ns.ConditionGroups)
 local GROUP_COLORS = { { 0.35, 0.75, 0.95 }, { 0.95, 0.45, 0.45 }, { 0.72, 0.52, 0.98 }, { 0.98, 0.66, 0.25 } }
-local PILL_LABEL = { nomod = "Sans touche" } -- libelles trop vagues hors de leur groupe
+local PILL_LABEL = { nomod = L["Sans touche"] } -- libelles trop vagues hors de leur groupe
 
 local blocks, selected, activeClause = {}, nil, 1
 local rows, condButtons, clauseTabs = {}, {}, {}
@@ -28,7 +29,7 @@ local main, editor, library, settingsTab, canvas, dropLine
 local nameBox, perChar, argBox, argLabel, resetBox, resetLabel, inspTitle, inspBody, inspHint
 local preview, counter, counterBar, warnText
 
-local function Msg(text) print("|cff66ccffMacroForge|r : " .. text) end
+local function Msg(text) print(L["|cff66ccffMacroForge|r : %s"]:format(text)) end
 
 ---------------------------------------------------------------------------
 -- Petits constructeurs
@@ -191,7 +192,7 @@ local function Select(block)
 end
 
 local function AddBlock(id, at, arg)
-  if #blocks >= MAX_ROWS then return Msg("Maximum " .. MAX_ROWS .. " blocs.") end
+  if #blocks >= MAX_ROWS then return Msg(L["Maximum %d blocs."]:format(MAX_ROWS)) end
   local block = ns.NewBlock(id)
   if arg then
     if block.clauses then block.clauses[1].arg = arg else block.arg = arg end
@@ -263,7 +264,7 @@ local function LayoutRow(row, block, def)
   else
     row.icon:SetColorTexture(def.color[1] * 0.6, def.color[2] * 0.6, def.color[3] * 0.6, 1)
   end
-  row.cmd:SetText(def.cmd ~= "" and def.cmd or "ligne libre")
+  row.cmd:SetText(def.cmd ~= "" and def.cmd or L["ligne libre"])
   row.cmd:SetTextColor(Light(def.color))
 
   local x, limit = 31 + (row.cmd:GetStringWidth() or 0) + 7, ROW_W - 16
@@ -291,16 +292,16 @@ local function LayoutRow(row, block, def)
     t:SetTextColor(r, g, b)
     put(t, t:GetStringWidth() or 0)
   end
-  local needsArg = def.arg and not def.arg:find("optionnel")
+  local needsArg = def.arg and not def.arg:find(L["optionnel"], 1, true)
 
   if not def.clauses then
     local arg = ns.trim(block.arg or "")
     if arg ~= "" then text(arg, 1, 1, 1)
-    elseif needsArg then text("(vide)", 0.6, 0.6, 0.6) end
+    elseif needsArg then text(L["(vide)"], 0.6, 0.6, 0.6) end
   else
     if def.reset and (block.reset or "") ~= "" then pill("reset=" .. block.reset, MUTED) end
     for ci, clause in ipairs(block.clauses) do
-      if ci > 1 then text("sinon", MUTED[1], MUTED[2], MUTED[3]) end
+      if ci > 1 then text(L["sinon"], MUTED[1], MUTED[2], MUTED[3]) end
       for _, cond in ipairs(clause.conds) do
         local info = condInfo[cond]
         pill(info and info[1] or cond, info and info[2] or GREY)
@@ -308,7 +309,7 @@ local function LayoutRow(row, block, def)
       if (clause.alt or "") ~= "" then text(clause.alt, MUTED[1], MUTED[2], MUTED[3]) end
       local arg = ns.trim(clause.arg or "")
       if arg ~= "" then text(arg, 1, 1, 1)
-      elseif needsArg then text("(argument ?)", 1, 0.4, 0.4) end
+      elseif needsArg then text(L["(argument ?)"], 1, 0.4, 0.4) end
     end
   end
   for kind, n in pairs(used) do
@@ -384,17 +385,17 @@ end
 -- Enregistrement dans les macros du jeu
 ---------------------------------------------------------------------------
 local function Overwrite(name, body)
-  if InCombatLockdown() then return Msg("Impossible de modifier une macro en combat.") end
+  if InCombatLockdown() then return Msg(L["Impossible de modifier une macro en combat."]) end
   local index = GetMacroIndexByName(name) -- relu : l'index a pu changer pendant la confirmation
-  if not index or index == 0 then return Msg("La macro « " .. name .. " » n'existe plus.") end
+  if not index or index == 0 then return Msg(L["La macro « %s » n'existe plus."]:format(name)) end
   EditMacro(index, name, nil, body)
-  Msg("Macro « " .. name .. " » mise à jour.")
+  Msg(L["Macro « %s » mise à jour."]:format(name))
 end
 
 if StaticPopupDialogs then
   StaticPopupDialogs.MACROFORGE_OVERWRITE = {
-    text = "La macro « %s » existe déjà. La remplacer ?",
-    button1 = YES or "Oui", button2 = NO or "Non",
+    text = L["La macro « %s » existe déjà. La remplacer ?"],
+    button1 = YES or L["Oui"], button2 = NO or L["Non"],
     OnAccept = function(_, data) Overwrite(data.name, data.body) end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
@@ -403,10 +404,10 @@ end
 local function Save()
   local name = ns.trim(nameBox:GetText())
   local body = ns.Compile(blocks)
-  if InCombatLockdown() then return Msg("Impossible de modifier une macro en combat.") end
-  if name == "" then return Msg("Donne un nom à la macro.") end
-  if body == "" then return Msg("La macro est vide.") end
-  if #body > ns.MAX_CHARS then return Msg(("Macro trop longue : %d / %d."):format(#body, ns.MAX_CHARS)) end
+  if InCombatLockdown() then return Msg(L["Impossible de modifier une macro en combat."]) end
+  if name == "" then return Msg(L["Donne un nom à la macro."]) end
+  if body == "" then return Msg(L["La macro est vide."]) end
+  if #body > ns.MAX_CHARS then return Msg(L["Macro trop longue : %d / %d."]:format(#body, ns.MAX_CHARS)) end
   local index = GetMacroIndexByName(name)
   if index and index > 0 then
     if ns.db.confirmOverwrite and StaticPopup_Show then
@@ -418,15 +419,15 @@ local function Save()
   end
   local forChar = perChar:GetChecked() and true or false
   local numAccount, numChar = GetNumMacros()
-  if forChar and numChar >= MAX_CHARACTER then return Msg("Plus de place dans les macros du personnage.") end
-  if not forChar and numAccount >= MAX_ACCOUNT then return Msg("Plus de place dans les macros générales.") end
+  if forChar and numChar >= MAX_CHARACTER then return Msg(L["Plus de place dans les macros du personnage."]) end
+  if not forChar and numAccount >= MAX_ACCOUNT then return Msg(L["Plus de place dans les macros générales."]) end
   local created = CreateMacro(name, "INV_Misc_QuestionMark", body, forChar)
-  if not created or created == 0 then return Msg("Le jeu a refusé de créer la macro.") end
+  if not created or created == 0 then return Msg(L["Le jeu a refusé de créer la macro."]) end
   if ns.db.pickupAfterCreate then
     PickupMacro(created) -- la macro vient sous le curseur : il reste a la poser sur une barre
-    Msg("Macro « " .. name .. " » créée. Pose-la sur une barre d'action.")
+    Msg(L["Macro « %s » créée. Pose-la sur une barre d'action."]:format(name))
   else
-    Msg("Macro « " .. name .. " » créée (" .. (forChar and "macros du personnage" or "macros générales") .. ").")
+    Msg(L["Macro « %s » créée (%s)."]:format(name, forChar and L["macros du personnage"] or L["macros générales"]))
   end
 end
 
@@ -445,7 +446,7 @@ end
 local function LoadExisting()
   local name = ns.trim(nameBox:GetText())
   local macroName, _, body = GetMacroInfo(name)
-  if not macroName then return Msg("Aucune macro nommée « " .. name .. " ».") end
+  if not macroName then return Msg(L["Aucune macro nommée « %s »."]:format(name)) end
   LoadText(macroName, body)
 end
 
@@ -482,7 +483,7 @@ function Refresh()
     inspTitle:SetText(def.label .. "  |cff888888" .. def.cmd .. "|r")
     inspTitle:SetTextColor(Light(def.color))
     local holder = EditedArgHolder()
-    argLabel:SetText(def.arg and ("Argument : " .. def.arg) or "Pas d'argument")
+    argLabel:SetText(def.arg and L["Argument : %s"]:format(def.arg) or L["Pas d'argument"])
     argBox:SetShown(def.arg ~= nil)
     SetTextIfIdle(argBox, holder.arg)
     resetLabel:SetShown(def.reset == true)
@@ -503,7 +504,7 @@ function Refresh()
 
   local text, warnings = ns.Diagnose(blocks)
   local len = #text
-  preview:SetText(text ~= "" and text or "|cff777777(la macro compilée s'affiche ici)|r")
+  preview:SetText(text ~= "" and text or "|cff777777" .. L["(la macro compilée s'affiche ici)"] .. "|r")
   local ratio = math.min(1, len / ns.MAX_CHARS)
   local r, g = len > ns.MAX_CHARS and 1 or (ratio > 0.85 and 1 or 0.3), len > ns.MAX_CHARS and 0.25 or (ratio > 0.85 and 0.7 or 0.9)
   counter:SetText(("%d / %d"):format(len, ns.MAX_CHARS))
@@ -518,7 +519,7 @@ end
 ---------------------------------------------------------------------------
 local function BuildEditor(parent)
   -- Palette
-  local palette = Panel(parent, 176, 430, "Blocs")
+  local palette = Panel(parent, 176, 430, L["Blocs"])
   palette:SetPoint("TOPLEFT", 0, 0)
   for i, def in ipairs(ns.BlockDefs) do
     local chip = Chip(palette, 160, 20)
@@ -532,13 +533,13 @@ local function BuildEditor(parent)
     chip:SetScript("OnDragStop", EndDrag)
     chip:SetScript("OnClick", function() AddBlock(def.id) end)
     Tip(chip, function()
-      return def.label, def.cmd ~= "" and def.cmd or "Ligne tapée telle quelle",
-        "Clic : ajoute en bas. Glisser : place où tu veux."
+      return def.label, def.cmd ~= "" and def.cmd or L["Ligne tapée telle quelle"],
+        L["Clic : ajoute en bas. Glisser : place où tu veux."]
     end)
   end
 
   -- Zone de construction
-  canvas = Panel(parent, 400, 430, "Ta macro — glisse les blocs ici, ou clique dessus")
+  canvas = Panel(parent, 400, 430, L["Ta macro — glisse les blocs ici, ou clique dessus"])
   canvas:SetPoint("TOPLEFT", palette, "TOPRIGHT", 6, 0)
   canvas:EnableMouse(true)
   local function CanvasDrop()
@@ -547,7 +548,7 @@ local function BuildEditor(parent)
   end
   canvas:SetScript("OnReceiveDrag", CanvasDrop)
   canvas:SetScript("OnMouseUp", CanvasDrop)
-  canvas.hint = Label(canvas, "Vide : clique un bloc à gauche, ou glisse ici\nun sort du grimoire ou un objet des sacs.",
+  canvas.hint = Label(canvas, L["Vide : clique un bloc à gauche, ou glisse ici\nun sort du grimoire ou un objet des sacs."],
     12, -36, "GameFontDisableSmall")
   for i = 1, MAX_ROWS do
     local row = CreateFrame("Button", nil, canvas, BACKDROP)
@@ -583,7 +584,7 @@ local function BuildEditor(parent)
     end)
     Tip(row, function()
       if drag or not blocks[i] then return end
-      return row.full, "Clic : régler. Glisser : déplacer."
+      return row.full, L["Clic : régler. Glisser : déplacer."]
     end)
     local del = Button(row, "x", 22, function()
       if selected == blocks[i] then selected = nil end
@@ -591,7 +592,7 @@ local function BuildEditor(parent)
       Refresh()
     end)
     del:SetPoint("LEFT", row, "RIGHT", 2, 0)
-    Tip(del, function() return "Supprimer ce bloc" end)
+    Tip(del, function() return L["Supprimer ce bloc"] end)
     rows[i] = row
   end
   dropLine = canvas:CreateTexture(nil, "OVERLAY")
@@ -606,9 +607,9 @@ local function BuildEditor(parent)
   ghost:SetScript("OnUpdate", GhostUpdate)
 
   -- Reglages du bloc selectionne
-  local insp = Panel(parent, 296, 430, "Réglages du bloc")
+  local insp = Panel(parent, 296, 430, L["Réglages du bloc"])
   insp:SetPoint("TOPLEFT", canvas, "TOPRIGHT", 6, 0)
-  inspHint = Label(insp, "Clique un bloc de ta macro\npour le régler.", 10, -34, "GameFontDisableSmall")
+  inspHint = Label(insp, L["Clique un bloc de ta macro\npour le régler."], 10, -34, "GameFontDisableSmall")
   inspBody = CreateFrame("Frame", nil, insp)
   inspBody:SetAllPoints()
   inspTitle = Label(inspBody, "", 10, -28, "GameFontHighlight")
@@ -617,7 +618,7 @@ local function BuildEditor(parent)
   clauseTabs.box = CreateFrame("Frame", nil, inspBody)
   clauseTabs.box:SetPoint("TOPLEFT", 0, -44)
   clauseTabs.box:SetSize(296, 22)
-  Label(clauseTabs.box, "Alternative", 10, -5)
+  Label(clauseTabs.box, L["Alternative"], 10, -5)
   for i = 1, MAX_CLAUSES do
     local tab = Chip(clauseTabs.box, 22, 20)
     tab:SetPoint("TOPLEFT", 80 + (i - 1) * 24, 0)
@@ -625,7 +626,7 @@ local function BuildEditor(parent)
     tab.text:SetPoint("CENTER")
     tab.text:SetText(i)
     tab:SetScript("OnClick", function() argBox:ClearFocus() activeClause = i Refresh() end)
-    Tip(tab, function() return "Alternative " .. i, "Le jeu essaie les alternatives dans l'ordre : la première dont les conditions sont vraies est utilisée." end)
+    Tip(tab, function() return L["Alternative %d"]:format(i), L["Le jeu essaie les alternatives dans l'ordre : la première dont les conditions sont vraies est utilisée."] end)
     clauseTabs[i] = tab
   end
   local add = Button(clauseTabs.box, "+", 24, function()
@@ -635,7 +636,7 @@ local function BuildEditor(parent)
     Refresh()
   end)
   add:SetPoint("TOPLEFT", 184, 1)
-  Tip(add, function() return "Ajouter une alternative", "Exemple : [@mouseover,harm] Peur; Peur" end)
+  Tip(add, function() return L["Ajouter une alternative"], L["Exemple : [@mouseover,harm] Peur; Peur"] end)
   local remove = Button(clauseTabs.box, "-", 24, function()
     if #selected.clauses <= 1 then return end
     argBox:ClearFocus()
@@ -644,7 +645,7 @@ local function BuildEditor(parent)
     Refresh()
   end)
   remove:SetPoint("LEFT", add, "RIGHT", 2, 0)
-  Tip(remove, function() return "Retirer l'alternative affichée" end)
+  Tip(remove, function() return L["Retirer l'alternative affichée"] end)
 
   argLabel = Label(inspBody, "", 10, -72)
   argBox = Edit(inspBody, 268, function(text)
@@ -661,9 +662,9 @@ local function BuildEditor(parent)
   end
   argBox:SetScript("OnReceiveDrag", ArgDrop)
   argBox:HookScript("OnMouseDown", ArgDrop)
-  Tip(argBox, function() return "Argument", "Tape le nom, ou glisse ici un sort du grimoire / un objet des sacs." end)
+  Tip(argBox, function() return L["Argument"], L["Tape le nom, ou glisse ici un sort du grimoire / un objet des sacs."] end)
 
-  resetLabel = Label(inspBody, "reset=  (ex. 3, target, combat)", 80, -113)
+  resetLabel = Label(inspBody, L["reset=  (ex. 3, target, combat)"], 80, -113)
   resetBox = Edit(inspBody, 56, function(text)
     selected.reset = ns.trim(text)
     Refresh()
@@ -679,7 +680,7 @@ local function BuildEditor(parent)
   local y = -134
   for gi, group in ipairs(ns.ConditionGroups) do
     local color = GROUP_COLORS[gi] or GREY
-    local title = Label(clauseTabs.box, group.label .. (group.exclusive and "  |cff888888(une seule)|r" or ""), 10, y + 44)
+    local title = Label(clauseTabs.box, group.label .. (group.exclusive and "  |cff888888" .. L["(une seule)"] .. "|r" or ""), 10, y + 44)
     title:SetTextColor(Light(color))
     y = y - 13
     for i, item in ipairs(group.items) do
@@ -692,12 +693,12 @@ local function BuildEditor(parent)
         ns.ToggleCond(EditedArgHolder(), item[1])
         Refresh()
       end)
-      Tip(b, function() return item[2], "[" .. item[1] .. "]  clic : activer / retirer" end)
+      Tip(b, function() return item[2], "[" .. item[1] .. "]  " .. L["clic : activer / retirer"] end)
       condButtons[#condButtons + 1] = b
     end
     y = y - math.ceil(#group.items / 3) * 19 - 2
   end
-  Label(clauseTabs.box, "Autre condition (ex. stance:1) puis Entrée", 10, y + 44)
+  Label(clauseTabs.box, L["Autre condition (ex. stance:1) puis Entrée"], 10, y + 44)
   local custom = Edit(clauseTabs.box, 150, function() end)
   custom:SetPoint("TOPLEFT", 14, y + 30)
   custom:SetScript("OnEnterPressed", function(self)
@@ -707,17 +708,17 @@ local function BuildEditor(parent)
     self:ClearFocus()
     Refresh()
   end)
-  local clear = Button(clauseTabs.box, "Vider", 80, function()
+  local clear = Button(clauseTabs.box, L["Vider"], 80, function()
     local holder = EditedArgHolder()
     holder.conds, holder.alt = {}, nil
     Refresh()
   end)
   clear:SetPoint("LEFT", custom, "RIGHT", 8, 0)
-  Tip(clear, function() return "Vider", "Retire toutes les conditions de l'alternative affichée." end)
+  Tip(clear, function() return L["Vider"], L["Retire toutes les conditions de l'alternative affichée."] end)
   TabOrder({ argBox, resetBox, custom })
 
   -- Bas : apercu (gauche) | nom et enregistrement (droite)
-  local bottom = Panel(parent, 884, 130, "Aperçu")
+  local bottom = Panel(parent, 884, 130, L["Aperçu"])
   bottom:SetPoint("TOPLEFT", palette, "BOTTOMLEFT", 0, -6)
   counter = bottom:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
   counter:SetPoint("RIGHT", bottom.band, "LEFT", 430, 0)
@@ -737,26 +738,26 @@ local function BuildEditor(parent)
   split:SetPoint("TOPLEFT", 440, -30)
   split:SetSize(1, 92)
 
-  Label(bottom, "Nom", 452, -36, "GameFontNormal")
+  Label(bottom, L["Nom"], 452, -36, "GameFontNormal")
   nameBox = Edit(bottom, 140, function() end)
   nameBox:SetPoint("TOPLEFT", 490, -32)
   nameBox:SetMaxLetters(16)
-  Tip(nameBox, function() return "Nom de la macro", "16 caractères max. Un nom existant est mis à jour au lieu d'être recréé." end)
+  Tip(nameBox, function() return L["Nom de la macro"], L["16 caractères max. Un nom existant est mis à jour au lieu d'être recréé."] end)
   perChar = CreateFrame("CheckButton", nil, bottom, "UICheckButtonTemplate")
   perChar:SetSize(24, 24)
   perChar:SetPoint("LEFT", nameBox, "RIGHT", 8, 0)
   perChar:SetChecked(ns.db.perCharDefault)
-  local perCharText = Label(bottom, "Ce personnage seulement", 0, 0, "GameFontHighlightSmall")
+  local perCharText = Label(bottom, L["Ce personnage seulement"], 0, 0, "GameFontHighlightSmall")
   perCharText:ClearAllPoints()
   perCharText:SetPoint("LEFT", perChar, "RIGHT", 2, 0)
 
-  local save = Button(bottom, "Créer / mettre à jour", 150, Save)
+  local save = Button(bottom, L["Créer / mettre à jour"], 150, Save)
   save:SetPoint("TOPLEFT", 450, -58)
-  Tip(save, function() return "Créer / mettre à jour", "Hors combat seulement." end)
-  local load = Button(bottom, "Charger ce nom", 120, LoadExisting)
+  Tip(save, function() return L["Créer / mettre à jour"], L["Hors combat seulement."] end)
+  local load = Button(bottom, L["Charger ce nom"], 120, LoadExisting)
   load:SetPoint("LEFT", save, "RIGHT", 6, 0)
-  Tip(load, function() return "Charger ce nom", "Ouvre dans l'éditeur la macro du jeu qui porte ce nom." end)
-  local reset = Button(bottom, "Tout effacer", 110, function() LoadText("", "") ns.ApplyPerCharDefault() end)
+  Tip(load, function() return L["Charger ce nom"], L["Ouvre dans l'éditeur la macro du jeu qui porte ce nom."] end)
+  local reset = Button(bottom, L["Tout effacer"], 110, function() LoadText("", "") ns.ApplyPerCharDefault() end)
   reset:SetPoint("LEFT", load, "RIGHT", 6, 0)
   warnText = Label(bottom, "", 452, -86, "GameFontRedSmall")
   warnText:SetWidth(420)
@@ -767,13 +768,17 @@ end
 ---------------------------------------------------------------------------
 local CLASS_ORDER = { "ALL", "WARLOCK", "HUNTER", "ROGUE", "MAGE", "PRIEST", "DRUID", "WARRIOR", "PALADIN", "SHAMAN" }
 local CATEGORY_COLOR = { PvE = { 0.25, 0.55, 0.95 }, PvP = { 0.9, 0.35, 0.35 }, Pet = { 0.85, 0.7, 0.2 }, Utility = { 0.3, 0.75, 0.4 } }
-local CATEGORY_LABEL = { Pet = "Familier", Utility = "Utilitaire" }
+local CATEGORY_LABEL = { Pet = L["Familier"], Utility = L["Utilitaire"] }
 
 -- noms traduits des techniques de familier, pour l'avertissement monture de ns.Diagnose
 for name, id in pairs(ns.SpellIDs) do
   local localized = ns.PetSpells[name:lower()] and ((C_Spell and C_Spell.GetSpellName) or GetSpellInfo)(id)
   if localized then ns.PetSpells[localized:lower()] = true end
 end
+
+-- description affichee : descEN hors client francais, s'il existe
+local ENGLISH = GetLocale and GetLocale() ~= "frFR"
+local function LibraryDesc(entry) return ENGLISH and entry.descEN or entry.desc end
 
 -- la bibliotheque est ecrite en anglais : traduite a la demande, et seulement si le reglage le veut
 local function LibraryBody(entry)
@@ -785,16 +790,16 @@ local function LibraryBody(entry)
 end
 
 local function BuildLibrary(parent, showEditor)
-  local classPanel = Panel(parent, 176, 566, "Classe")
+  local classPanel = Panel(parent, 176, 566, L["Classe"])
   classPanel:SetPoint("TOPLEFT", 0, 0)
-  local listPanel = Panel(parent, 300, 566, "Macros")
+  local listPanel = Panel(parent, 300, 566, L["Macros"])
   listPanel:SetPoint("TOPLEFT", classPanel, "TOPRIGHT", 6, 0)
-  local detail = Panel(parent, 396, 566, "Détail")
+  local detail = Panel(parent, 396, 566, L["Détail"])
   detail:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 6, 0)
 
   local title = Label(detail, "", 10, -32, "GameFontHighlightLarge")
   title:SetWidth(376)
-  local desc = Label(detail, "Choisis une macro dans la liste.", 10, -56, "GameFontHighlightSmall")
+  local desc = Label(detail, L["Choisis une macro dans la liste."], 10, -56, "GameFontHighlightSmall")
   desc:SetWidth(376)
   local body = Label(detail, "", 0, 0, "MacroForgeCodeFont")
   body:ClearAllPoints()
@@ -803,7 +808,7 @@ local function BuildLibrary(parent, showEditor)
   local source = Label(detail, "", 10, -500, "GameFontDisableSmall")
   source:SetWidth(376)
   local current
-  local open = Button(detail, "Ouvrir dans l'éditeur", 180, function()
+  local open = Button(detail, L["Ouvrir dans l'éditeur"], 180, function()
     if not current then return end
     LoadText(current.name, LibraryBody(current))
     showEditor()
@@ -812,16 +817,16 @@ local function BuildLibrary(parent, showEditor)
   open:Disable()
 
   local entryRows, classChips, shown, offset = {}, {}, {}, 0
-  local empty = Label(listPanel, "Aucune macro pour cette classe.", 10, -34, "GameFontDisableSmall")
+  local empty = Label(listPanel, L["Aucune macro pour cette classe."], 10, -34, "GameFontDisableSmall")
   local range = listPanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   range:SetPoint("RIGHT", listPanel.band, "RIGHT", -6, 0)
 
   local function ShowDetail()
     if not current then return end
     title:SetText(current.name)
-    desc:SetText(current.desc or "")
+    desc:SetText(LibraryDesc(current) or "")
     body:SetText(LibraryBody(current))
-    source:SetText(current.source and ("Source : " .. current.source) or "")
+    source:SetText(current.source and L["Source : %s"]:format(current.source) or "")
   end
 
   local function Render()
@@ -838,7 +843,7 @@ local function BuildLibrary(parent, showEditor)
     end
     empty:SetShown(#shown == 0)
     range:SetText(#shown > MAX_LIB_ROWS
-      and ("%d-%d / %d  (molette)"):format(offset + 1, math.min(offset + MAX_LIB_ROWS, #shown), #shown) or "")
+      and L["%d-%d / %d  (molette)"]:format(offset + 1, math.min(offset + MAX_LIB_ROWS, #shown), #shown) or "")
   end
 
   for i = 1, MAX_LIB_ROWS do
@@ -853,7 +858,7 @@ local function BuildLibrary(parent, showEditor)
     end)
     Tip(row, function()
       local entry = shown[offset + i]
-      if entry then return entry.name, entry.desc end
+      if entry then return entry.name, LibraryDesc(entry) end
     end)
     entryRows[i] = row
   end
@@ -878,7 +883,7 @@ local function BuildLibrary(parent, showEditor)
   for i, token in ipairs(CLASS_ORDER) do
     local chip = Chip(classPanel, 160, 22)
     chip:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 24)
-    chip.text:SetText(token == "ALL" and "Toutes classes"
+    chip.text:SetText(token == "ALL" and L["Toutes classes"]
       or (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[token]) or token)
     chip:SetScript("OnClick", function() ShowClass(token) end)
     classChips[token] = chip
@@ -920,7 +925,7 @@ local function Build()
     end
   end)
   local title = main.TitleText or (main.TitleContainer and main.TitleContainer.TitleText)
-  if title then title:SetText("MacroForge — éditeur de macros par blocs") end
+  if title then title:SetText(L["MacroForge — éditeur de macros par blocs"]) end
   tinsert(UISpecialFrames, "MacroForgeFrame")
 
   local pages = {}
@@ -939,16 +944,16 @@ local function Build()
       if key == which then tabs[key]:LockHighlight() else tabs[key]:UnlockHighlight() end
     end
   end
-  tabs.editor = Button(main, "Éditeur", 110, function() ShowTab("editor") end)
+  tabs.editor = Button(main, L["Éditeur"], 110, function() ShowTab("editor") end)
   tabs.editor:SetPoint("TOPLEFT", 10, -30)
-  tabs.library = Button(main, "Bibliothèque", 110, function() ShowTab("library") end)
+  tabs.library = Button(main, L["Bibliothèque"], 110, function() ShowTab("library") end)
   tabs.library:SetPoint("LEFT", tabs.editor, "RIGHT", 4, 0)
-  tabs.settings = Button(main, "Paramètres", 110, function() ShowTab("settings") end)
+  tabs.settings = Button(main, L["Paramètres"], 110, function() ShowTab("settings") end)
   tabs.settings:SetPoint("LEFT", tabs.library, "RIGHT", 4, 0)
 
   BuildEditor(editor)
   BuildLibrary(library, function() ShowTab("editor") end)
-  local settingsPanel = Panel(settingsTab, 884, 566, "Paramètres")
+  local settingsPanel = Panel(settingsTab, 884, 566, L["Paramètres"])
   settingsPanel:SetPoint("TOPLEFT")
   ns.BuildSettingsPage(settingsPanel)
   ShowTab("editor")

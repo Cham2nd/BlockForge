@@ -17,7 +17,7 @@ function run(code) {
 
 load("UI.lua"); lua.lua_pop(L, 1); // syntaxe seulement : l'interface a besoin du jeu
 run("NS = {}");
-for (const f of ["Core.lua", "Library.lua"]) {
+for (const f of ["Locale.lua", "Core.lua", "Library.lua"]) {
   load(f);
   lua.lua_pushstring(L, to_luastring("MacroForge"));
   lua.lua_getglobal(L, to_luastring("NS"));

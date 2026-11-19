@@ -1,5 +1,6 @@
 -- MacroForge : bouton rond autour de la minicarte (sans bibliotheque externe) + menu des add-ons (Forever)
 local ADDON, ns = ...
+local L = ns.L
 
 local ICON = "Interface\\Icons\\INV_Misc_Book_09"
 local atan2 = math.atan2 or math.atan -- Lua 5.1 en jeu ; math.atan(y, x) ailleurs
@@ -23,9 +24,9 @@ end
 local function ShowTooltip(owner)
   GameTooltip:SetOwner(owner, "ANCHOR_LEFT")
   GameTooltip:SetText("MacroForge", 1, 1, 1)
-  GameTooltip:AddLine("Clic gauche : ouvrir / fermer", 0.8, 0.8, 0.8)
-  GameTooltip:AddLine("Clic droit : paramètres", 0.8, 0.8, 0.8)
-  if owner == button then GameTooltip:AddLine("Glisser : déplacer autour de la minicarte", 0.8, 0.8, 0.8) end
+  GameTooltip:AddLine(L["Clic gauche : ouvrir / fermer"], 0.8, 0.8, 0.8)
+  GameTooltip:AddLine(L["Clic droit : paramètres"], 0.8, 0.8, 0.8)
+  if owner == button then GameTooltip:AddLine(L["Glisser : déplacer autour de la minicarte"], 0.8, 0.8, 0.8) end
   GameTooltip:Show()
 end
 

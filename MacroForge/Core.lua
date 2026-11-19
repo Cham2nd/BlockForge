@@ -3,6 +3,8 @@
 local ADDON, ns = ...
 ns = ns or {}
 if not ADDON then _G.MacroForgeNS = ns end -- execution hors jeu (tests)
+-- certains tests chargent ce fichier sans Locale.lua : la cle sert alors de texte
+local L = ns.L or setmetatable({}, { __index = function(_, k) return k end })
 
 ns.MAX_CHARS = 255
 
@@ -12,24 +14,24 @@ ns.MAX_CHARS = 255
 --   arg     = texte d'aide pour l'argument (nil = pas d'argument)
 ---------------------------------------------------------------------------
 ns.BlockDefs = {
-  { id = "showtooltip",  label = "Icône / infobulle",   cmd = "#showtooltip",  arg = "sort (optionnel)", color = { 0.55, 0.55, 0.60 } },
-  { id = "cast",         label = "Lancer un sort",      cmd = "/cast",         arg = "nom du sort", clauses = true, color = { 0.25, 0.55, 0.95 } },
-  { id = "use",          label = "Utiliser un objet",   cmd = "/use",          arg = "objet ou n° d'emplacement", clauses = true, color = { 0.30, 0.75, 0.40 } },
-  { id = "castsequence", label = "Séquence de sorts",   cmd = "/castsequence", arg = "Sort A, Sort B, ...", clauses = true, reset = true, color = { 0.60, 0.40, 0.90 } },
-  { id = "stopcasting",  label = "Interrompre mon cast", cmd = "/stopcasting", clauses = true, color = { 0.90, 0.35, 0.35 } },
-  { id = "startattack",  label = "Attaque auto",        cmd = "/startattack",  clauses = true, color = { 0.90, 0.55, 0.20 } },
-  { id = "stopattack",   label = "Stop attaque",        cmd = "/stopattack",   clauses = true, color = { 0.90, 0.55, 0.20 } },
-  { id = "petattack",    label = "Familier : attaque",  cmd = "/petattack",    clauses = true, color = { 0.85, 0.70, 0.20 } },
-  { id = "petfollow",    label = "Familier : suivre",   cmd = "/petfollow",    clauses = true, color = { 0.85, 0.70, 0.20 } },
-  { id = "petpassive",   label = "Familier : passif",   cmd = "/petpassive",   clauses = true, color = { 0.85, 0.70, 0.20 } },
-  { id = "cancelaura",   label = "Annuler un buff",     cmd = "/cancelaura",   arg = "nom du buff", clauses = true, color = { 0.80, 0.40, 0.70 } },
-  { id = "target",       label = "Cibler",              cmd = "/target",       arg = "nom ou unité", clauses = true, color = { 0.35, 0.75, 0.80 } },
-  { id = "targetenemy",  label = "Cibler ennemi proche", cmd = "/targetenemy", clauses = true, color = { 0.35, 0.75, 0.80 } },
-  { id = "focus",        label = "Définir le focus",    cmd = "/focus",        arg = "unité (optionnel)", clauses = true, color = { 0.35, 0.75, 0.80 } },
-  { id = "assist",       label = "Assister",            cmd = "/assist",       arg = "nom ou unité", clauses = true, color = { 0.35, 0.75, 0.80 } },
-  { id = "equip",        label = "Équiper",             cmd = "/equip",        arg = "nom de l'objet", clauses = true, color = { 0.30, 0.75, 0.40 } },
-  { id = "dismount",     label = "Descendre de monture", cmd = "/dismount",    clauses = true, color = { 0.55, 0.55, 0.60 } },
-  { id = "raw",          label = "Ligne libre",         cmd = "",              arg = "/commande ...", color = { 0.45, 0.45, 0.45 } },
+  { id = "showtooltip",  label = L["Icône / infobulle"],   cmd = "#showtooltip",  arg = L["sort (optionnel)"], color = { 0.55, 0.55, 0.60 } },
+  { id = "cast",         label = L["Lancer un sort"],      cmd = "/cast",         arg = L["nom du sort"], clauses = true, color = { 0.25, 0.55, 0.95 } },
+  { id = "use",          label = L["Utiliser un objet"],   cmd = "/use",          arg = L["objet ou n° d'emplacement"], clauses = true, color = { 0.30, 0.75, 0.40 } },
+  { id = "castsequence", label = L["Séquence de sorts"],   cmd = "/castsequence", arg = L["Sort A, Sort B, ..."], clauses = true, reset = true, color = { 0.60, 0.40, 0.90 } },
+  { id = "stopcasting",  label = L["Interrompre mon cast"], cmd = "/stopcasting", clauses = true, color = { 0.90, 0.35, 0.35 } },
+  { id = "startattack",  label = L["Attaque auto"],        cmd = "/startattack",  clauses = true, color = { 0.90, 0.55, 0.20 } },
+  { id = "stopattack",   label = L["Stop attaque"],        cmd = "/stopattack",   clauses = true, color = { 0.90, 0.55, 0.20 } },
+  { id = "petattack",    label = L["Familier : attaque"],  cmd = "/petattack",    clauses = true, color = { 0.85, 0.70, 0.20 } },
+  { id = "petfollow",    label = L["Familier : suivre"],   cmd = "/petfollow",    clauses = true, color = { 0.85, 0.70, 0.20 } },
+  { id = "petpassive",   label = L["Familier : passif"],   cmd = "/petpassive",   clauses = true, color = { 0.85, 0.70, 0.20 } },
+  { id = "cancelaura",   label = L["Annuler un buff"],     cmd = "/cancelaura",   arg = L["nom du buff"], clauses = true, color = { 0.80, 0.40, 0.70 } },
+  { id = "target",       label = L["Cibler"],              cmd = "/target",       arg = L["nom ou unité"], clauses = true, color = { 0.35, 0.75, 0.80 } },
+  { id = "targetenemy",  label = L["Cibler ennemi proche"], cmd = "/targetenemy", clauses = true, color = { 0.35, 0.75, 0.80 } },
+  { id = "focus",        label = L["Définir le focus"],    cmd = "/focus",        arg = L["unité (optionnel)"], clauses = true, color = { 0.35, 0.75, 0.80 } },
+  { id = "assist",       label = L["Assister"],            cmd = "/assist",       arg = L["nom ou unité"], clauses = true, color = { 0.35, 0.75, 0.80 } },
+  { id = "equip",        label = L["Équiper"],             cmd = "/equip",        arg = L["nom de l'objet"], clauses = true, color = { 0.30, 0.75, 0.40 } },
+  { id = "dismount",     label = L["Descendre de monture"], cmd = "/dismount",    clauses = true, color = { 0.55, 0.55, 0.60 } },
+  { id = "raw",          label = L["Ligne libre"],         cmd = "",              arg = L["/commande ..."], color = { 0.45, 0.45, 0.45 } },
 }
 
 ns.BlockById = {}
@@ -60,22 +62,22 @@ local CMD_ALIASES = {
 --   exclusive = true : une seule valeur du groupe a la fois
 ---------------------------------------------------------------------------
 ns.ConditionGroups = {
-  { label = "Cible du sort", exclusive = true, items = {
-      { "@mouseover", "Survol" }, { "@focus", "Focus" }, { "@player", "Moi" },
-      { "@pet", "Familier" }, { "@target", "Cible" }, { "@targettarget", "Cible de cible" },
-      { "@cursor", "Curseur" },
+  { label = L["Cible du sort"], exclusive = true, items = {
+      { "@mouseover", L["Survol"] }, { "@focus", L["Focus"] }, { "@player", L["Moi"] },
+      { "@pet", L["Familier"] }, { "@target", L["Cible"] }, { "@targettarget", L["Cible de cible"] },
+      { "@cursor", L["Curseur"] },
   } },
-  { label = "État de la cible", items = {
-      { "harm", "Hostile" }, { "help", "Amie" }, { "exists", "Existe" },
-      { "nodead", "Vivante" }, { "dead", "Morte" },
+  { label = L["État de la cible"], items = {
+      { "harm", L["Hostile"] }, { "help", L["Amie"] }, { "exists", L["Existe"] },
+      { "nodead", L["Vivante"] }, { "dead", L["Morte"] },
   } },
-  { label = "Touche maintenue", items = {
-      { "mod:shift", "Maj" }, { "mod:ctrl", "Ctrl" }, { "mod:alt", "Alt" }, { "nomod", "Aucune" },
+  { label = L["Touche maintenue"], items = {
+      { "mod:shift", L["Maj"] }, { "mod:ctrl", L["Ctrl"] }, { "mod:alt", L["Alt"] }, { "nomod", L["Aucune"] },
   } },
-  { label = "Mon état", items = {
-      { "combat", "En combat" }, { "nocombat", "Hors combat" }, { "stealth", "Camouflé" },
-      { "nostealth", "Pas camouflé" }, { "mounted", "Monté" }, { "pet", "Familier sorti" },
-      { "nopet", "Pas de familier" }, { "channeling", "Canalise" }, { "nochanneling", "Ne canalise pas" },
+  { label = L["Mon état"], items = {
+      { "combat", L["En combat"] }, { "nocombat", L["Hors combat"] }, { "stealth", L["Camouflé"] },
+      { "nostealth", L["Pas camouflé"] }, { "mounted", L["Monté"] }, { "pet", L["Familier sorti"] },
+      { "nopet", L["Pas de familier"] }, { "channeling", L["Canalise"] }, { "nochanneling", L["Ne canalise pas"] },
   } },
 }
 
@@ -308,7 +310,7 @@ function ns.Diagnose(blocks)
   local text = ns.Compile(blocks)
   local warnings = {}
   if #text > ns.MAX_CHARS then
-    warnings[#warnings + 1] = ("Trop long : %d / %d caractères."):format(#text, ns.MAX_CHARS)
+    warnings[#warnings + 1] = L["Trop long : %d / %d caractères."]:format(#text, ns.MAX_CHARS)
   end
   local plainCasts, dismount, pet = 0, false, false
   for _, block in ipairs(blocks) do
@@ -325,7 +327,7 @@ function ns.Diagnose(blocks)
         if #clause.conds > 0 or (clause.alt or "") ~= "" then plain = false end
       end
       if not hasArg then
-        warnings[#warnings + 1] = ("« %s » n'a pas d'argument."):format(ns.BlockById[t].label)
+        warnings[#warnings + 1] = L["« %s » n'a pas d'argument."]:format(ns.BlockById[t].label)
       elseif plain and t ~= "use" then
         plainCasts = plainCasts + 1
       end
@@ -333,11 +335,11 @@ function ns.Diagnose(blocks)
   end
   -- seuls les sorts sans aucune condition sont surs de se bloquer entre eux
   if plainCasts > 1 then
-    warnings[#warnings + 1] = "Plusieurs sorts sans condition : le premier part, les suivants ne servent que s'il échoue (ou s'il ne déclenche pas le temps de recharge global)."
+    warnings[#warnings + 1] = L["Plusieurs sorts sans condition : le premier part, les suivants ne servent que s'il échoue (ou s'il ne déclenche pas le temps de recharge global)."]
   end
   -- une macro ne peut pas attendre : pas de /wait pour laisser le familier revenir
   if dismount and pet then
-    warnings[#warnings + 1] = "Familier : ses ordres et techniques ne partent pas sur une monture ni juste après en être descendu. Appuyer une seconde fois."
+    warnings[#warnings + 1] = L["Familier : ses ordres et techniques ne partent pas sur une monture ni juste après en être descendu. Appuyer une seconde fois."]
   end
   return text, warnings
 end

@@ -1,6 +1,7 @@
 -- MacroForge : parametres sauvegardes (MacroForgeDB) et page d'options
 -- La page est construite deux fois : dans l'onglet "Paramètres" de la fenetre et dans les options du jeu.
 local ADDON, ns = ...
+local L = ns.L
 
 ns.DEFAULTS = {
   minimap = { show = true, angle = 225 },
@@ -73,27 +74,27 @@ end
 -- Page d'options
 ---------------------------------------------------------------------------
 local CHECKS = {
-  { "Afficher le bouton de la minicarte", function(db) return db.minimap.show end,
+  { L["Afficher le bouton de la minicarte"], function(db) return db.minimap.show end,
     function(db, v) db.minimap.show = v end, function() ns.UpdateMinimapButton() end,
-    "Le bouton se déplace en le glissant autour de la minicarte." },
-  { "Mémoriser la position de la fenêtre", function(db) return db.rememberPos end,
+    L["Le bouton se déplace en le glissant autour de la minicarte."] },
+  { L["Mémoriser la position de la fenêtre"], function(db) return db.rememberPos end,
     function(db, v) db.rememberPos = v if not v then db.pos = false end end, function() if ns.ApplyWindow then ns.ApplyWindow() end end,
-    "Désactivé : la fenêtre s'ouvre au centre de l'écran." },
-  { "« Ce personnage seulement » coché par défaut", function(db) return db.perCharDefault end,
+    L["Désactivé : la fenêtre s'ouvre au centre de l'écran."] },
+  { L["« Ce personnage seulement » coché par défaut"], function(db) return db.perCharDefault end,
     function(db, v) db.perCharDefault = v end, function() if ns.ApplyPerCharDefault then ns.ApplyPerCharDefault() end end,
-    "Les nouvelles macros vont dans l'onglet du personnage (30 places) au lieu des macros générales (120)." },
-  { "Mettre la macro sous le curseur après création", function(db) return db.pickupAfterCreate end,
+    L["Les nouvelles macros vont dans l'onglet du personnage (30 places) au lieu des macros générales (120)."] },
+  { L["Mettre la macro sous le curseur après création"], function(db) return db.pickupAfterCreate end,
     function(db, v) db.pickupAfterCreate = v end, nil,
-    "Pratique pour la poser tout de suite sur une barre d'action." },
-  { "Demander confirmation avant d'écraser une macro existante", function(db) return db.confirmOverwrite end,
+    L["Pratique pour la poser tout de suite sur une barre d'action."] },
+  { L["Demander confirmation avant d'écraser une macro existante"], function(db) return db.confirmOverwrite end,
     function(db, v) db.confirmOverwrite = v end, nil,
-    "Quand une macro du jeu porte déjà ce nom." },
-  { "Traduire la bibliothèque dans la langue du jeu", function(db) return db.localizeLibrary end,
+    L["Quand une macro du jeu porte déjà ce nom."] },
+  { L["Traduire la bibliothèque dans la langue du jeu"], function(db) return db.localizeLibrary end,
     function(db, v) db.localizeLibrary = v end, function() if ns.RefreshLibrary then ns.RefreshLibrary() end end,
-    "Désactivé : les macros de la bibliothèque restent en anglais." },
-  { "Infobulles d'aide détaillées", function(db) return db.helpTooltips end,
+    L["Désactivé : les macros de la bibliothèque restent en anglais."] },
+  { L["Infobulles d'aide détaillées"], function(db) return db.helpTooltips end,
     function(db, v) db.helpTooltips = v end, nil,
-    "Désactivé : les infobulles n'affichent plus que leur titre." },
+    L["Désactivé : les infobulles n'affichent plus que leur titre."] },
 }
 
 local function CheckBox(parent, x, y, text)
@@ -144,18 +145,18 @@ function ns.BuildSettingsPage(parent, title)
   minus:SetPoint("TOPLEFT", 230, y)
   local plus = ui.Button(parent, "+", 26, function() SetScale(ns.db.scale + ns.SCALE_STEP) end)
   plus:SetPoint("LEFT", minus, "RIGHT", 4, 0)
-  local one = ui.Button(parent, "100 %", 60, function() SetScale(1) end)
+  local one = ui.Button(parent, L["100 %"], 60, function() SetScale(1) end)
   one:SetPoint("LEFT", plus, "RIGHT", 4, 0)
   syncs[#syncs + 1] = function()
-    scaleText:SetText(("Échelle de la fenêtre : %d %%"):format(math.floor(ns.db.scale * 100 + 0.5)))
+    scaleText:SetText(L["Échelle de la fenêtre : %d %%"]:format(math.floor(ns.db.scale * 100 + 0.5)))
   end
 
   -- Classe affichee au depart dans la bibliotheque (deux cases exclusives)
   y = y - 40
-  ui.Label(parent, "Classe affichée à l'ouverture de la bibliothèque :", 20, y, "GameFontNormal")
+  ui.Label(parent, L["Classe affichée à l'ouverture de la bibliothèque :"], 20, y, "GameFontNormal")
   y = y - 18
   local radios = {}
-  for i, choice in ipairs({ { "player", "Ma classe" }, { "last", "Dernière consultée" } }) do
+  for i, choice in ipairs({ { "player", L["Ma classe"] }, { "last", L["Dernière consultée"] } }) do
     local cb = CheckBox(parent, 30 + (i - 1) * 180, y, choice[2])
     cb:SetScript("OnClick", function()
       ns.db.libraryClass = choice[1]
@@ -168,10 +169,10 @@ function ns.BuildSettingsPage(parent, title)
   end
 
   y = y - 46
-  local reset = ui.Button(parent, "Réinitialiser les paramètres", 210, function() ns.ResetDB() end)
+  local reset = ui.Button(parent, L["Réinitialiser les paramètres"], 210, function() ns.ResetDB() end)
   reset:SetPoint("TOPLEFT", 18, y)
-  ui.Tip(reset, function() return "Réinitialiser", "Remet tous les paramètres par défaut, y compris la position de la fenêtre et du bouton." end)
-  ui.Label(parent, "Commande : /mf (ouvrir), /mf options (cette page)", 20, y - 34, "GameFontDisableSmall")
+  ui.Tip(reset, function() return L["Réinitialiser"], L["Remet tous les paramètres par défaut, y compris la position de la fenêtre et du bouton."] end)
+  ui.Label(parent, L["Commande : /mf (ouvrir), /mf options (cette page)"], 20, y - 34, "GameFontDisableSmall")
 
   local page = { Sync = function() if ns.db then for _, f in ipairs(syncs) do f() end end end }
   pages[#pages + 1] = page

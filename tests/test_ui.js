@@ -244,10 +244,11 @@ end
 function click(cb, value) cb._checked = value fire(cb, "OnClick", "LeftButton") end
 `;
 
-function boot(dbLua) {
+function boot(dbLua, prelude) {
   L = lauxlib.luaL_newstate();
   lualib.luaL_openlibs(L);
   run(MOCK, "=mock");
+  if (prelude) run(prelude, "=prelude");
   run("MacroForgeDB = " + dbLua, "=db");
   for (const f of tocFiles) loadAddonFile(f);
   run(`fireEvent("ADDON_LOADED", "Blizzard_Autre") fireEvent("ADDON_LOADED", "MacroForge")
@@ -683,4 +684,25 @@ run(`fireEvent("ADDON_LOADED", "MacroForge")
      assert(#CATEGORIES == 1, "repli InterfaceOptions_AddCategory absent")
      SlashCmdList.MACROFORGE("options")`, "=classic2");
 
-console.log("test_ui.js : OK (4 scenarios)");
+// ---------------------------------------------------------------- 5. client anglais : textes et descEN
+boot("nil", `function GetLocale() return "enUS" end`);
+run(String.raw`
+SlashCmdList.MACROFORGE("")
+assert(MacroForgeFrame.TitleText._text == "MacroForge — block-based macro editor")
+fire(byText("Create / update"), "OnClick")
+assert(lastLine():find("Give the macro a name"), lastLine())
+local descs = {}
+for _, e in ipairs(NS.Library) do e.descEN = e.descEN or ("EN " .. e.name) descs[e.descEN] = true end
+fire(byText("Library"), "OnClick")
+fire(byText("All classes"), "OnClick")
+local listPanel
+for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel then listPanel = w end end
+for _, c in ipairs(listPanel._children) do if c._type == "Button" and c:IsShown() then fire(c, "OnClick") break end end
+assert(find(function(w) return w._type == "FontString" and descs[w._text] end), "descEN non affichee")
+fire(byText("Settings", MacroForgeFrame), "OnClick")
+for _, w in ipairs(ALL) do
+  if w._scripts.OnEnter then w._scripts.OnEnter(w) end
+end
+`, "=anglais");
+
+console.log("test_ui.js : OK (5 scenarios)");
