@@ -29,7 +29,7 @@ For WoW Forever. Interface in English and French, following the game client lang
 ## Install
 
 1. Download the zip from the releases, or clone this repository.
-2. Copy the `MacroForge` folder to `World of Warcraft\_forever_\Interface\AddOns` (WoW Forever) or `World of Warcraft\_classic_era_\Interface\AddOns` (Classic Era).
+2. Copy the `MacroForge` folder to `World of Warcraft\_forever_\Interface\AddOns`.
 3. Restart the game.
 
 ## License
@@ -69,7 +69,7 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 ## Installation
 
 1. Téléchargez le zip, ou clonez ce dépôt.
-2. Copiez le dossier `MacroForge` dans `World of Warcraft\_forever_\Interface\AddOns` (WoW Forever) ou `World of Warcraft\_classic_era_\Interface\AddOns` (Classic Era).
+2. Copiez le dossier `MacroForge` dans `World of Warcraft\_forever_\Interface\AddOns`.
 3. Relancez le jeu.
 
 ## Licence
