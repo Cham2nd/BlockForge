@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "scripts": {
+    "test": "node test.js && node test_core.js && node test_ui.js"
+  },
+  "dependencies": {
+    "fengari": "^0.1.5"
+  }
+}
