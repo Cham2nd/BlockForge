@@ -1,8 +1,8 @@
-## Interface: 11509, 16001
+## Interface: 16001
 ## Title: MacroForge
 ## Notes: Block-based macro editor and per-class macro library. /mf
 ## Notes-frFR: Éditeur de macros par blocs et bibliothèque de macros par classe. /mf
-## Version: 0.2.0
+## Version: 0.3.0
 ## SavedVariables: MacroForgeDB
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## AddonCompartmentFunc: MacroForge_OnAddonCompartmentClick

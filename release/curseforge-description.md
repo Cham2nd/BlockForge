@@ -1,7 +1,7 @@
 # MacroForge
 
-**Build macros with blocks, or pick one from a library of 273 ready-made macros.**
-For WoW Forever and Classic Era. The interface is in French for now.
+**Build macros with blocks, or pick one from a library of 274 ready-made macros.**
+For WoW Forever. Interface in English and French, following the game client language.
 
 ## What it does
 
@@ -9,7 +9,7 @@ For WoW Forever and Classic Era. The interface is in French for now.
 - **Conditions as buttons.** Mouseover, focus, modifier key, combat, stealth, form, harm/help, dead… No syntax to remember.
 - **Spell and item drop.** Drag a spell from the spellbook or an item from your bags onto a block.
 - **Live checks.** Character counter (255 max), and warnings for common mistakes: missing spell, two spells on the global cooldown, pet command right after a dismount.
-- **Macro library.** 273 macros for the 9 classes, sorted by PvE, PvP, pet and utility. Open one in the editor, change it, save it.
+- **Macro library.** 274 macros for the 9 classes, sorted by PvE, PvP, pet and utility. Open one in the editor, change it, save it.
 - **Client language.** Spell names in the library are translated to your game language.
 - **Settings.** Window scale, minimap button, per-character macros by default, confirmation before overwrite.
 
@@ -23,15 +23,15 @@ For WoW Forever and Classic Era. The interface is in French for now.
 
 - Macros cannot be created or edited in combat. This is a game rule.
 - The add-on does not cast spells and does not read cooldowns. It only writes standard macros.
-- Items named in library macros (potions, poisons, mounts) are in English. Replace them with the name shown in your client.
+- Items named in library macros (potions, poisons, mounts) are in English, whatever the client language. Replace them with the name shown in your client.
 - Some library macros are not yet tested in game.
 
 ---
 
 # MacroForge (français)
 
-**Construisez vos macros avec des blocs, ou prenez-en une dans une bibliothèque de 273 macros prêtes à l'emploi.**
-Pour WoW Forever et Classic Era.
+**Construisez vos macros avec des blocs, ou prenez-en une dans une bibliothèque de 274 macros prêtes à l'emploi.**
+Pour WoW Forever. Interface en français et en anglais, selon la langue du client.
 
 ## Fonctions
 
@@ -39,7 +39,7 @@ Pour WoW Forever et Classic Era.
 - **Conditions en boutons.** Cible survolée, focus, touche de modification, combat, furtivité, forme, ennemi/allié, mort… Aucune syntaxe à retenir.
 - **Dépôt de sorts et d'objets.** Glissez un sort du grimoire ou un objet des sacs sur un bloc.
 - **Contrôles en direct.** Compteur de caractères (255 max) et avertissements : sort manquant, deux sorts sur le temps de recharge global, ordre de familier juste après une descente de monture.
-- **Bibliothèque.** 273 macros pour les 9 classes, classées en PvE, PvP, familier et utilitaire. Ouvrez-en une dans l'éditeur, modifiez-la, enregistrez-la.
+- **Bibliothèque.** 274 macros pour les 9 classes, classées en PvE, PvP, familier et utilitaire. Ouvrez-en une dans l'éditeur, modifiez-la, enregistrez-la.
 - **Langue du client.** Les noms de sorts de la bibliothèque sont traduits dans la langue du jeu.
 - **Paramètres.** Échelle de la fenêtre, bouton de minicarte, macros par personnage par défaut, confirmation avant écrasement.
 
