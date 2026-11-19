@@ -1,4 +1,4 @@
-# MacroForge
+# BlockForge
 
 **Build macros with blocks, or pick one from a library of 274 ready-made macros.**
 For WoW Forever. Interface in English and French, following the game client language.
@@ -15,8 +15,8 @@ For WoW Forever. Interface in English and French, following the game client lang
 
 ## How to use it
 
-- `/mf` or the minimap button opens the window.
-- `/mf options` opens the settings.
+- `/bf` or the minimap button opens the window.
+- `/bf options` opens the settings.
 - Save creates a real game macro. Drag it to your action bar.
 
 ## Limits
@@ -29,7 +29,7 @@ For WoW Forever. Interface in English and French, following the game client lang
 ## Install
 
 1. Download the zip from the releases, or clone this repository.
-2. Copy the `MacroForge` folder to `World of Warcraft\_forever_\Interface\AddOns`.
+2. Copy the `BlockForge` folder to `World of Warcraft\_forever_\Interface\AddOns`.
 3. Restart the game.
 
 ## License
@@ -38,7 +38,7 @@ MIT. See [LICENSE](LICENSE).
 
 ---
 
-# MacroForge (français)
+# BlockForge (français)
 
 **Construisez vos macros avec des blocs, ou prenez-en une dans une bibliothèque de 274 macros prêtes à l'emploi.**
 Pour WoW Forever. Interface en français et en anglais, selon la langue du client.
@@ -55,8 +55,8 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 
 ## Utilisation
 
-- `/mf` ou le bouton de minicarte ouvre la fenêtre.
-- `/mf options` ouvre les paramètres.
+- `/bf` ou le bouton de minicarte ouvre la fenêtre.
+- `/bf options` ouvre les paramètres.
 - Enregistrer crée une vraie macro du jeu. Glissez-la dans votre barre d'action.
 
 ## Limites
@@ -69,7 +69,7 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 ## Installation
 
 1. Téléchargez le zip, ou clonez ce dépôt.
-2. Copiez le dossier `MacroForge` dans `World of Warcraft\_forever_\Interface\AddOns`.
+2. Copiez le dossier `BlockForge` dans `World of Warcraft\_forever_\Interface\AddOns`.
 3. Relancez le jeu.
 
 ## Licence

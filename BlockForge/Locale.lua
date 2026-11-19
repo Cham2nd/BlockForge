@@ -1,4 +1,4 @@
--- MacroForge : textes de l'interface. Les cles sont le texte francais ; une cle absente s'affiche telle quelle.
+-- BlockForge : textes de l'interface. Les cles sont le texte francais ; une cle absente s'affiche telle quelle.
 -- Client francais (ou hors jeu, sans GetLocale) : francais. Tout autre client : anglais.
 local ADDON, ns = ...
 ns = ns or {}
@@ -75,7 +75,7 @@ L["Plusieurs sorts sans condition : le premier part, les suivants ne servent que
 L["Familier : ses ordres et techniques ne partent pas sur une monture ni juste après en être descendu. Appuyer une seconde fois."] = "Pet: its commands and abilities do not go off while mounted or right after dismounting. Press a second time."
 
 -- UI.lua : editeur
-L["|cff66ccffMacroForge|r : %s"] = "|cff66ccffMacroForge|r: %s"
+L["|cff66ccffBlockForge|r : %s"] = "|cff66ccffBlockForge|r: %s"
 L["Sans touche"] = "No modifier"
 L["Maximum %d blocs."] = "Maximum %d blocks."
 L["ligne libre"] = "free line"
@@ -148,7 +148,7 @@ L["Aucune macro pour cette classe."] = "No macros for this class."
 L["Source : %s"] = "Source: %s"
 L["%d-%d / %d  (molette)"] = "%d-%d / %d  (mouse wheel)"
 L["Toutes classes"] = "All classes"
-L["MacroForge — éditeur de macros par blocs"] = "MacroForge — block-based macro editor"
+L["BlockForge — éditeur de macros par blocs"] = "BlockForge — block-based macro editor"
 L["Éditeur"] = "Editor"
 L["Bibliothèque"] = "Library"
 L["Paramètres"] = "Settings"
@@ -176,7 +176,7 @@ L["Dernière consultée"] = "Last viewed"
 L["Réinitialiser les paramètres"] = "Reset settings"
 L["Réinitialiser"] = "Reset"
 L["Remet tous les paramètres par défaut, y compris la position de la fenêtre et du bouton."] = "Restores all default settings, including the window and button positions."
-L["Commande : /mf (ouvrir), /mf options (cette page)"] = "Command: /mf (open), /mf options (this page)"
+L["Commande : /bf (ouvrir), /bf options (cette page)"] = "Command: /bf (open), /bf options (this page)"
 
 -- Minimap.lua
 L["Clic gauche : ouvrir / fermer"] = "Left-click: open / close"

@@ -1,4 +1,4 @@
--- MacroForge : nom anglais -> ID de sort (genere depuis la table SpellName du client Forever 1.60.1.70959)
+-- BlockForge : nom anglais -> ID de sort (genere depuis la table SpellName du client Forever 1.60.1.70959)
 -- Le client traduit l'ID dans sa langue : la bibliotheque suit la langue du jeu.
 local _, ns = ...
 ns.SpellIDs = {

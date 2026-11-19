@@ -1,0 +1,18 @@
+## Interface: 16001
+## Title: BlockForge
+## Notes: Block-based macro editor and per-class macro library. /bf
+## Notes-frFR: Éditeur de macros par blocs et bibliothèque de macros par classe. /bf
+## Version: 0.3.0
+## SavedVariables: BlockForgeDB
+## IconTexture: Interface\Icons\INV_Misc_Book_09
+## AddonCompartmentFunc: BlockForge_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: BlockForge_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: BlockForge_OnAddonCompartmentLeave
+
+Locale.lua
+Core.lua
+Library.lua
+SpellIDs.lua
+Settings.lua
+UI.lua
+Minimap.lua

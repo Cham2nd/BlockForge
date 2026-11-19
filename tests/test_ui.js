@@ -1,10 +1,10 @@
-// Charge l'add-on (ordre du .toc) dans fengari avec de faux widgets WoW, simule ADDON_LOADED, ouvre /mf et clique partout :
-// editeur, rendu des blocs, bibliotheque, parametres, bouton de minicarte. Trois etats de MacroForgeDB : vide, partiel, corrompu.
+// Charge l'add-on (ordre du .toc) dans fengari avec de faux widgets WoW, simule ADDON_LOADED, ouvre /bf et clique partout :
+// editeur, rendu des blocs, bibliotheque, parametres, bouton de minicarte. Trois etats de BlockForgeDB : vide, partiel, corrompu.
 // But : attraper les erreurs Lua (nil, ordre de creation, fermetures) et verifier que chaque reglage agit, pas valider le rendu.
-// Usage : node test_ui.js <dossier MacroForge>
+// Usage : node test_ui.js <dossier BlockForge>
 const fs = require("fs");
 const { lua, lauxlib, lualib, to_luastring, to_jsstring } = require("fengari");
-const dir = process.argv[2] || __dirname + "/../MacroForge";
+const dir = process.argv[2] || __dirname + "/../BlockForge";
 let L;
 
 function check(status) {
@@ -24,12 +24,12 @@ function run(code, name) {
 function loadAddonFile(file) {
   const src = fs.readFileSync(dir + "/" + file);
   check(lauxlib.luaL_loadbuffer(L, src, src.length, to_luastring("@" + file)));
-  lua.lua_pushstring(L, to_luastring("MacroForge"));
+  lua.lua_pushstring(L, to_luastring("BlockForge"));
   lua.lua_getglobal(L, to_luastring("NS"));
   check(lua.lua_pcall(L, 2, 0, 0));
 }
 // fichiers dans l'ordre du .toc
-const tocFiles = fs.readFileSync(dir + "/MacroForge.toc", "utf8").split(/\r?\n/)
+const tocFiles = fs.readFileSync(dir + "/BlockForge.toc", "utf8").split(/\r?\n/)
   .map(l => l.trim()).filter(l => l && !l.startsWith("#"));
 
 // ---------------------------------------------------------------- faux WoW
@@ -249,30 +249,30 @@ function boot(dbLua, prelude) {
   lualib.luaL_openlibs(L);
   run(MOCK, "=mock");
   if (prelude) run(prelude, "=prelude");
-  run("MacroForgeDB = " + dbLua, "=db");
+  run("BlockForgeDB = " + dbLua, "=db");
   for (const f of tocFiles) loadAddonFile(f);
-  run(`fireEvent("ADDON_LOADED", "Blizzard_Autre") fireEvent("ADDON_LOADED", "MacroForge")
-       assert(NS.db == MacroForgeDB, "base non initialisee")`, "=load");
+  run(`fireEvent("ADDON_LOADED", "Blizzard_Autre") fireEvent("ADDON_LOADED", "BlockForge")
+       assert(NS.db == BlockForgeDB, "base non initialisee")`, "=load");
 }
 
-// ---------------------------------------------------------------- 1. MacroForgeDB absente : tout l'add-on
+// ---------------------------------------------------------------- 1. BlockForgeDB absente : tout l'add-on
 boot("nil");
 run(String.raw`
-local ns, db = NS, MacroForgeDB
+local ns, db = NS, BlockForgeDB
 assert(db.minimap.show == true and db.scale == 1 and db.confirmOverwrite == true, "valeurs par defaut absentes")
 assert(#REGISTERED == 1, "categorie d'options non enregistree")
-assert(MacroForgeMinimapButton and MacroForgeMinimapButton:IsShown(), "bouton de minicarte absent")
+assert(BlockForgeMinimapButton and BlockForgeMinimapButton:IsShown(), "bouton de minicarte absent")
 
 -- ouverture
-SlashCmdList.MACROFORGE("")
-assert(MacroForgeFrame, "MacroForgeFrame absent")
-assert(MacroForgeFrame.TitleText._text:find("MacroForge"), "titre non pose")
-assert(UISpecialFrames[1] == "MacroForgeFrame")
-assert(MacroForgeFrame._scale == 1)
+SlashCmdList.BLOCKFORGE("")
+assert(BlockForgeFrame, "BlockForgeFrame absent")
+assert(BlockForgeFrame.TitleText._text:find("BlockForge"), "titre non pose")
+assert(UISpecialFrames[1] == "BlockForgeFrame")
+assert(BlockForgeFrame._scale == 1)
 
 -- reperes
 local palette = {}
-for _, def in ipairs(ns.BlockDefs) do palette[def.id] = byText(def.label, MacroForgeFrame) end
+for _, def in ipairs(ns.BlockDefs) do palette[def.id] = byText(def.label, BlockForgeFrame) end
 local canvas = find(function(w) return w._scripts.OnReceiveDrag and w._type == "Frame" end)
 assert(canvas, "zone de construction introuvable")
 local rows = {}
@@ -472,8 +472,8 @@ assert(not libRows[1]:IsShown(), "classe vide : aucune ligne")
 assert(db.lastClass == "SHAMAN", "derniere classe non memorisee")
 
 -- 8. parametres : onglet de la fenetre
-fire(byText("Paramètres", MacroForgeFrame), "OnClick")
-local settingsPanel = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, MacroForgeFrame) and w ~= perChar end)._parent
+fire(byText("Paramètres", BlockForgeFrame), "OnClick")
+local settingsPanel = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, BlockForgeFrame) and w ~= perChar end)._parent
 assert(settingsPanel:IsVisible(), "onglet Parametres non affiche")
 local checks = checkboxes(settingsPanel)
 assert(#checks == 9, "cases : " .. #checks) -- 7 reglages + 2 choix de classe
@@ -486,17 +486,17 @@ end
 assert(cb("minicarte")._checked == true and cb("personnage")._checked == false)
 
 click(cb("minicarte"), false)
-assert(db.minimap.show == false and not MacroForgeMinimapButton:IsShown(), "bouton de minicarte toujours visible")
+assert(db.minimap.show == false and not BlockForgeMinimapButton:IsShown(), "bouton de minicarte toujours visible")
 click(cb("minicarte"), true)
-assert(MacroForgeMinimapButton:IsShown())
+assert(BlockForgeMinimapButton:IsShown())
 
-MacroForgeFrame._point = { "TOPLEFT", UIParent, "TOPLEFT", 50, -60 }
-fire(MacroForgeFrame, "OnDragStop")
+BlockForgeFrame._point = { "TOPLEFT", UIParent, "TOPLEFT", 50, -60 }
+fire(BlockForgeFrame, "OnDragStop")
 assert(db.pos and db.pos[1] == "TOPLEFT" and db.pos[3] == 50, "position non memorisee")
 click(cb("position"), false)
-assert(db.rememberPos == false and db.pos == false and MacroForgeFrame._point[1] == "CENTER", "position non oubliee")
-MacroForgeFrame._point = { "TOPLEFT", UIParent, "TOPLEFT", 70, -80 }
-fire(MacroForgeFrame, "OnDragStop")
+assert(db.rememberPos == false and db.pos == false and BlockForgeFrame._point[1] == "CENTER", "position non oubliee")
+BlockForgeFrame._point = { "TOPLEFT", UIParent, "TOPLEFT", 70, -80 }
+fire(BlockForgeFrame, "OnDragStop")
 assert(db.pos == false, "position memorisee alors que le reglage est coupe")
 click(cb("position"), true)
 
@@ -554,7 +554,7 @@ assert(TOOLTIP_LINES > 0, "lignes d'aide absentes")
 -- echelle
 local splus, sminus, sone = byText("+", settingsPanel), byText("-", settingsPanel), byText("100 %", settingsPanel)
 for _ = 1, 30 do fire(splus, "OnClick") end
-assert(math.abs(db.scale - 1.5) < 1e-6 and math.abs(MacroForgeFrame._scale - 1.5) < 1e-6, "echelle max : " .. db.scale)
+assert(math.abs(db.scale - 1.5) < 1e-6 and math.abs(BlockForgeFrame._scale - 1.5) < 1e-6, "echelle max : " .. db.scale)
 for _ = 1, 30 do fire(sminus, "OnClick") end
 assert(math.abs(db.scale - 0.6) < 1e-6, "echelle min : " .. db.scale)
 fire(sone, "OnClick")
@@ -574,13 +574,13 @@ db.minimap.angle = 10
 fire(byText("Réinitialiser les paramètres", settingsPanel), "OnClick")
 assert(db.scale == 1 and db.minimap.show == true and db.minimap.angle == 225 and db.libraryClass == "player"
   and db.pos == false and db.lastClass == false, "reinitialisation incomplete")
-assert(MacroForgeFrame._scale == 1 and MacroForgeMinimapButton:IsShown())
+assert(BlockForgeFrame._scale == 1 and BlockForgeMinimapButton:IsShown())
 assert(cb("minicarte")._checked == true and cb("Ma classe")._checked == true, "cases non resynchronisees")
-assert(NS.db == MacroForgeDB, "reference de la base perdue")
+assert(NS.db == BlockForgeDB, "reference de la base perdue")
 
 -- page des options du jeu : meme reglages, synchronisee
 local gamePanel
-for _, w in ipairs(ALL) do if w.name == "MacroForge" and not w._parent then gamePanel = w end end
+for _, w in ipairs(ALL) do if w.name == "BlockForge" and not w._parent then gamePanel = w end end
 assert(gamePanel, "panneau des options du jeu absent")
 local gameChecks = checkboxes(gamePanel)
 assert(#gameChecks == 9)
@@ -590,17 +590,17 @@ assert(cb("minicarte")._checked == false, "les deux pages ne sont pas synchronis
 click(gameChecks[1].box, true)
 gamePanel.OnRefresh(gamePanel)
 gamePanel.OnDefault(gamePanel)
-assert(db == MacroForgeDB and MacroForgeDB.scale == 1)
+assert(db == BlockForgeDB and BlockForgeDB.scale == 1)
 
 -- 9. bouton de minicarte
-local mm = MacroForgeMinimapButton
-MacroForgeFrame:Hide()
+local mm = BlockForgeMinimapButton
+BlockForgeFrame:Hide()
 fire(mm, "OnClick", "LeftButton")
-assert(MacroForgeFrame:IsShown(), "clic gauche : ouvrir")
+assert(BlockForgeFrame:IsShown(), "clic gauche : ouvrir")
 fire(mm, "OnClick", "LeftButton")
-assert(not MacroForgeFrame:IsShown(), "clic gauche : fermer")
+assert(not BlockForgeFrame:IsShown(), "clic gauche : fermer")
 fire(mm, "OnClick", "RightButton")
-assert(MacroForgeFrame:IsShown() and settingsPanel:IsVisible(), "clic droit : parametres")
+assert(BlockForgeFrame:IsShown() and settingsPanel:IsVisible(), "clic droit : parametres")
 fire(mm, "OnEnter")
 fire(mm, "OnLeave")
 CURSOR_POS = { 1000, 700 } -- au-dessus du centre de la minicarte (1000, 600)
@@ -614,39 +614,39 @@ assert(mm._scripts.OnUpdate == nil, "suivi du curseur non arrete")
 local p = mm._point
 assert(p[2] == Minimap and math.abs(p[4] + 80) < 1e-6 and math.abs(p[5]) < 1e-6, "position autour de la minicarte")
 -- menu des add-ons (Forever)
-MacroForge_OnAddonCompartmentClick("MacroForge", "LeftButton")
-MacroForge_OnAddonCompartmentClick("MacroForge", "RightButton")
-MacroForge_OnAddonCompartmentEnter("MacroForge", UIParent)
-MacroForge_OnAddonCompartmentLeave("MacroForge", UIParent)
+BlockForge_OnAddonCompartmentClick("BlockForge", "LeftButton")
+BlockForge_OnAddonCompartmentClick("BlockForge", "RightButton")
+BlockForge_OnAddonCompartmentEnter("BlockForge", UIParent)
+BlockForge_OnAddonCompartmentLeave("BlockForge", UIParent)
 
 -- 10. toutes les infobulles, commandes, fermeture / reouverture
 for _, w in ipairs(ALL) do
   if w._scripts.OnEnter then w._scripts.OnEnter(w) end
   if w._scripts.OnLeave then w._scripts.OnLeave(w) end
 end
-SlashCmdList.MACROFORGE("options")
-assert(MacroForgeFrame:IsShown() and settingsPanel:IsVisible())
-SlashCmdList.MACROFORGE("")
-assert(not MacroForgeFrame:IsShown())
-SlashCmdList.MACROFORGE("")
-assert(MacroForgeFrame:IsShown())
+SlashCmdList.BLOCKFORGE("options")
+assert(BlockForgeFrame:IsShown() and settingsPanel:IsVisible())
+SlashCmdList.BLOCKFORGE("")
+assert(not BlockForgeFrame:IsShown())
+SlashCmdList.BLOCKFORGE("")
+assert(BlockForgeFrame:IsShown())
 io.write(#ALL .. " widgets, " .. #CALLS .. " appels macro, " .. #PRINTS .. " messages\n")
 for _, p in ipairs(PRINTS) do io.write("  > ", p, "\n") end
 `, "=scenario");
 
-// ---------------------------------------------------------------- 2. MacroForgeDB partielle (ancienne version)
+// ---------------------------------------------------------------- 2. BlockForgeDB partielle (ancienne version)
 boot(`{ scale = "grand", minimap = { angle = 400 }, pos = { "TOPLEFT", "TOPLEFT", 10, -20 },
         libraryClass = "last", lastClass = "MAGE", perCharDefault = true, confirmOverwrite = false }`);
 run(String.raw`
-local db = MacroForgeDB
+local db = BlockForgeDB
 assert(db.scale == 1, "echelle invalide gardee")
 assert(db.minimap.show == true and db.minimap.angle == 40, "minicarte mal completee")
 assert(db.pos[3] == 10 and db.libraryClass == "last" and db.lastClass == "MAGE")
 assert(db.confirmOverwrite == false and db.pickupAfterCreate == true and db.localizeLibrary == true)
-SlashCmdList.MACROFORGE("")
-local p = MacroForgeFrame._point
+SlashCmdList.BLOCKFORGE("")
+local p = BlockForgeFrame._point
 assert(p[1] == "TOPLEFT" and p[2] == UIParent and p[4] == 10 and p[5] == -20, "position non restauree")
-local perChar = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, MacroForgeFrame) end)
+local perChar = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, BlockForgeFrame) end)
 assert(perChar._checked == true, "case du personnage non cochee au chargement")
 fire(byText("Bibliothèque"), "OnClick")
 -- la bibliotheque s'ouvre sur la derniere classe (Mage) : sa puce est dans l'etat choisi
@@ -659,16 +659,16 @@ for _, e in ipairs(NS.Library) do if e.class == "MAGE" then mage = e break end e
 assert(first and first.text._text:find(mage.name, 1, true), "bibliotheque non ouverte sur la derniere classe")
 `, "=partiel");
 
-// ---------------------------------------------------------------- 3. MacroForgeDB corrompue
+// ---------------------------------------------------------------- 3. BlockForgeDB corrompue
 boot(`{ minimap = "oui", pos = 5, lastClass = 12, libraryClass = "autre", scale = 9, helpTooltips = "non" }`);
 run(String.raw`
-local db = MacroForgeDB
+local db = BlockForgeDB
 assert(type(db.minimap) == "table" and db.minimap.show == true and db.minimap.angle == 225)
 assert(db.pos == false and db.lastClass == false and db.libraryClass == "player")
 assert(db.scale == 1.5 and db.helpTooltips == true, "valeurs corrompues gardees")
-SlashCmdList.MACROFORGE("")
-assert(MacroForgeFrame._point[1] == "CENTER")
-fire(MacroForgeMinimapButton, "OnClick", "RightButton")
+SlashCmdList.BLOCKFORGE("")
+assert(BlockForgeFrame._point[1] == "CENTER")
+fire(BlockForgeMinimapButton, "OnClick", "RightButton")
 `, "=corrompu");
 
 // ---------------------------------------------------------------- 4. sans API Settings (Classic Era) ni Minimap
@@ -677,18 +677,18 @@ L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 run(MOCK, "=mock");
 run(`Settings = nil  Minimap = nil  CATEGORIES = {}
-     function InterfaceOptions_AddCategory(p) assert(p.name == "MacroForge") CATEGORIES[#CATEGORIES + 1] = p end
-     MacroForgeDB = nil`, "=classic");
+     function InterfaceOptions_AddCategory(p) assert(p.name == "BlockForge") CATEGORIES[#CATEGORIES + 1] = p end
+     BlockForgeDB = nil`, "=classic");
 for (const f of tocFiles) loadAddonFile(f);
-run(`fireEvent("ADDON_LOADED", "MacroForge")
+run(`fireEvent("ADDON_LOADED", "BlockForge")
      assert(#CATEGORIES == 1, "repli InterfaceOptions_AddCategory absent")
-     SlashCmdList.MACROFORGE("options")`, "=classic2");
+     SlashCmdList.BLOCKFORGE("options")`, "=classic2");
 
 // ---------------------------------------------------------------- 5. client anglais : textes et descEN
 boot("nil", `function GetLocale() return "enUS" end`);
 run(String.raw`
-SlashCmdList.MACROFORGE("")
-assert(MacroForgeFrame.TitleText._text == "MacroForge — block-based macro editor")
+SlashCmdList.BLOCKFORGE("")
+assert(BlockForgeFrame.TitleText._text == "BlockForge — block-based macro editor")
 fire(byText("Create / update"), "OnClick")
 assert(lastLine():find("Give the macro a name"), lastLine())
 local descs = {}
@@ -699,7 +699,7 @@ local listPanel
 for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel then listPanel = w end end
 for _, c in ipairs(listPanel._children) do if c._type == "Button" and c:IsShown() then fire(c, "OnClick") break end end
 assert(find(function(w) return w._type == "FontString" and descs[w._text] end), "descEN non affichee")
-fire(byText("Settings", MacroForgeFrame), "OnClick")
+fire(byText("Settings", BlockForgeFrame), "OnClick")
 for _, w in ipairs(ALL) do
   if w._scripts.OnEnter then w._scripts.OnEnter(w) end
 end

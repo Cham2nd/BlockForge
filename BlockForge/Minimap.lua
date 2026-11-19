@@ -1,4 +1,4 @@
--- MacroForge : bouton rond autour de la minicarte (sans bibliotheque externe) + menu des add-ons (Forever)
+-- BlockForge : bouton rond autour de la minicarte (sans bibliotheque externe) + menu des add-ons (Forever)
 local ADDON, ns = ...
 local L = ns.L
 
@@ -23,7 +23,7 @@ end
 
 local function ShowTooltip(owner)
   GameTooltip:SetOwner(owner, "ANCHOR_LEFT")
-  GameTooltip:SetText("MacroForge", 1, 1, 1)
+  GameTooltip:SetText("BlockForge", 1, 1, 1)
   GameTooltip:AddLine(L["Clic gauche : ouvrir / fermer"], 0.8, 0.8, 0.8)
   GameTooltip:AddLine(L["Clic droit : paramètres"], 0.8, 0.8, 0.8)
   if owner == button then GameTooltip:AddLine(L["Glisser : déplacer autour de la minicarte"], 0.8, 0.8, 0.8) end
@@ -36,7 +36,7 @@ end
 
 local function Create()
   -- disposition des boutons de minicarte classiques : bordure 53 px en haut a gauche d'un bouton de 31 px
-  button = CreateFrame("Button", "MacroForgeMinimapButton", Minimap)
+  button = CreateFrame("Button", "BlockForgeMinimapButton", Minimap)
   button:SetSize(31, 31)
   button:SetFrameStrata("MEDIUM")
   button:SetFrameLevel(8)
@@ -80,6 +80,6 @@ function ns.UpdateMinimapButton()
 end
 
 -- Menu des add-ons de la minicarte (## AddonCompartmentFunc dans le .toc) ; ignore sur Classic Era
-function MacroForge_OnAddonCompartmentClick(_, mouseButton) OnClick(mouseButton) end
-function MacroForge_OnAddonCompartmentEnter(_, menuButton) ShowTooltip(menuButton) end
-function MacroForge_OnAddonCompartmentLeave() GameTooltip:Hide() end
+function BlockForge_OnAddonCompartmentClick(_, mouseButton) OnClick(mouseButton) end
+function BlockForge_OnAddonCompartmentEnter(_, menuButton) ShowTooltip(menuButton) end
+function BlockForge_OnAddonCompartmentLeave() GameTooltip:Hide() end

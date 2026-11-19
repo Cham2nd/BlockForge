@@ -1,4 +1,4 @@
--- MacroForge : bibliotheque de macros (genere depuis la recherche web, non teste en jeu)
+-- BlockForge : bibliotheque de macros (genere depuis la recherche web, non teste en jeu)
 -- Noms de sorts en anglais : a traduire sur un client francais.
 local _, ns = ...
 ns.Library = {

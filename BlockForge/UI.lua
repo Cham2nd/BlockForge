@@ -1,4 +1,4 @@
--- MacroForge : interface (editeur par blocs + bibliotheque + parametres). Ouvrir avec /mf
+-- BlockForge : interface (editeur par blocs + bibliotheque + parametres). Ouvrir avec /bf
 local ADDON, ns = ...
 local L = ns.L
 
@@ -29,7 +29,7 @@ local main, editor, library, settingsTab, canvas, dropLine
 local nameBox, perChar, argBox, argLabel, resetBox, resetLabel, inspTitle, inspBody, inspHint
 local preview, counter, counterBar, warnText
 
-local function Msg(text) print(L["|cff66ccffMacroForge|r : %s"]:format(text)) end
+local function Msg(text) print(L["|cff66ccffBlockForge|r : %s"]:format(text)) end
 
 ---------------------------------------------------------------------------
 -- Petits constructeurs
@@ -157,7 +157,7 @@ end
 ns.ui = { Panel = Panel, Label = Label, Button = Button, Tip = Tip }
 
 -- police du code : le client n'a pas de police a chasse fixe, ARIALN (etroite) est la plus lisible
-local codeFont = CreateFont("MacroForgeCodeFont")
+local codeFont = CreateFont("BlockForgeCodeFont")
 codeFont:SetFont("Fonts\\ARIALN.TTF", 13, "")
 codeFont:SetTextColor(0.9, 0.95, 0.9)
 
@@ -393,7 +393,7 @@ local function Overwrite(name, body)
 end
 
 if StaticPopupDialogs then
-  StaticPopupDialogs.MACROFORGE_OVERWRITE = {
+  StaticPopupDialogs.BLOCKFORGE_OVERWRITE = {
     text = L["La macro « %s » existe déjà. La remplacer ?"],
     button1 = YES or L["Oui"], button2 = NO or L["Non"],
     OnAccept = function(_, data) Overwrite(data.name, data.body) end,
@@ -411,7 +411,7 @@ local function Save()
   local index = GetMacroIndexByName(name)
   if index and index > 0 then
     if ns.db.confirmOverwrite and StaticPopup_Show then
-      StaticPopup_Show("MACROFORGE_OVERWRITE", name, nil, { name = name, body = body })
+      StaticPopup_Show("BLOCKFORGE_OVERWRITE", name, nil, { name = name, body = body })
     else
       Overwrite(name, body)
     end
@@ -730,7 +730,7 @@ local function BuildEditor(parent)
   counterBar:SetPoint("TOPLEFT", barBg)
   counterBar:SetHeight(4)
   counterBar.max = 420
-  preview = Label(bottom, "", 10, -38, "MacroForgeCodeFont")
+  preview = Label(bottom, "", 10, -38, "BlockForgeCodeFont")
   preview:SetSize(420, 86) -- hauteur fixe : une macro tres longue est coupee au lieu de deborder du panneau
   preview:SetJustifyV("TOP")
   local split = bottom:CreateTexture(nil, "ARTWORK")
@@ -801,7 +801,7 @@ local function BuildLibrary(parent, showEditor)
   title:SetWidth(376)
   local desc = Label(detail, L["Choisis une macro dans la liste."], 10, -56, "GameFontHighlightSmall")
   desc:SetWidth(376)
-  local body = Label(detail, "", 0, 0, "MacroForgeCodeFont")
+  local body = Label(detail, "", 0, 0, "BlockForgeCodeFont")
   body:ClearAllPoints()
   body:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -14) -- suit la description, quelle que soit sa longueur
   body:SetWidth(376)
@@ -909,7 +909,7 @@ function ns.ApplyWindow()
 end
 
 local function Build()
-  main = CreateFrame("Frame", "MacroForgeFrame", UIParent, "BasicFrameTemplateWithInset")
+  main = CreateFrame("Frame", "BlockForgeFrame", UIParent, "BasicFrameTemplateWithInset")
   main:SetSize(900, 640)
   main:SetFrameStrata("HIGH")
   main:SetMovable(true)
@@ -925,8 +925,8 @@ local function Build()
     end
   end)
   local title = main.TitleText or (main.TitleContainer and main.TitleContainer.TitleText)
-  if title then title:SetText(L["MacroForge — éditeur de macros par blocs"]) end
-  tinsert(UISpecialFrames, "MacroForgeFrame")
+  if title then title:SetText(L["BlockForge — éditeur de macros par blocs"]) end
+  tinsert(UISpecialFrames, "BlockForgeFrame")
 
   local pages = {}
   for _, key in ipairs({ "editor", "library", "settings" }) do
@@ -972,9 +972,9 @@ function ns.OpenSettings()
   ShowTab("settings")
 end
 
-SLASH_MACROFORGE1 = "/macroforge"
-SLASH_MACROFORGE2 = "/mf"
-SlashCmdList.MACROFORGE = function(msg)
+SLASH_BLOCKFORGE1 = "/blockforge"
+SLASH_BLOCKFORGE2 = "/bf"
+SlashCmdList.BLOCKFORGE = function(msg)
   msg = ns.trim((msg or ""):lower())
   if msg == "options" or msg == "config" or msg == "param" then return ns.OpenSettings() end
   ns.Toggle()

@@ -1,7 +1,7 @@
 // Verifie la syntaxe des 3 fichiers Lua et l'aller-retour Parse -> Compile sur toute la bibliotheque
 const fs = require("fs");
 const { lua, lauxlib, lualib, to_luastring, to_jsstring } = require("fengari");
-const dir = process.argv[2] || __dirname + "/../MacroForge";
+const dir = process.argv[2] || __dirname + "/../BlockForge";
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 
@@ -19,7 +19,7 @@ load("UI.lua"); lua.lua_pop(L, 1); // syntaxe seulement : l'interface a besoin d
 run("NS = {}");
 for (const f of ["Locale.lua", "Core.lua", "Library.lua"]) {
   load(f);
-  lua.lua_pushstring(L, to_luastring("MacroForge"));
+  lua.lua_pushstring(L, to_luastring("BlockForge"));
   lua.lua_getglobal(L, to_luastring("NS"));
   if (lua.lua_pcall(L, 2, 0, 0) !== lua.LUA_OK) throw new Error(to_jsstring(lua.lua_tostring(L, -1)));
 }

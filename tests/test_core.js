@@ -1,13 +1,13 @@
 // Cas de regression pour Core.lua (revue)
 const fs = require("fs");
 const { lua, lauxlib, lualib, to_luastring, to_jsstring } = require("fengari");
-const dir = process.argv[2] || __dirname + "/../MacroForge";
+const dir = process.argv[2] || __dirname + "/../BlockForge";
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 const run = (code, name) => { if (lauxlib.luaL_loadbuffer(L, code, code.length, to_luastring(name)) || lua.lua_pcall(L, 0, 0, 0)) throw new Error(to_jsstring(lua.lua_tostring(L, -1))); };
 run(to_luastring("NS = {}"), "init");
 const src = fs.readFileSync(dir + "/Core.lua", "utf8");
-run(to_luastring("local chunk = function(...) " + src + "\nend chunk('MacroForge', NS)"), "@Core.lua");
+run(to_luastring("local chunk = function(...) " + src + "\nend chunk('BlockForge', NS)"), "@Core.lua");
 run(to_luastring(String.raw`
 local ns = NS
 local function rt(s) return ns.Compile(ns.Parse(s)) end
@@ -53,7 +53,7 @@ function loadLocalized(locale) {
   const go = (code, name) => { if (lauxlib.luaL_loadbuffer(S, code, code.length, to_luastring(name)) || lua.lua_pcall(S, 0, 0, 0)) throw new Error(to_jsstring(lua.lua_tostring(S, -1))); };
   go(to_luastring("NS = {}" + (locale ? ` function GetLocale() return "${locale}" end` : "")), "init");
   for (const f of ["Locale.lua", "Core.lua"])
-    go(to_luastring("local chunk = function(...) " + fs.readFileSync(dir + "/" + f, "utf8") + "\nend chunk('MacroForge', NS)"), "@" + f);
+    go(to_luastring("local chunk = function(...) " + fs.readFileSync(dir + "/" + f, "utf8") + "\nend chunk('BlockForge', NS)"), "@" + f);
   return go;
 }
 const TEXTS = String.raw`

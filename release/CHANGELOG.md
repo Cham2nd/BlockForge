@@ -1,5 +1,6 @@
-# MacroForge 0.3.0
+# BlockForge 0.3.0
 
+- Renommé : MacroForge devient BlockForge. Commandes `/bf`, `/blockforge`. Les réglages repartent de zéro.
 - Add-on pour WoW Forever uniquement (interface 16001).
 - Interface en anglais sur les clients non français ; descriptions anglaises pour toute la bibliothèque.
 - Bibliothèque revue pour Forever : 39 macros corrigées, 12 retirées (sorts non apprenables sur Forever : Icy Veins, Living Bomb, Shadowfiend, Lifebloom, Lava Burst, Earth Shield, Kill Command…), 13 ajoutées (Shifting Power, appels de totems, Demonic Sacrifice, Light's Vigil…). 274 macros.

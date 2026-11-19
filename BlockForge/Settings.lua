@@ -1,4 +1,4 @@
--- MacroForge : parametres sauvegardes (MacroForgeDB) et page d'options
+-- BlockForge : parametres sauvegardes (BlockForgeDB) et page d'options
 -- La page est construite deux fois : dans l'onglet "Paramètres" de la fenetre et dans les options du jeu.
 local ADDON, ns = ...
 local L = ns.L
@@ -47,10 +47,10 @@ local function Sanitize(db)
 end
 
 function ns.InitDB()
-  if type(MacroForgeDB) ~= "table" then MacroForgeDB = {} end
-  Merge(MacroForgeDB, ns.DEFAULTS)
-  Sanitize(MacroForgeDB)
-  ns.db = MacroForgeDB
+  if type(BlockForgeDB) ~= "table" then BlockForgeDB = {} end
+  Merge(BlockForgeDB, ns.DEFAULTS)
+  Sanitize(BlockForgeDB)
+  ns.db = BlockForgeDB
 end
 
 local pages = {}
@@ -65,7 +65,7 @@ function ns.ApplySettings()
 end
 
 function ns.ResetDB()
-  for k in pairs(MacroForgeDB) do MacroForgeDB[k] = nil end
+  for k in pairs(BlockForgeDB) do BlockForgeDB[k] = nil end
   ns.InitDB()
   ns.ApplySettings()
 end
@@ -172,7 +172,7 @@ function ns.BuildSettingsPage(parent, title)
   local reset = ui.Button(parent, L["Réinitialiser les paramètres"], 210, function() ns.ResetDB() end)
   reset:SetPoint("TOPLEFT", 18, y)
   ui.Tip(reset, function() return L["Réinitialiser"], L["Remet tous les paramètres par défaut, y compris la position de la fenêtre et du bouton."] end)
-  ui.Label(parent, L["Commande : /mf (ouvrir), /mf options (cette page)"], 20, y - 34, "GameFontDisableSmall")
+  ui.Label(parent, L["Commande : /bf (ouvrir), /bf options (cette page)"], 20, y - 34, "GameFontDisableSmall")
 
   local page = { Sync = function() if ns.db then for _, f in ipairs(syncs) do f() end end end }
   pages[#pages + 1] = page
@@ -186,12 +186,12 @@ end
 ---------------------------------------------------------------------------
 local function RegisterGameOptions()
   local panel = CreateFrame("Frame")
-  panel.name = "MacroForge" -- lu par InterfaceOptions_AddCategory (Classic Era)
-  local page = ns.BuildSettingsPage(panel, "MacroForge")
+  panel.name = "BlockForge" -- lu par InterfaceOptions_AddCategory (Classic Era)
+  local page = ns.BuildSettingsPage(panel, "BlockForge")
   panel.OnRefresh = page.Sync         -- appeles par le panneau d'options de Forever s'ils existent
   panel.OnDefault = function() ns.ResetDB() end
   if Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
-    local category = Settings.RegisterCanvasLayoutCategory(panel, "MacroForge")
+    local category = Settings.RegisterCanvasLayoutCategory(panel, "BlockForge")
     Settings.RegisterAddOnCategory(category)
     ns.optionsCategory = category
   elseif InterfaceOptions_AddCategory then

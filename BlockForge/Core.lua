@@ -1,8 +1,8 @@
--- MacroForge : coeur (modele de blocs, compilation blocs -> texte, analyse texte -> blocs)
+-- BlockForge : coeur (modele de blocs, compilation blocs -> texte, analyse texte -> blocs)
 -- Ce fichier ne depend d'aucune API d'interface : il peut etre teste hors du jeu.
 local ADDON, ns = ...
 ns = ns or {}
-if not ADDON then _G.MacroForgeNS = ns end -- execution hors jeu (tests)
+if not ADDON then _G.BlockForgeNS = ns end -- execution hors jeu (tests)
 -- certains tests chargent ce fichier sans Locale.lua : la cle sert alors de texte
 local L = ns.L or setmetatable({}, { __index = function(_, k) return k end })
 

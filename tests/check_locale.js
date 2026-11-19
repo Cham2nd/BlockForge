@@ -1,8 +1,8 @@
 // Verifie que chaque L["..."] des fichiers Lua a sa traduction anglaise dans Locale.lua,
 // sans typographie francaise et avec les memes %s/%d dans le meme ordre.
-// Usage : node check_locale.js [dossier MacroForge] [--list]
+// Usage : node check_locale.js [dossier BlockForge] [--list]
 const fs = require("fs");
-const dir = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : __dirname + "/../MacroForge";
+const dir = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : __dirname + "/../BlockForge";
 const FILES = ["Core.lua", "Settings.lua", "UI.lua", "Minimap.lua"];
 const USE = /\bL\["((?:[^"\\]|\\.)*)"\]/g;
 const DEF = /^\s*L\["((?:[^"\\]|\\.)*)"\]\s*=\s*"((?:[^"\\]|\\.)*)"/gm;
