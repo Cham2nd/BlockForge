@@ -1,5 +1,7 @@
 # BlockForge 0.7.0
 
+- Sort mal écrit : l'éditeur propose le nom le plus proche de votre grimoire et le corrige d'un clic.
+- Modèles : un modèle par technique du familier sorti (lancée sur l'unité survolée, sinon sur la cible).
 - Éditeur : plus de limite à 12 lignes, la liste de blocs défile à la molette.
 - Diagnostic : l'add-on garde ses 20 dernières erreurs ; `/bf test` lance un contrôle complet dans le jeu.
 - Bibliothèque : recherche insensible aux accents et aux majuscules, affichage plus rapide.

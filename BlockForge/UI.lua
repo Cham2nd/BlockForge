@@ -29,7 +29,7 @@ local editOffset, editRange = 0, nil -- rows[i] affiche blocks[editOffset + i]
 local Refresh
 local main, editor, library, settingsTab, canvas, dropLine
 local nameBox, perChar, argBox, argLabel, resetBox, resetLabel, inspTitle, inspBody, inspHint
-local preview, counter, counterBar, warnText
+local preview, counter, counterBar, warnText, fixButton
 
 local function Msg(text) print(L["|cff66ccffBlockForge|r : %s"]:format(text)) end
 
@@ -586,9 +586,20 @@ function Refresh()
 
   local text, warnings = ns.Diagnose(blocks)
   local unknown = UnknownSpells(blocks)
+  local fix
   if #unknown > 0 then
+    for i, name in ipairs(unknown) do
+      local near = ns.Nearest(name, ns.SpellBook())
+      if near then
+        fix = fix or { name, near }
+        unknown[i] = L["%s (proche : %s)"]:format(name, near)
+      end
+    end
     warnings[#warnings + 1] = L["Sort inconnu de ce personnage (ou mal écrit) : %s"]:format(table.concat(unknown, ", "))
   end
+  fixButton.fix = fix
+  fixButton:SetShown(fix ~= nil)
+  if fix then fixButton.text:SetText(L["Remplacer par « %s »"]:format(fix[2])) end
   local len = #text
   preview:SetText(text ~= "" and (simOn and SimulatedText() or text) or "|cff777777" .. L["(la macro compilée s'affiche ici)"] .. "|r")
   local ratio = math.min(1, len / ns.MAX_CHARS)
@@ -683,6 +694,23 @@ local function BuildBottom(parent, palette)
   reset:SetPoint("LEFT", load, "RIGHT", 6, 0)
   warnText = Label(bottom, "", 452, -86, "GameFontRedSmall")
   warnText:SetWidth(420)
+  -- sort mal ecrit : un clic met le nom du grimoire a la place
+  fixButton = Chip(bottom, 240, 16)
+  fixButton:SetPoint("BOTTOMRIGHT", -8, 5)
+  Tint(fixButton, GOLD, 0.6)
+  fixButton:Hide()
+  fixButton:SetScript("OnClick", function()
+    local old, new = fixButton.fix[1], fixButton.fix[2]
+    for _, block in ipairs(blocks) do
+      if block.type == "cast" or block.type == "castsequence" then
+        for _, clause in ipairs(block.clauses or {}) do
+          local s, e = (clause.arg or ""):find(old, 1, true)
+          if s then clause.arg = clause.arg:sub(1, s - 1) .. new .. clause.arg:sub(e + 1) end
+        end
+      end
+    end
+    Refresh()
+  end)
 end
 
 -- Ligne i de la zone de construction : elle affiche blocks[editOffset + i]
@@ -740,9 +768,51 @@ local function BuildRow(i)
 end
 
 -- Modeles : bouton en bas de la zone (les 12 lignes finissent a -349), liste au-dessus
+-- un modele par technique du familier sorti (barre du familier) ; les ordres (attaque, suivre...) sont des jetons PET_
+function ns.PetTemplates()
+  local list = {}
+  if not GetPetActionInfo then return list end
+  for i = 1, NUM_PET_ACTION_SLOTS or 10 do
+    local name = GetPetActionInfo(i)
+    if type(name) == "string" and not name:find("^PET_") then
+      ns.PetSpells[name:lower()] = true -- pas d'avertissement "sort inconnu"
+      list[#list + 1] = { label = L["Familier : %s"]:format(name),
+        desc = L["Lance %s (technique du familier sorti) sur l'unité survolée, sinon sur ta cible."]:format(name),
+        body = "#showtooltip\n/cast [@mouseover,exists,nodead][] " .. name }
+    end
+  end
+  return list
+end
+
 local function BuildTemplates()
-  local tplList = Panel(canvas, 220, 12 + #ns.Templates * 22)
-  local tplButton = Button(canvas, L["Modèles"], 100, function() tplList:SetShown(not tplList:IsShown()) end)
+  local tplList = Panel(canvas, 220, 12)
+  local chips = {}
+  local function Fill()
+    local list = {}
+    for _, tpl in ipairs(ns.Templates) do list[#list + 1] = tpl end
+    for _, tpl in ipairs(ns.PetTemplates()) do list[#list + 1] = tpl end
+    tplList:SetHeight(12 + #list * 22)
+    for i, tpl in ipairs(list) do
+      local chip = chips[i]
+      if not chip then
+        chip = Chip(tplList, 204, 20)
+        chip:SetPoint("TOPLEFT", 8, -6 - (i - 1) * 22)
+        Tint(chip, GOLD, 0.45)
+        chip:SetScript("OnClick", function() tplList:Hide() ChooseTemplate(chip.tpl) end)
+        Tip(chip, function() return chip.tpl.label, chip.tpl.desc end)
+        chips[i] = chip
+      end
+      chip.tpl = tpl
+      chip.text:SetText(tpl.label)
+      chip:Show()
+    end
+    for i = #list + 1, #chips do chips[i]:Hide() end
+  end
+  Fill()
+  local tplButton = Button(canvas, L["Modèles"], 100, function()
+    if not tplList:IsShown() then Fill() end -- le familier a pu changer
+    tplList:SetShown(not tplList:IsShown())
+  end)
   tplButton:SetPoint("BOTTOMLEFT", 8, 8)
   Tip(tplButton, function() return L["Modèles"], L["Point de départ guidé : choisis un modèle, puis glisse tes sorts sur les blocs marqués « (argument ?) »."] end)
   tplList:SetPoint("BOTTOMLEFT", tplButton, "TOPLEFT", 0, 2)
@@ -751,14 +821,6 @@ local function BuildTemplates()
   tplList:Hide()
   -- onglet change ou fenetre fermee (Echap compris) : la liste se ferme aussi
   canvas:HookScript("OnHide", function() tplList:Hide() end)
-  for i, tpl in ipairs(ns.Templates) do
-    local chip = Chip(tplList, 204, 20)
-    chip:SetPoint("TOPLEFT", 8, -6 - (i - 1) * 22)
-    chip.text:SetText(tpl.label)
-    Tint(chip, GOLD, 0.45)
-    chip:SetScript("OnClick", function() tplList:Hide() ChooseTemplate(tpl) end)
-    Tip(chip, function() return tpl.label, tpl.desc end)
-  end
 end
 
 ---------------------------------------------------------------------------
@@ -983,10 +1045,38 @@ function ns.LibraryUnknown(entry)
   end
   return entry.unknown
 end
+-- noms du grimoire du joueur, gardes jusqu'a SPELLS_CHANGED ; liste vide si le client n'a aucune des deux API
+local spellBook
+function ns.SpellBook()
+  if spellBook then return spellBook end
+  local list, seen = {}, {}
+  local function Add(name)
+    if name and not seen[name] then seen[name] = true list[#list + 1] = name end
+  end
+  pcall(function()
+    if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
+      for tab = 1, C_SpellBook.GetNumSpellBookSkillLines() do
+        local info = C_SpellBook.GetSpellBookSkillLineInfo(tab)
+        for i = info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems do
+          Add(C_SpellBook.GetSpellBookItemName(i, Enum.SpellBookSpellBank.Player))
+        end
+      end
+    else
+      for tab = 1, GetNumSpellTabs() do
+        local _, _, offset, count = GetSpellTabInfo(tab)
+        for i = offset + 1, offset + count do Add((GetSpellBookItemName(i, "spell"))) end
+      end
+    end
+  end)
+  if #list > 0 then spellBook = list end -- vide a la connexion : on reessaie au prochain appel
+  return list
+end
+
 local usableEvents = CreateFrame("Frame")
 usableEvents:RegisterEvent("SPELLS_CHANGED")
 usableEvents:RegisterEvent("PLAYER_REGEN_ENABLED") -- en combat, UnknownSpells ne verifie rien
 usableEvents:SetScript("OnEvent", function()
+  spellBook = nil
   for _, entry in ipairs(ns.Library or {}) do entry.unknown = nil end
 end)
 

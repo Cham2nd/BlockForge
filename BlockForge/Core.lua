@@ -112,6 +112,29 @@ local FOLD = {}
 for from, to in ("éeèeêeëeàaâaçcôoîiïiùuûuüuÉeÈeÊeËeÀaÂaÇcÔoÎiÏiÙuÛuÜu"):gmatch("(\195[\128-\191])(%a)") do FOLD[from] = to end
 function ns.Fold(s) return (s:lower():gsub("\195[\128-\191]", FOLD)) end
 
+-- nom de la liste le plus proche de name (faute de frappe, accent, casse) ; nil si rien d'assez proche
+-- seuil bas (3 lettres au plus) : au-dela, on proposerait un autre vrai sort
+function ns.Nearest(name, list)
+  local a = ns.Fold(name)
+  local best, limit = nil, math.min(3, math.max(1, math.floor(#a / 4))) + 1
+  for _, cand in ipairs(list) do
+    local b = ns.Fold(cand)
+    if math.abs(#a - #b) < limit then
+      local prev = {}
+      for j = 0, #b do prev[j] = j end
+      for i = 1, #a do
+        local cur = { [0] = i }
+        for j = 1, #b do
+          cur[j] = math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a:byte(i) == b:byte(j) and 0 or 1))
+        end
+        prev = cur
+      end
+      if prev[#b] < limit then best, limit = cand, prev[#b] end
+    end
+  end
+  return best
+end
+
 function ns.NewClause() return { conds = {}, arg = "" } end
 
 function ns.NewBlock(id)

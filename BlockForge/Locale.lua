@@ -283,3 +283,9 @@ L["Glisser : déplacer autour de la minicarte"] = "Drag: move around the minimap
 -- Debug.lua
 L["Autotest impossible en combat."] = "Can't run the self-test in combat."
 L["Autotest : %d OK, %d en échec. Détails enregistrés, visibles après /reload."] = "Self-test: %d OK, %d failed. Details saved, readable after /reload."
+
+-- Lot B : sort le plus proche, modeles du familier sorti
+L["%s (proche : %s)"] = "%s (closest: %s)"
+L["Remplacer par « %s »"] = "Replace with \"%s\""
+L["Familier : %s"] = "Pet: %s"
+L["Lance %s (technique du familier sorti) sur l'unité survolée, sinon sur ta cible."] = "Casts %s (ability of your current pet) on the unit under the mouse, otherwise on your target."

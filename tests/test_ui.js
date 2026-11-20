@@ -637,6 +637,32 @@ assert(#POPUPS == popupsBefore + 1 and POPUPS[#POPUPS].which == "BLOCKFORGE_TEMP
 assert(rows[3].full:find("Corruption"), "modele charge avant confirmation")
 StaticPopupDialogs.BLOCKFORGE_TEMPLATE.OnAccept({}, POPUPS[#POPUPS].data)
 assert(rows[2].full == "/use 13" and rows[3].full == "/cast", "modele non charge")
+-- sort inconnu : le nom le plus proche du grimoire est propose, un clic le met a la place
+C_Spell.GetSpellInfo = function() return nil end
+C_SpellBook = {
+  GetNumSpellBookSkillLines = function() return 1 end,
+  GetSpellBookSkillLineInfo = function() return { itemIndexOffset = 0, numSpellBookItems = 2 } end,
+  GetSpellBookItemName = function(i) return ({ "Peur", "Corruptio" })[i] end,
+}
+Enum = { SpellBookSpellBank = { Player = 0 } }
+fireEvent("SPELLS_CHANGED")
+CURSOR = { "spell", 3, "spell", 172 }
+fire(rows[3], "OnReceiveDrag")
+local fixChip = byText("Remplacer par « Corruptio »")
+assert(fixChip and fixChip:IsShown(), "correction non proposee")
+fire(fixChip, "OnClick")
+assert(rows[3].full == "/cast Corruptio", rows[3].full)
+C_Spell.GetSpellInfo, C_SpellBook = nil, nil
+fireEvent("SPELLS_CHANGED")
+fire(clear, "OnClick")
+assert(not fixChip:IsShown(), "correction restee affichee")
+-- modeles du familier sorti : un par technique, pas pour les ordres
+GetPetActionInfo = function(i) return ({ "PET_ACTION_ATTACK", nil, nil, "Verrou magique" })[i] end
+fire(byText("Modèles"), "OnClick")
+fire(byText("Familier : Verrou magique"), "OnClick")
+assert(rows[2].full == "/cast [@mouseover,exists,nodead][] Verrou magique", rows[2].full)
+assert(#ns.PetTemplates() == 1, "ordre du familier pris pour une technique")
+GetPetActionInfo = nil
 fire(clear, "OnClick")
 fire(byText("Bibliothèque"), "OnClick")
 

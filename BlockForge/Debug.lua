@@ -113,11 +113,22 @@ local CHECKS = {
         local unknown = ns.LibraryUnknown(e)
         if #unknown > 0 then bad = bad + 1 end
         for _, name in ipairs(unknown) do
-          if not seen[name] then seen[name] = true names[#names + 1] = name end
+          if not seen[name] then
+            seen[name] = true
+            local near = ns.Nearest(name, ns.SpellBook())
+            names[#names + 1] = near and (name .. " ~ " .. near) or name
+          end
         end
       end
     end
-    out[#out + 1] = ("INFO class %s: %d / %d library macros unusable, unknown spells: %s"):format(tostring(class), bad, n, First(names, 10))
+    out[#out + 1] = ("INFO class %s: %d / %d library macros unusable, unknown spells: %s"):format(tostring(class), bad, n, First(names, 30))
+  end },
+  { "spellbook", function(out)
+    local book = ns.SpellBook()
+    out[#out + 1] = (#book > 0 and "OK" or "FAIL") .. (" spellbook: %d spells: %s"):format(#book, First(book, 200))
+    local pet = {}
+    for _, tpl in ipairs(ns.PetTemplates()) do pet[#pet + 1] = tpl.body:match("%] (.+)$") end
+    out[#out + 1] = ("INFO pet abilities: %d: %s"):format(#pet, First(pet, 10))
   end },
   { "macros", function(out)
     local account, char = GetNumMacros()

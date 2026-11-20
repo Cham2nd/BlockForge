@@ -84,6 +84,15 @@ rejects("BF1:%20%20:body", "16")
 rejects(ns.Export(string.rep("x", 17), "b"), "16")
 rejects(ns.Export("x", string.rep("y", 256)), "256 / 255")
 
+-- Nearest : faute de frappe, accent, casse ; jamais un autre vrai sort
+local book = { "Malédiction de faiblesse", "Malédiction de fatigue", "Peur", "Corruption" }
+assert(ns.Nearest("malediction de faibless", book) == "Malédiction de faiblesse")
+assert(ns.Nearest("Coruption", book) == "Corruption")
+assert(ns.Nearest("PEUR", book) == "Peur")
+assert(ns.Nearest("Malédiction de témérité", book) == nil)
+assert(ns.Nearest("Pet", book) == nil or ns.Nearest("Pet", book) == "Peur")
+assert(ns.Nearest("Trait de l'ombre", book) == nil and ns.Nearest("x", {}) == nil)
+
 -- Simulate : modeles remplis sous plusieurs etats
 local function sim(text, state) return ns.Simulate(ns.Parse(text), state) end
 local function fill(t) return (t.body:gsub("(/cast[^\n]*)", "%1 Fear")) end

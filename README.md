@@ -11,8 +11,8 @@ For WoW Forever. Interface in English and French, following the game client lang
 - **Live checks.** Character counter (255 max), and warnings for common mistakes: missing spell, two spells on the global cooldown, pet command right after a dismount.
 - **Macro library.** 274 macros for the 9 classes, sorted by PvE, PvP, pet and utility. Open one in the editor, change it, save it.
 - **Client language.** Spell and item names in the library are translated to your game language.
-- **Templates.** Five starting points for pet and PvP macros (pet attack + spell, pet modes on modifier keys, interrupt on focus, crowd control on mouseover, trinket then spell). Drop a spell on the empty slot.
-- **Knows your character.** Warns about a spell your character does not know or a misspelled name; the library greys out or hides macros you cannot use yet.
+- **Templates.** Five starting points for pet and PvP macros (pet attack + spell, pet modes on modifier keys, interrupt on focus, crowd control on mouseover, trinket then spell), plus one per ability of your current pet. Drop a spell on the empty slot.
+- **Knows your character.** Warns about a spell your character does not know or a misspelled name, and offers the closest spellbook name in one click; the library greys out or hides macros you cannot use yet.
 - **Simulator.** Shows which line of the macro would fire for a given modifier key, target, mouseover and focus.
 - **My macros.** Lists your game macros, opens them as blocks, binds a key to a macro, exports and imports a macro as a text string, and saves and restores whole sets of macros.
 - **Library search.** Search box, category filter and favorites.
@@ -56,8 +56,8 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 - **Contrôles en direct.** Compteur de caractères (255 max) et avertissements : sort manquant, deux sorts sur le temps de recharge global, ordre de familier juste après une descente de monture.
 - **Bibliothèque.** 274 macros pour les 9 classes, classées en PvE, PvP, familier et utilitaire. Ouvrez-en une dans l'éditeur, modifiez-la, enregistrez-la.
 - **Langue du client.** Les noms de sorts et d'objets de la bibliothèque sont traduits dans la langue du jeu.
-- **Modèles.** Cinq points de départ pour les macros de familier et de PvP (attaque du familier + sort, modes du familier sur touches, interruption sur focus, contrôle sur survol, bijou puis sort). Glissez un sort sur l'emplacement vide.
-- **Connaît votre personnage.** Avertit d'un sort inconnu de votre personnage ou mal écrit ; la bibliothèque grise ou cache les macros que vous ne pouvez pas encore utiliser.
+- **Modèles.** Cinq points de départ pour les macros de familier et de PvP (attaque du familier + sort, modes du familier sur touches, interruption sur focus, contrôle sur survol, bijou puis sort), plus un par technique du familier sorti. Glissez un sort sur l'emplacement vide.
+- **Connaît votre personnage.** Avertit d'un sort inconnu de votre personnage ou mal écrit, et propose en un clic le nom le plus proche du grimoire ; la bibliothèque grise ou cache les macros que vous ne pouvez pas encore utiliser.
 - **Simulateur.** Montre quelle ligne de la macro partirait selon la touche, la cible, le survol et le focus.
 - **Mes macros.** Liste vos macros du jeu, les ouvre en blocs, attribue un raccourci clavier, exporte et importe une macro par chaîne de texte, sauvegarde et restaure des jeux de macros.
 - **Recherche dans la bibliothèque.** Champ de recherche, filtre par catégorie et favoris.
