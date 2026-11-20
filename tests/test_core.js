@@ -43,6 +43,104 @@ local _, w = ns.Diagnose({ blk("A", "mod:shift"), blk("B", "nomod") })
 assert(#w == 0)
 _, w = ns.Diagnose({ blk("A"), blk("B") })
 assert(#w == 1)
+
+-- Export / Import : une seule ligne, sans |, aller-retour exact
+local function roundtrip(name, body)
+  local s = ns.Export(name, body)
+  assert(s:sub(1, 4) == "BF1:" and not s:find("[|\n\r]"), s)
+  local n2, b2 = ns.Import("  " .. s .. "\n") -- espaces et retour a la ligne du copier-coller
+  assert(n2 == name and b2 == body, tostring(n2) .. " / " .. tostring(b2))
+end
+roundtrip("Peur", "#showtooltip\n/cast [@mouseover,harm,nodead][] Peur")
+roundtrip("a:b|c%d", "/run print(\"||cff 100%\")\r\n/cast Fear;\t%41")
+roundtrip("Éclair élevé", "/cast Éclair de givre\n/use 13")
+roundtrip("Vide", "")
+roundtrip(string.rep("é", 16), string.rep("x", 255)) -- 16 lettres (32 octets), 255 caracteres
+local function rejects(s, fragment)
+  local n, err = ns.Import(s)
+  assert(n == nil and type(err) == "string" and err:find(fragment, 1, true), tostring(s) .. " -> " .. tostring(err))
+end
+rejects(nil, "BF1:")
+rejects("", "BF1:")
+rejects("/cast Fear", "BF1:")
+rejects("BF1:nom", "BF1:")
+rejects("BF1:a:b:c", "BF1:")
+rejects("BF2:a:b", "2")
+rejects("BF1:a:b%2", "abîmé")
+rejects("BF1:a:b%zz", "abîmé")
+rejects("BF1:a:b|cff", "abîmé")
+rejects("BF1::body", "16")
+rejects("BF1:%20%20:body", "16")
+rejects(ns.Export(string.rep("x", 17), "b"), "16")
+rejects(ns.Export("x", string.rep("y", 256)), "256 / 255")
+
+-- Simulate : modeles remplis sous plusieurs etats
+local function sim(text, state) return ns.Simulate(ns.Parse(text), state) end
+local function fill(t) return (t.body:gsub("(/cast[^\n]*)", "%1 Fear")) end
+local T = ns.Templates
+local base = { mod = nil, target = "harm", targetDead = false, mouseover = "none", focus = "none" }
+local function with(changes) local s = {} for k, v in pairs(base) do s[k] = v end for k, v in pairs(changes) do s[k] = v end return s end
+-- 1 : familier + sort sur survol, sinon cible
+local r = sim(fill(T[1]), base)
+assert(r[1] == false and r[2].clause == 1 and r[2].unit == "target" and r[3].unit == "target" and not r[3].unknown)
+r = sim(fill(T[1]), with({ mouseover = "harm" }))
+assert(r[2].unit == "mouseover" and r[3].unit == "mouseover")
+r = sim(fill(T[1]), with({ mouseover = "help" }))
+assert(r[3].unit == "target")
+-- 2 : modes sur touches
+r = sim(T[2].body, base)
+assert(r[1].clause == 1 and r[2].clause == nil and r[3].clause == nil and r[4].clause == nil)
+r = sim(T[2].body, with({ mod = "shift" }))
+assert(r[1].clause == nil and r[2].clause == 1 and r[3].clause == 1 and r[4].clause == nil)
+r = sim(T[2].body, with({ mod = "ctrl" }))
+assert(r[1].clause == nil and r[4].clause == 1)
+-- 3 : interruption sur focus
+r = sim(fill(T[3]), with({ focus = "harm" }))
+assert(r[2].clause == 1 and r[3].unit == "focus")
+r = sim(fill(T[3]), with({ focus = "help" }))
+assert(r[3].unit == "target")
+r = sim(fill(T[3]), with({ focus = "harm", focusDead = true }))
+assert(r[3].unit == "target")
+-- 4 : focus avec Maj, sinon survol, sinon cible
+r = sim(fill(T[4]), with({ mod = "shift", focus = "harm", mouseover = "harm" }))
+assert(r[2].unit == "focus")
+r = sim(fill(T[4]), with({ focus = "harm", mouseover = "harm" }))
+assert(r[2].unit == "mouseover")
+r = sim(fill(T[4]), with({ mod = "alt", focus = "harm" }))
+assert(r[2].unit == "target")
+-- 5 : bijou puis sort
+r = sim(fill(T[5]), base)
+assert(r[2].clause == 1 and r[3].clause == 1)
+-- alternatives separees par ; , negation, mod sans valeur, @unite
+r = sim("/cast [nocombat] A; [combat] B", with({ combat = true }))
+assert(r[1].clause == 2)
+r = sim("/cast [mod] A; B", with({ mod = "alt" }))
+assert(r[1].clause == 1)
+r = sim("/cast [mod] A; B", base)
+assert(r[1].clause == 2)
+r = sim("/cast [nomod:shift/ctrl] A", with({ mod = "ctrl" }))
+assert(r[1].clause == nil)
+r = sim("/cast [@player,harm] A; [@player] B", base)
+assert(r[1].clause == 2 and r[1].unit == "player")
+r = sim("/cast [target=focus,exists] A; B", with({ focus = "help" }))
+assert(r[1].clause == 1 and r[1].unit == "focus")
+r = sim("/cast [@target,dead] A; [noexists] B; C", with({ target = "none" }))
+assert(r[1].clause == 2)
+-- inconnu : condition libre, champ d'etat absent, unite non simulee ; faux connu l'emporte
+r = sim("/cast [flying] A; B", base)
+assert(r[1].clause == 1 and r[1].unknown)
+r = sim("/cast [combat] A; B", base) -- combat absent de l'etat
+assert(r[1].unknown)
+r = sim("/cast [@targettarget,harm] A; B", base)
+assert(r[1].unknown and r[1].unit == "targettarget")
+r = sim("/cast [@cursor] A", base)
+assert(r[1].clause == 1 and not r[1].unknown)
+r = sim("/cast [nomod,flying] A; B", with({ mod = "shift" }))
+assert(r[1].clause == 2 and not r[1].unknown)
+r = sim("/cast [stance:1/2] A; B", with({ form = 2 }))
+assert(r[1].clause == 1)
+r = sim("/stopcasting\n/cast [harm] A", with({ target = "help" }))
+assert(r[1].clause == 1 and next(r[2]) == nil)
 print("test_core OK")
 `), "test");
 

@@ -1,3 +1,11 @@
+# BlockForge 0.5.0
+
+- Nouvel onglet « Mes macros » : liste des macros du jeu, détail, ouverture dans l'éditeur.
+- Export et import d'une macro par chaîne de texte à partager (`BF1:…`).
+- Jeux de macros : sauvegarde de toutes les macros, restauration et suppression, hors combat.
+- Raccourci clavier attribué à une macro depuis l'add-on, avec confirmation si la touche est déjà prise.
+- Éditeur : simulateur « quelle ligne part » selon la touche, la cible, le survol et le focus.
+
 # BlockForge 0.4.0
 
 - Éditeur : bouton « Modèles » avec cinq points de départ (familier : attaque + sort, familier : modes sur touches, PvP : interruption sur focus, PvP : contrôle sur survol, PvP : bijou puis sort).

@@ -457,6 +457,7 @@ local function LoadText(name, body)
   nameBox:SetText(name or "")
   selected, activeClause = blocks[1], 1
   Refresh()
+  return true
 end
 
 -- le nom tape est garde : un modele est un point de depart, pas une macro du jeu
@@ -484,6 +485,43 @@ local function LoadExisting()
   local macroName, _, body = GetMacroInfo(name)
   if not macroName then return Msg(L["Aucune macro nommée « %s »."]:format(name)) end
   LoadText(macroName, body)
+end
+
+---------------------------------------------------------------------------
+-- Simulateur : l'apercu colore l'alternative qui partirait pour l'etat choisi
+---------------------------------------------------------------------------
+-- seuls ces etats sont reglables ; les autres conditions restent "inconnues" pour ns.Simulate
+local simOn, simState = false, { mod = false, target = "harm", targetDead = false, mouseover = "none", focus = "none" }
+local SIM_CHIPS = {
+  { L["Touche : %s"], 92, { { L["Aucune"], { mod = false } }, { L["Maj"], { mod = "shift" } },
+      { L["Ctrl"], { mod = "ctrl" } }, { L["Alt"], { mod = "alt" } } } },
+  { L["Cible : %s"], 100, { { L["Hostile"], { target = "harm", targetDead = false } }, { L["Morte"], { target = "harm", targetDead = true } },
+      { L["Amie"], { target = "help", targetDead = false } }, { "—", { target = "none", targetDead = false } } } },
+  { L["Survol : %s"], 116, { { "—", { mouseover = "none" } }, { L["Hostile"], { mouseover = "harm" } }, { L["Amie"], { mouseover = "help" } } } },
+  { L["Focus : %s"], 96, { { "—", { focus = "none" } }, { L["Hostile"], { focus = "harm" } }, { L["Amie"], { focus = "help" } } } },
+}
+local SIM_OK, SIM_OFF, SIM_UNKNOWN = "|cff66ff66", "|cff777777", "|cffffaa33"
+
+local function SimulatedText()
+  local results, lines = ns.Simulate(blocks, simState), {}
+  for i, block in ipairs(blocks) do
+    local line, res = ns.CompileBlock(block), results[i]
+    if line ~= "" and res then
+      local def = ns.BlockById[block.type]
+      local color = not res.clause and SIM_OFF or res.unknown and SIM_UNKNOWN or SIM_OK
+      local parts = {}
+      for ci, clause in ipairs(block.clauses) do
+        local t = ns.CompileClause(clause, block.reset)
+        if t ~= "" then parts[#parts + 1] = (ci == res.clause and color or SIM_OFF) .. t .. "|r" end
+      end
+      line = color .. def.cmd .. "|r" .. (#parts > 0 and (" " .. table.concat(parts, "; ")) or "")
+      if not res.clause then line = line .. SIM_OFF .. "  —|r"
+      elseif res.unknown then line = line .. SIM_UNKNOWN .. "  ?|r"
+      elseif def.arg or block.type == "petattack" then line = line .. SIM_OK .. "  -> @" .. res.unit .. "|r" end
+    end
+    if line ~= "" then lines[#lines + 1] = line end
+  end
+  return table.concat(lines, "\n")
 end
 
 ---------------------------------------------------------------------------
@@ -544,7 +582,7 @@ function Refresh()
     warnings[#warnings + 1] = L["Sort inconnu de ce personnage (ou mal écrit) : %s"]:format(table.concat(unknown, ", "))
   end
   local len = #text
-  preview:SetText(text ~= "" and text or "|cff777777" .. L["(la macro compilée s'affiche ici)"] .. "|r")
+  preview:SetText(text ~= "" and (simOn and SimulatedText() or text) or "|cff777777" .. L["(la macro compilée s'affiche ici)"] .. "|r")
   local ratio = math.min(1, len / ns.MAX_CHARS)
   local r, g = len > ns.MAX_CHARS and 1 or (ratio > 0.85 and 1 or 0.3), len > ns.MAX_CHARS and 0.25 or (ratio > 0.85 and 0.7 or 0.9)
   counter:SetText(("%d / %d"):format(len, ns.MAX_CHARS))
@@ -799,6 +837,43 @@ local function BuildEditor(parent)
   preview = Label(bottom, "", 10, -38, "BlockForgeCodeFont")
   preview:SetSize(420, 86) -- hauteur fixe : une macro tres longue est coupee au lieu de deborder du panneau
   preview:SetJustifyV("TOP")
+
+  -- Simulateur dans le bandeau : bouton entre le titre et le compteur (fini a 430), etats de 446 a 863
+  local simChips = {}
+  local simToggle = Chip(bottom, 80, 16)
+  simToggle:SetPoint("TOPLEFT", 74, -5)
+  simToggle.text:SetText(L["Simuler"])
+  local function SimSync()
+    Tint(simToggle, simOn and GOLD or GREY, simOn and 0.95 or 0.7)
+    for _, chip in ipairs(simChips) do
+      chip:SetShown(simOn)
+      chip.text:SetText(chip.spec[1]:format(chip.spec[3][chip.at][1]))
+    end
+  end
+  simToggle:SetScript("OnClick", function() simOn = not simOn SimSync() Refresh() end)
+  Tip(simToggle, function()
+    return L["Simuler : quelle ligne part"],
+      L["Choisis l'état du jeu à droite. Dans l'aperçu : vert = l'alternative qui part (-> unité visée), gris = ne part pas, orange = condition que le simulateur ne sait pas évaluer."],
+      L["Il ne connaît ni les temps de recharge, ni la portée, ni l'étape en cours d'une /castsequence."]
+  end)
+  local sx = 446
+  for i, spec in ipairs(SIM_CHIPS) do
+    local chip = Chip(bottom, spec[2], 16)
+    chip:SetPoint("TOPLEFT", sx, -5)
+    sx = sx + spec[2] + 3
+    chip.spec, chip.at = spec, 1
+    Tint(chip, MUTED, 0.6)
+    chip:SetScript("OnClick", function()
+      chip.at = chip.at % #spec[3] + 1
+      for k, v in pairs(spec[3][chip.at][2]) do simState[k] = v end
+      SimSync()
+      Refresh()
+    end)
+    Tip(chip, function() return chip.text:GetText(), L["Clic : valeur suivante."] end)
+    simChips[i] = chip
+  end
+  SimSync()
+
   local split = bottom:CreateTexture(nil, "ARTWORK")
   split:SetColorTexture(1, 1, 1, 0.12)
   split:SetPoint("TOPLEFT", 440, -30)
@@ -1041,6 +1116,331 @@ local function BuildLibrary(parent, showEditor)
 end
 
 ---------------------------------------------------------------------------
+-- Mes macros : liste, partage par texte, sauvegardes, raccourcis
+---------------------------------------------------------------------------
+local MAX_MACRO_ROWS, MAX_SET_ROWS = 20, 18
+local RefreshMacros -- pose par BuildMacros
+
+local function ReadMacros()
+  local list = {}
+  local numAccount, numChar = GetNumMacros()
+  for i = 1, numAccount + numChar do
+    local index = i <= numAccount and i or MAX_ACCOUNT + i - numAccount -- macros du personnage : 121 a 150
+    local name, icon, body = GetMacroInfo(index)
+    if name then list[#list + 1] = { name = name, icon = icon, body = body or "", char = i > numAccount } end
+  end
+  return list
+end
+
+-- GetMacroIndexByName ne distingue pas general / personnage : on cherche dans la bonne plage, relue a chaque fois
+local function FindMacro(name, char)
+  local numAccount, numChar = GetNumMacros()
+  local first = char and MAX_ACCOUNT + 1 or 1
+  for index = first, first + (char and numChar or numAccount) - 1 do
+    if GetMacroInfo(index) == name then return index end
+  end
+end
+
+local function RestoreSet(setName)
+  if InCombatLockdown() then return Msg(L["Impossible de modifier une macro en combat."]) end
+  local set = ns.db.sets[setName]
+  if type(set) ~= "table" then return end
+  local updated, created, skipped = 0, 0, 0
+  for _, m in ipairs(set) do
+    if type(m) == "table" and type(m.name) == "string" and type(m.body) == "string" then
+      local char = m.char and true or false
+      local index = FindMacro(m.name, char)
+      if index then
+        EditMacro(index, m.name, m.icon, m.body)
+        updated = updated + 1
+      else
+        local numAccount, numChar = GetNumMacros()
+        local room = (char and numChar < MAX_CHARACTER) or (not char and numAccount < MAX_ACCOUNT)
+        local done = room and CreateMacro(m.name, m.icon or "INV_Misc_QuestionMark", m.body, char)
+        if done and done ~= 0 then created = created + 1 else skipped = skipped + 1 end
+      end
+    end
+  end
+  Msg(L["Sauvegarde « %s » restaurée : %d mises à jour, %d créées, %d ignorées faute de place."]:format(setName, updated, created, skipped))
+  if RefreshMacros then RefreshMacros() end
+end
+
+local function BindMacro(key, name)
+  if InCombatLockdown() then return Msg(L["Impossible de changer un raccourci en combat."]) end
+  SetBindingMacro(key, name)
+  -- relu plutot que de se fier au retour de SetBindingMacro
+  if GetBindingAction(key) ~= "MACRO " .. name then return Msg(L["Le jeu a refusé le raccourci."]) end
+  SaveBindings(GetCurrentBindingSet())
+  Msg(L["Touche %s : macro « %s »."]:format(key, name))
+  if RefreshMacros then RefreshMacros() end
+end
+
+if StaticPopupDialogs then
+  StaticPopupDialogs.BLOCKFORGE_RESTORE = {
+    text = L["Restaurer la sauvegarde « %s » ?\nLes macros du jeu de même nom (même onglet) seront remplacées, les autres créées s'il reste de la place. Les macros absentes de la sauvegarde ne sont pas touchées."],
+    button1 = YES or L["Oui"], button2 = NO or L["Non"],
+    OnAccept = function(_, setName) RestoreSet(setName) end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+  StaticPopupDialogs.BLOCKFORGE_DELETE_SET = {
+    text = L["Supprimer la sauvegarde « %s » ? C'est définitif."],
+    button1 = YES or L["Oui"], button2 = NO or L["Non"],
+    OnAccept = function(_, setName)
+      ns.db.sets[setName] = nil
+      if RefreshMacros then RefreshMacros() end
+    end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+  StaticPopupDialogs.BLOCKFORGE_BIND = {
+    text = L["La touche %s sert déjà à « %s ». La remplacer ?"],
+    button1 = YES or L["Oui"], button2 = NO or L["Non"],
+    OnAccept = function(_, data) BindMacro(data.key, data.name) end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+end
+
+local function BuildMacros(parent, showEditor)
+  local listPanel = Panel(parent, 300, 566, L["Mes macros"])
+  listPanel:SetPoint("TOPLEFT", 0, 0)
+  local detail = Panel(parent, 396, 566, L["Détail"])
+  detail:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 6, 0)
+  local setsPanel = Panel(parent, 176, 566, L["Sauvegardes"])
+  setsPanel:SetPoint("TOPLEFT", detail, "TOPRIGHT", 6, 0)
+
+  local macros, current, offset, rowsM = {}, nil, 0, {}
+  local counts = listPanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  counts:SetPoint("RIGHT", listPanel.band, "RIGHT", -6, 0)
+  local empty = Label(listPanel, L["Aucune macro."], 10, -40, "GameFontDisableSmall")
+
+  -- Detail : nom, onglet et touche, corps, actions ; partage par texte en dessous (corps : -76 a -306)
+  local title = Label(detail, L["Choisis une macro dans la liste."], 10, -32, "GameFontHighlightLarge")
+  title:SetWidth(376)
+  local info = Label(detail, "", 10, -54, "GameFontHighlightSmall")
+  info:SetWidth(376)
+  local body = Label(detail, "", 10, -76, "BlockForgeCodeFont")
+  body:SetSize(376, 230)
+  body:SetJustifyV("TOP")
+  local capturing
+
+  local function ShowDetail()
+    if not current then return end
+    title:SetText(current.name)
+    local key = GetBindingKey("MACRO " .. current.name)
+    info:SetText((current.char and L["Macro du personnage"] or L["Macro générale"]) .. "  ·  "
+      .. (key and L["Raccourci : %s"]:format(key) or L["Aucun raccourci"]))
+    body:SetText(current.body)
+  end
+
+  local open = Button(detail, L["Ouvrir dans l'éditeur"], 180, function()
+    if current and LoadText(current.name, current.body) then showEditor() end
+  end)
+  open:SetPoint("TOPLEFT", 10, -312)
+  local bind
+  local function StopCapture()
+    capturing = nil
+    bind:SetScript("OnKeyDown", nil)
+    bind:EnableKeyboard(false)
+    bind:SetText(L["Raccourci…"])
+    ShowDetail()
+  end
+  local function OnKey(_, key)
+    if key == "ESCAPE" then return StopCapture() end
+    if IsKeyPressIgnoredForBinding(key) then return end -- Maj seule : on attend la touche
+    local chord, name = CreateKeyChordStringUsingMetaKeyState(key), capturing
+    StopCapture()
+    local action = GetBindingAction(chord) or ""
+    if action ~= "" and action ~= "MACRO " .. name then
+      StaticPopup_Show("BLOCKFORGE_BIND", chord, GetBindingName and GetBindingName(action) or action, { key = chord, name = name })
+    else
+      BindMacro(chord, name)
+    end
+  end
+  bind = Button(detail, L["Raccourci…"], 180, function(self)
+    if not current then return end
+    if capturing then return StopCapture() end
+    if InCombatLockdown() then return Msg(L["Impossible de changer un raccourci en combat."]) end
+    capturing = current.name
+    self:SetText(L["Appuie sur une touche…"])
+    info:SetText(L["Appuie sur une touche, avec Maj / Ctrl / Alt si tu veux. Échap : annuler."])
+    self:EnableKeyboard(true) -- protege en combat : la capture ne demarre qu'hors combat
+    self:SetScript("OnKeyDown", OnKey)
+  end)
+  bind:SetPoint("LEFT", open, "RIGHT", 6, 0)
+  Tip(bind, function() return L["Raccourci…"], L["Associe une touche à cette macro. Hors combat seulement."] end)
+
+  Label(detail, L["Partager (texte)"], 10, -350, "GameFontNormal")
+  local share = Edit(detail, 370, function() end)
+  share:SetPoint("TOPLEFT", 14, -366)
+  share:SetMaxLetters(0) -- 0 = sans limite : une macro de 255 caracteres echappee depasse 255
+  local export = Button(detail, L["Exporter"], 120, function()
+    if not current then return end
+    share:SetText(ns.Export(current.name, current.body))
+    share:SetFocus()
+    share:HighlightText()
+  end)
+  export:SetPoint("TOPLEFT", 10, -392)
+  Tip(export, function() return L["Exporter"], L["Met la macro dans le champ ci-dessus en une ligne de texte : Ctrl+C pour la copier."] end)
+  local import = Button(detail, L["Importer"], 120, function()
+    local name, text = ns.Import(share:GetText())
+    if not name then return Msg(text) end
+    if LoadText(name, text) then
+      showEditor()
+      Msg(L["Macro « %s » ouverte dans l'éditeur : « Créer / mettre à jour » pour l'enregistrer."]:format(name))
+    end
+  end)
+  import:SetPoint("LEFT", export, "RIGHT", 6, 0)
+  Tip(import, function() return L["Importer"], L["Colle (Ctrl+V) dans le champ un texte « BF1:... », puis clique : la macro s'ouvre dans l'éditeur, sans être enregistrée."] end)
+  for _, b in ipairs({ open, bind, export }) do b:Disable() end
+
+  local function Render()
+    offset = math.max(0, math.min(offset, #macros - MAX_MACRO_ROWS))
+    for i, row in ipairs(rowsM) do
+      local m = macros[offset + i]
+      row:SetShown(m ~= nil)
+      if m then
+        row.icon:SetTexture(m.icon or QUESTION)
+        row.text:SetText(m.name)
+        row.scope:SetText(m.char and L["Personnage"] or L["Générale"])
+        Tint(row, m.char and GOLD or GREY, m == current and 1 or 0.5)
+        row.mark:SetShown(m == current)
+      end
+    end
+    empty:SetShown(#macros == 0)
+    local numAccount, numChar = GetNumMacros()
+    counts:SetText(L["%d/%d générales · %d/%d perso"]:format(numAccount, MAX_ACCOUNT, numChar, MAX_CHARACTER))
+  end
+
+  for i = 1, MAX_MACRO_ROWS do -- 20 lignes depuis -28 finissent a -546 (panneau : 566)
+    local row = Chip(listPanel, 284, 24)
+    row:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 26)
+    row.mark = SideBar(row, GOLD)
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetSize(18, 18)
+    row.icon:SetPoint("LEFT", 8, 0)
+    row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    row.text:SetPoint("LEFT", 32, 0)
+    row.text:SetPoint("RIGHT", -76, 0)
+    row.scope = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    row.scope:SetPoint("RIGHT", -6, 0)
+    row:SetScript("OnClick", function()
+      if capturing then StopCapture() end
+      current = macros[offset + i]
+      for _, b in ipairs({ open, bind, export }) do b:Enable() end
+      ShowDetail()
+      Render()
+    end)
+    rowsM[i] = row
+  end
+  listPanel:EnableMouseWheel(true)
+  listPanel:SetScript("OnMouseWheel", function(_, delta)
+    offset = offset - delta * 3
+    Render()
+  end)
+
+  -- Sauvegardes : nom, bouton, liste (18 lignes de -84 a -478), restaurer / supprimer en bas
+  local setRows, setNames, chosen, setOffset = {}, {}, nil, 0
+  local setName = Edit(setsPanel, 150, function() end)
+  setName:SetPoint("TOPLEFT", 14, -30)
+  setName:SetMaxLetters(40)
+  local setHint = Label(setName, L["Nom (vide : date)"], 2, -4, "GameFontDisableSmall")
+  setName:HookScript("OnTextChanged", function(self) setHint:SetShown(self:GetText() == "") end)
+  Tip(setName, function() return L["Nom de la sauvegarde"], L["Vide : la date du jour. Un nom existant est remplacé."] end)
+  local restore, delete
+
+  local function RenderSets()
+    setNames = {}
+    for name in pairs(ns.db.sets) do setNames[#setNames + 1] = name end
+    table.sort(setNames, function(a, b) return a > b end) -- dates recentes en haut
+    if chosen and not ns.db.sets[chosen] then chosen = nil end
+    setOffset = math.max(0, math.min(setOffset, #setNames - MAX_SET_ROWS))
+    for i, row in ipairs(setRows) do
+      local name = setNames[setOffset + i]
+      row:SetShown(name ~= nil)
+      if name then
+        local set = ns.db.sets[name]
+        row.text:SetText(name .. "  |cff888888(" .. (type(set) == "table" and #set or 0) .. ")|r")
+        Tint(row, name == chosen and GOLD or GREY, name == chosen and 0.95 or 0.6)
+      end
+    end
+    if chosen then restore:Enable() delete:Enable() else restore:Disable() delete:Disable() end
+  end
+
+  local saveSet = Button(setsPanel, L["Sauvegarder mes macros"], 160, function()
+    if InCombatLockdown() then return Msg(L["Impossible de lire les macros en combat."]) end
+    local name = ns.trim(setName:GetText())
+    if name == "" then name = date("%Y-%m-%d") end
+    local replaced = ns.db.sets[name] ~= nil
+    local list = ReadMacros()
+    ns.db.sets[name] = list
+    chosen = name
+    setName:SetText("")
+    Msg((replaced and L["Sauvegarde « %s » remplacée (%d macros)."] or L["Sauvegarde « %s » enregistrée (%d macros)."]):format(name, #list))
+    RenderSets()
+  end)
+  saveSet:SetPoint("TOPLEFT", 8, -54)
+  Tip(saveSet, function() return L["Sauvegarder mes macros"], L["Copie toutes tes macros (générales et de ce personnage) dans BlockForge, pour les restaurer plus tard."] end)
+
+  for i = 1, MAX_SET_ROWS do
+    local row = Chip(setsPanel, 160, 20)
+    row:SetPoint("TOPLEFT", 8, -84 - (i - 1) * 22)
+    row:SetScript("OnClick", function()
+      chosen = setNames[setOffset + i]
+      RenderSets()
+    end)
+    setRows[i] = row
+  end
+  setsPanel:EnableMouseWheel(true)
+  setsPanel:SetScript("OnMouseWheel", function(_, delta)
+    setOffset = setOffset - delta * 3
+    RenderSets()
+  end)
+  restore = Button(setsPanel, L["Restaurer"], 78, function()
+    if not chosen then return end
+    if InCombatLockdown() then return Msg(L["Impossible de modifier une macro en combat."]) end
+    StaticPopup_Show("BLOCKFORGE_RESTORE", chosen, nil, chosen)
+  end)
+  restore:SetPoint("BOTTOMLEFT", 8, 8)
+  Tip(restore, function() return L["Restaurer"], L["Hors combat seulement."] end)
+  delete = Button(setsPanel, L["Supprimer"], 78, function()
+    if chosen then StaticPopup_Show("BLOCKFORGE_DELETE_SET", chosen, nil, chosen) end
+  end)
+  delete:SetPoint("LEFT", restore, "RIGHT", 4, 0)
+
+  function RefreshMacros()
+    macros = ReadMacros()
+    -- la selection survit a la relecture : meme nom, meme onglet
+    local was = current
+    current = nil
+    for _, m in ipairs(macros) do
+      if was and m.name == was.name and m.char == was.char then current = m end
+    end
+    if not current then
+      title:SetText(L["Choisis une macro dans la liste."])
+      info:SetText("")
+      body:SetText("")
+      for _, b in ipairs({ open, bind, export }) do b:Disable() end
+    elseif not capturing then
+      ShowDetail()
+    end
+    Render()
+    RenderSets()
+  end
+  parent:HookScript("OnShow", RefreshMacros)
+  parent:HookScript("OnHide", function() if capturing then StopCapture() end end)
+  listPanel:RegisterEvent("UPDATE_MACROS")
+  listPanel:RegisterEvent("PLAYER_REGEN_DISABLED")
+  listPanel:SetScript("OnEvent", function(_, event)
+    -- la capture de touche s'arrete avant le verrouillage du combat
+    if event == "PLAYER_REGEN_DISABLED" then
+      if capturing then StopCapture() end
+    elseif parent:IsVisible() then
+      RefreshMacros()
+    end
+  end)
+  RefreshMacros()
+end
+
+---------------------------------------------------------------------------
 -- Fenetre principale
 ---------------------------------------------------------------------------
 local ShowTab
@@ -1074,7 +1474,7 @@ local function Build()
   tinsert(UISpecialFrames, "BlockForgeFrame")
 
   local pages = {}
-  for _, key in ipairs({ "editor", "library", "settings" }) do
+  for _, key in ipairs({ "editor", "library", "macros", "settings" }) do
     pages[key] = CreateFrame("Frame", nil, main)
     pages[key]:SetPoint("TOPLEFT", 8, -58)
     pages[key]:SetSize(884, 570)
@@ -1093,11 +1493,14 @@ local function Build()
   tabs.editor:SetPoint("TOPLEFT", 10, -30)
   tabs.library = Button(main, L["Bibliothèque"], 110, function() ShowTab("library") end)
   tabs.library:SetPoint("LEFT", tabs.editor, "RIGHT", 4, 0)
+  tabs.macros = Button(main, L["Mes macros"], 110, function() ShowTab("macros") end)
+  tabs.macros:SetPoint("LEFT", tabs.library, "RIGHT", 4, 0)
   tabs.settings = Button(main, L["Paramètres"], 110, function() ShowTab("settings") end)
-  tabs.settings:SetPoint("LEFT", tabs.library, "RIGHT", 4, 0)
+  tabs.settings:SetPoint("LEFT", tabs.macros, "RIGHT", 4, 0)
 
   BuildEditor(editor)
   BuildLibrary(library, function() ShowTab("editor") end)
+  BuildMacros(pages.macros, function() ShowTab("editor") end)
   local settingsPanel = Panel(settingsTab, 884, 566, L["Paramètres"])
   settingsPanel:SetPoint("TOPLEFT")
   ns.BuildSettingsPage(settingsPanel)

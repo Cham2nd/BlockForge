@@ -16,6 +16,7 @@ ns.DEFAULTS = {
   lastClass = false,
   helpTooltips = true,
   favorites = {},          -- [classe .. "/" .. nom] = true (bibliotheque)
+  sets = {},               -- [nom] = { { name, icon, body, char }, ... } (sauvegardes de "Mes macros")
 }
 ns.SCALE_MIN, ns.SCALE_MAX, ns.SCALE_STEP = 0.6, 1.5, 0.05
 
@@ -66,9 +67,10 @@ function ns.ApplySettings()
 end
 
 function ns.ResetDB()
-  local favorites = BlockForgeDB.favorites -- les favoris ne sont pas un reglage : la reinitialisation les garde
+  -- favoris et sauvegardes ne sont pas des reglages : la reinitialisation les garde
+  local favorites, sets = BlockForgeDB.favorites, BlockForgeDB.sets
   for k in pairs(BlockForgeDB) do BlockForgeDB[k] = nil end
-  BlockForgeDB.favorites = favorites
+  BlockForgeDB.favorites, BlockForgeDB.sets = favorites, sets
   ns.InitDB()
   ns.ApplySettings()
 end

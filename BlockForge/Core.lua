@@ -153,6 +153,7 @@ local function compileClause(clause, reset)
   if arg ~= "" then out = (out ~= "" and (out .. " ") or "") .. arg end
   return trim(out)
 end
+ns.CompileClause = compileClause
 
 function ns.CompileBlock(block)
   if block.type == "raw" then return trim(block.arg or "") end
@@ -413,4 +414,150 @@ function ns.Diagnose(blocks)
     warnings[#warnings + 1] = L["Familier : ses ordres et techniques ne partent pas sur une monture ni juste après en être descendu. Appuyer une seconde fois."]
   end
   return text, warnings
+end
+
+---------------------------------------------------------------------------
+-- Partage par texte : "BF1:nom:corps" sur une seule ligne
+---------------------------------------------------------------------------
+-- | est un code d'echappement du chat, : separe les champs, les retours a la ligne ne passent pas
+local function escape(s) return (s:gsub("[%%|:%c]", function(c) return ("%%%02X"):format(c:byte()) end)) end
+local function unescape(s) return (s:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)) end
+
+function ns.Export(name, body) return "BF1:" .. escape(name) .. ":" .. escape(body) end
+
+function ns.Import(str)
+  local version, name, body = trim(type(str) == "string" and str or ""):match("^BF(%d+):([^:]*):([^:]*)$")
+  if not version then return nil, L["Texte non reconnu : il doit commencer par « BF1: »."] end
+  if version ~= "1" then return nil, L["Version « %s » non prise en charge."]:format(version) end
+  -- un % sans deux chiffres hexa, un | ou un caractere de controle : texte abime en route
+  if (name .. body):gsub("%%%x%x", ""):find("[%%|%c]") then return nil, L["Texte abîmé : caractère inattendu."] end
+  name, body = unescape(name), unescape(body)
+  local letters = #name:gsub("[\128-\191]", "") -- 16 lettres, pas 16 octets
+  if trim(name) == "" or letters > 16 then return nil, L["Nom de macro vide ou trop long (16 caractères max)."] end
+  if #body > ns.MAX_CHARS then return nil, L["Macro trop longue : %d / %d."]:format(#body, ns.MAX_CHARS) end
+  return name, body
+end
+
+---------------------------------------------------------------------------
+-- Simulateur : quelle alternative part pour un etat du jeu suppose
+--   state.mod = "shift" | "ctrl" | "alt" | nil ; state.target / mouseover / focus = "harm" | "help" | "none"
+--   state.targetDead (idem mouseoverDead, focusDead), booleens combat, stealth, pet, mounted, channeling,
+--   pvpcombat, swimming, resting, indoors ; spec = 1 | 2 ; group = false | "party" | "raid" ; form = nombre
+--   Un champ absent (sauf mod) rend la condition inconnue : on ne devine pas.
+---------------------------------------------------------------------------
+local MODS = { shift = true, ctrl = true, alt = true }
+local FLAGS = { combat = true, stealth = true, mounted = true, pet = true, channeling = true,
+                pvpcombat = true, swimming = true, resting = true, indoors = true }
+
+local function unitKind(state, unit)
+  if unit == "player" then return "help", false end
+  if unit == "pet" then
+    if state.pet == nil then return nil end
+    return state.pet and "help" or "none", false
+  end
+  if unit == "target" or unit == "mouseover" or unit == "focus" then return state[unit], state[unit .. "Dead"] == true end
+end
+
+local function anyNumber(value, n)
+  for v in value:gmatch("[^/]+") do if tonumber(v) == n then return true end end
+  return false
+end
+
+-- true / false, ou nil si le simulateur ne sait pas
+local function evalCond(cond, unit, state)
+  local word, value = cond:lower():match("^(%a+):?(.*)$")
+  if not word then return nil end
+  local neg = word:sub(1, 2) == "no"
+  if neg then word = word:sub(3) end
+  local r
+  if word == "mod" or word == "modifier" then
+    r = value == "" and (state.mod or false) ~= false
+    for v in value:gmatch("[^/]+") do
+      if not MODS[v] then return nil end
+      if v == state.mod then r = true end
+    end
+  elseif word == "harm" or word == "help" or word == "exists" or word == "dead" then
+    local kind, dead = unitKind(state, unit)
+    if value ~= "" or kind == nil then return nil end
+    if word == "exists" then r = kind ~= "none"
+    elseif word == "dead" then r = kind ~= "none" and dead
+    else r = kind == word end
+  elseif FLAGS[word] or word == "outdoors" then
+    local v = state[word == "outdoors" and "indoors" or word]
+    if value ~= "" or v == nil then return nil end
+    r = (v == true) ~= (word == "outdoors")
+  elseif word == "spec" then
+    if value == "" or state.spec == nil then return nil end
+    r = anyNumber(value, state.spec)
+  elseif word == "group" then
+    if state.group == nil or not (value == "" or value == "party" or value == "raid") then return nil end
+    r = (value == "raid" and state.group == "raid") or (value ~= "raid" and state.group ~= false)
+  elseif word == "form" or word == "stance" then
+    if state.form == nil then return nil end
+    if value == "" then r = state.form ~= 0 else r = anyNumber(value, state.form) end
+  else
+    return nil
+  end
+  if neg then return not r end
+  return r
+end
+
+-- un groupe "[a,b,c]" : faux des qu'une condition connue est fausse, inconnu s'il en reste une inconnue
+local function evalGroup(conds, state)
+  local unit = "target"
+  for _, c in ipairs(conds) do
+    local u = c:lower():match("^@(.+)$") or c:lower():match("^target=(.+)$")
+    if u then unit = trim(u) end
+  end
+  local unknown = false
+  for _, c in ipairs(conds) do
+    if not (c:find("^@") or c:lower():find("^target=")) then
+      local ok = evalCond(c, unit, state)
+      if ok == false then return false, unit end
+      if ok == nil then unknown = true end
+    end
+  end
+  if unknown then return nil, unit end
+  return true, unit
+end
+
+-- par bloc : false (ligne sans conditions possibles), ou { clause = k, unit = u, unknown = true|nil }, {} si rien ne part
+function ns.Simulate(blocks, state)
+  local out = {}
+  for i, block in ipairs(blocks) do
+    local res = false
+    if block.clauses then
+      res = {}
+      local present = false
+      for ci, clause in ipairs(block.clauses) do
+        if compileClause(clause, block.reset) ~= "" then
+          present = true
+          -- "[a][b] sort" : chaque crochet est une alternative qui partage l'argument
+          local groups = {}
+          if #clause.conds > 0 then groups[1] = clause.conds end
+          for g in (clause.alt or ""):gmatch("%b[]") do
+            local list = {}
+            for c in g:sub(2, -2):gmatch("[^,]+") do
+              c = trim(c)
+              if c ~= "" then list[#list + 1] = c end
+            end
+            groups[#groups + 1] = list
+          end
+          if #groups == 0 then groups[1] = {} end
+          for _, conds in ipairs(groups) do
+            local ok, unit = evalGroup(conds, state)
+            if ok ~= false then
+              res = { clause = ci, unit = unit, unknown = ok == nil or nil }
+              break
+            end
+          end
+          if res.clause then break end
+        end
+      end
+      -- commande seule ("/stopcasting") : part toujours
+      if not present then res = { clause = 1, unit = "target" } end
+    end
+    out[i] = res
+  end
+  return out
 end

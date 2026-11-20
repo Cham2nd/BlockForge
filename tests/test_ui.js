@@ -150,7 +150,7 @@ SlashCmdList = {}
 StaticPopupDialogs = {}
 function StaticPopup_Show(which, a1, a2, data)
   assert(StaticPopupDialogs[which], "dialogue inconnu " .. tostring(which))
-  POPUPS[#POPUPS + 1] = { which = which, text = StaticPopupDialogs[which].text:format(a1), data = data }
+  POPUPS[#POPUPS + 1] = { which = which, text = StaticPopupDialogs[which].text:format(a1, a2), data = data }
 end
 Settings = {
   RegisterCanvasLayoutCategory = function(frame, name)
@@ -177,28 +177,44 @@ function GetNumMacros()
   return a, c
 end
 function GetMacroIndexByName(name) return MACROS[name] and MACROS[name].index or 0 end
-function GetMacroInfo(name)
-  local m = MACROS[name]
-  if m then return name, 134400, m.body end
+function GetMacroInfo(key) -- nom ou index (1-120 generales, 121-150 personnage)
+  for name, m in pairs(MACROS) do
+    if name == key or m.index == key then return name, m.icon or 134400, m.body end
+  end
 end
-local nextIndex = 121
 function CreateMacro(name, icon, body, perChar)
   assert(type(name) == "string" and #name <= 16, "nom invalide")
   assert(perChar == nil or type(perChar) == "boolean", "CreateMacro : 4e argument booleen attendu")
   assert(not COMBAT, "CreateMacro en combat")
-  local index = nextIndex
-  nextIndex = nextIndex + 1
-  MACROS[name] = { index = index, body = body, char = perChar }
+  local a, c = GetNumMacros()
+  if (perChar and c >= 30) or (not perChar and a >= 120) then return nil end
+  local index = perChar and 121 + c or 1 + a -- shortcut: pas de tri alphabetique comme en jeu
+  MACROS[name] = { index = index, body = body, char = perChar, icon = icon }
   CALLS[#CALLS + 1] = { "CreateMacro", name, body, perChar }
   return index
 end
 function EditMacro(index, name, icon, body)
   assert(not COMBAT, "EditMacro en combat")
   assert(type(index) == "number" and index > 0)
-  MACROS[name].body = body
+  local m = MACROS[name]
+  assert(m and m.index == index, "EditMacro : index ne correspond pas au nom")
+  m.body = body
+  if icon then m.icon = icon end
   CALLS[#CALLS + 1] = { "EditMacro", name, body }
   return index
 end
+BINDINGS = {}       -- touche -> action
+SAVED_BINDINGS = nil
+CHORD = ""          -- modificateurs tenus, ex. "CTRL-"
+function GetBindingAction(key) return BINDINGS[key] or "" end
+function GetBindingKey(action) for k, v in pairs(BINDINGS) do if v == action then return k end end end
+function GetBindingName(action) return "Nom de " .. action end
+function SetBindingMacro(key, name) assert(not COMBAT, "SetBindingMacro en combat") BINDINGS[key] = "MACRO " .. name return true end
+function GetCurrentBindingSet() return 2 end
+function SaveBindings(set) SAVED_BINDINGS = set end
+function IsKeyPressIgnoredForBinding(key) return key == "LSHIFT" or key == "LCTRL" or key == "LALT" end
+function CreateKeyChordStringUsingMetaKeyState(key) return CHORD .. key end
+function date(fmt) assert(fmt == "%Y-%m-%d") return "2026-11-20" end
 function PickupMacro(x) assert(x ~= nil) CALLS[#CALLS + 1] = { "PickupMacro", x } end
 function print(...) PRINTS[#PRINTS + 1] = table.concat({ ... }, " ") end
 unpack = unpack or table.unpack
@@ -284,7 +300,7 @@ end
 local edits = {}
 for _, w in ipairs(ALL) do if w._type == "EditBox" then edits[#edits + 1] = w end end
 local argBox, resetBox, custom, nameBox, search = edits[1], edits[2], edits[3], edits[4], edits[5]
-assert(#edits == 5, "champs : " .. #edits)
+assert(#edits == 7, "champs : " .. #edits) -- + partage et nom de sauvegarde (Mes macros)
 local perChar = find(function(w) return w._template == "UICheckButtonTemplate" and w._parent == nameBox._parent end)
 assert(perChar)
 local condButtons = {}
@@ -430,7 +446,7 @@ fire(saveBtn, "OnClick")
 -- 7. bibliotheque : chaque classe, molette, chaque ligne, ouverture
 fire(byText("Bibliothèque"), "OnClick")
 local listPanel
-for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel then listPanel = w end end
+for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel and not listPanel then listPanel = w end end -- la premiere : la bibliotheque
 assert(listPanel, "liste sans molette")
 local libRows = {}
 for _, c in ipairs(listPanel._children) do if c.mark then libRows[#libRows + 1] = c end end
@@ -679,6 +695,137 @@ BlockForge_OnAddonCompartmentClick("BlockForge", "RightButton")
 BlockForge_OnAddonCompartmentEnter("BlockForge", UIParent)
 BlockForge_OnAddonCompartmentLeave("BlockForge", UIParent)
 
+-- 11. Mes macros : liste, ouverture, export / import, sauvegardes, raccourcis, refus en combat
+MACROS["Soin"] = { index = 2, body = "/cast [@mouseover,help][] Soin", icon = 135907 }
+fire(byText("Mes macros"), "OnClick")
+local mList = find(function(w) return w.scope end)._parent
+local mPage = mList._parent
+fire(mPage, "OnShow")
+local mRows = {}
+for _, c in ipairs(mList._children) do if c.scope then mRows[#mRows + 1] = c end end
+assert(#mRows == 20)
+local function mRow(name) for _, r in ipairs(mRows) do if r:IsShown() and r.text._text == name then return r end end end
+assert(mRow("Sans curseur") and mRow("Soin") and mRow("Test BM"), "macros non listees")
+assert(mRow("Test BM").scope._text == "Personnage" and mRow("Soin").scope._text == "Générale", "onglet non indique")
+assert(mRow("Soin").icon._tex == 135907)
+MACROS["Ajout"] = { index = 3, body = "/sit" }
+fireEvent("UPDATE_MACROS")
+assert(mRow("Ajout"), "UPDATE_MACROS ignore")
+MACROS["Ajout"] = nil
+fireEvent("UPDATE_MACROS")
+fire(mRow("Soin"), "OnClick")
+local soinBody = MACROS["Soin"].body
+assert(find(function(w) return w._type == "FontString" and w._text == soinBody and inside(w, mPage) end), "corps non affiche")
+fire(byText("Ouvrir dans l'éditeur", mPage), "OnClick")
+assert(rows[1]:IsVisible() and rows[1].full == soinBody and nameBox._text == "Soin", "macro non ouverte dans l'editeur")
+
+-- simulateur : l'apercu change selon l'etat, et redevient normal une fois coupe
+local previewLabel = find(function(w) return w._type == "FontString" and w._text == soinBody and not inside(w, mPage) end)
+assert(previewLabel, "apercu introuvable")
+local simToggle = byText("Simuler")
+local survol = byText("Survol : —")
+assert(not survol:IsShown(), "etats visibles sans simulation")
+fire(simToggle, "OnClick")
+assert(survol:IsShown() and previewLabel._text:find("-> @target", 1, true), previewLabel._text)
+fire(survol, "OnClick") -- hostile : [@mouseover,help] echoue, [] part sur la cible
+assert(survol.text._text == "Survol : Hostile" and previewLabel._text:find("-> @target", 1, true))
+fire(survol, "OnClick") -- amie
+assert(previewLabel._text:find("-> @mouseover", 1, true), previewLabel._text)
+fire(simToggle, "OnClick")
+assert(previewLabel._text == soinBody and not survol:IsShown(), "apercu toujours simule")
+
+-- export puis import : ouvert dans l'editeur, rien d'enregistre
+fire(byText("Mes macros"), "OnClick")
+local share, setBox = edits[6], edits[7]
+fire(byText("Exporter", mPage), "OnClick")
+assert(share._text == ns.Export("Soin", soinBody) and FOCUS == share, "export : " .. share._text)
+share._text = share._text:gsub("^BF1:Soin:", "BF1:Soin2:")
+local callsBefore = #CALLS
+fire(byText("Importer", mPage), "OnClick")
+assert(nameBox._text == "Soin2" and rows[1].full == soinBody and rows[1]:IsVisible(), "import non ouvert")
+assert(#CALLS == callsBefore, "l'import ne doit rien enregistrer")
+fire(byText("Mes macros"), "OnClick")
+share._text = "n'importe quoi"
+fire(byText("Importer", mPage), "OnClick")
+assert(lastLine():find("BF1:", 1, true), lastLine())
+
+-- sauvegarde puis restauration : mise a jour + creation + manque de place
+COMBAT = true
+fire(byText("Sauvegarder mes macros"), "OnClick")
+assert(lastLine():find("combat") and next(db.sets) == nil, "sauvegarde en combat")
+COMBAT = false
+fire(byText("Sauvegarder mes macros"), "OnClick")
+local set = db.sets["2026-11-20"]
+assert(set and #set == 3, "sauvegarde absente")
+setBox._text = "2026-11-20"
+fire(byText("Sauvegarder mes macros"), "OnClick")
+assert(lastLine():find("remplac"), lastLine())
+set = db.sets["2026-11-20"]
+set[#set + 1] = { name = "Trop", body = "/sit", char = true }
+MACROS["Soin"].body = "/cast Autre"
+MACROS["Sans curseur"] = nil       -- supprimee en jeu : les index suivants glissent
+MACROS["Soin"].index = 1
+for i = 2, 30 do MACROS["Perso" .. i] = { index = 120 + i, body = "/sit", char = true } end -- onglet personnage plein
+local restoreBtn = byText("Restaurer")
+COMBAT = true
+fire(restoreBtn, "OnClick")
+assert(lastLine():find("combat"), "restauration en combat")
+COMBAT = false
+local popupsBefore2 = #POPUPS
+fire(restoreBtn, "OnClick")
+local pop = POPUPS[#POPUPS]
+assert(#POPUPS == popupsBefore2 + 1 and pop.which == "BLOCKFORGE_RESTORE" and pop.text:find("2026-11-20", 1, true), "confirmation attendue")
+COMBAT = true
+StaticPopupDialogs.BLOCKFORGE_RESTORE.OnAccept({}, pop.data) -- combat commence pendant la confirmation
+assert(MACROS["Soin"].body == "/cast Autre", "restauration en combat")
+COMBAT = false
+StaticPopupDialogs.BLOCKFORGE_RESTORE.OnAccept({}, pop.data)
+assert(MACROS["Soin"].body == soinBody and MACROS["Test BM"] and MACROS["Sans curseur"], "restauration incomplete")
+assert(MACROS["Sans curseur"].index == 2 and not MACROS["Trop"], "creation ou place")
+assert(lastLine():find("2 mises à jour, 1 créées, 1 ignorées"), lastLine())
+assert(MACROS["Perso2"].body == "/sit", "macro absente de la sauvegarde modifiee")
+for i = 2, 30 do MACROS["Perso" .. i] = nil end
+fireEvent("UPDATE_MACROS")
+-- les sauvegardes survivent a la reinitialisation, la suppression demande confirmation
+ns.ResetDB()
+assert(db.sets["2026-11-20"], "sauvegarde perdue a la reinitialisation")
+fire(byText("Supprimer", mPage), "OnClick")
+assert(POPUPS[#POPUPS].which == "BLOCKFORGE_DELETE_SET")
+StaticPopupDialogs.BLOCKFORGE_DELETE_SET.OnAccept({}, POPUPS[#POPUPS].data)
+assert(db.sets["2026-11-20"] == nil, "sauvegarde non supprimee")
+
+-- raccourci : sans conflit, avec conflit, Echap, combat
+fire(mRow("Soin"), "OnClick")
+local bindBtn = byText("Raccourci…", mPage)
+fire(bindBtn, "OnClick")
+assert(bindBtn._scripts.OnKeyDown, "capture non demarree")
+fire(bindBtn, "OnKeyDown", "LSHIFT") -- modificateur seul : on attend la touche
+assert(bindBtn._scripts.OnKeyDown)
+CHORD = "CTRL-"
+fire(bindBtn, "OnKeyDown", "F")
+CHORD = ""
+assert(BINDINGS["CTRL-F"] == "MACRO Soin" and SAVED_BINDINGS == 2 and not bindBtn._scripts.OnKeyDown, "raccourci non pose")
+assert(find(function(w) return w._type == "FontString" and w._text and w._text:find("Raccourci : CTRL-F", 1, true) end), "touche actuelle non affichee")
+BINDINGS.G = "TOGGLEWORLDMAP"
+fire(bindBtn, "OnClick")
+fire(bindBtn, "OnKeyDown", "G")
+pop = POPUPS[#POPUPS]
+assert(BINDINGS.G == "TOGGLEWORLDMAP" and pop.which == "BLOCKFORGE_BIND" and pop.text:find("Nom de TOGGLEWORLDMAP", 1, true), "conflit non signale")
+StaticPopupDialogs.BLOCKFORGE_BIND.OnAccept({}, pop.data)
+assert(BINDINGS.G == "MACRO Soin")
+fire(bindBtn, "OnClick")
+fire(bindBtn, "OnKeyDown", "ESCAPE")
+assert(not bindBtn._scripts.OnKeyDown and bindBtn._text == "Raccourci…", "Echap n'annule pas")
+fire(bindBtn, "OnClick")
+fireEvent("PLAYER_REGEN_DISABLED")
+assert(not bindBtn._scripts.OnKeyDown, "capture gardee en combat")
+COMBAT = true
+fire(bindBtn, "OnClick")
+assert(not bindBtn._scripts.OnKeyDown and lastLine():find("combat"), "capture en combat")
+StaticPopupDialogs.BLOCKFORGE_BIND.OnAccept({}, { key = "H", name = "Soin" })
+assert(BINDINGS.H == nil and lastLine():find("combat"), "raccourci pose en combat")
+COMBAT = false
+
 -- 10. toutes les infobulles, commandes, fermeture / reouverture
 for _, w in ipairs(ALL) do
   if w._scripts.OnEnter then w._scripts.OnEnter(w) end
@@ -711,7 +858,7 @@ assert(perChar._checked == true, "case du personnage non cochee au chargement")
 fire(byText("Bibliothèque"), "OnClick")
 -- la bibliotheque s'ouvre sur la derniere classe (Mage) : sa puce est dans l'etat choisi
 local listPanel
-for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel then listPanel = w end end
+for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel and not listPanel then listPanel = w end end -- la premiere : la bibliotheque
 local first
 for _, c in ipairs(listPanel._children) do if c.mark and c:IsShown() then first = c break end end
 local mage
@@ -756,7 +903,7 @@ for _, e in ipairs(NS.Library) do e.descEN = e.descEN or ("EN " .. e.name) descs
 fire(byText("Library"), "OnClick")
 fire(byText("All classes"), "OnClick")
 local listPanel
-for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel then listPanel = w end end
+for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel and not listPanel then listPanel = w end end -- la premiere : la bibliotheque
 for _, c in ipairs(listPanel._children) do if c.mark and c:IsShown() then fire(c, "OnClick") break end end
 assert(find(function(w) return w._type == "FontString" and descs[w._text] end), "descEN non affichee")
 fire(byText("Settings", BlockForgeFrame), "OnClick")
