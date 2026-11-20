@@ -4,6 +4,7 @@
 ## Notes-frFR: Éditeur de macros par blocs et bibliothèque de macros par classe. /bf
 ## Version: 0.6.0
 ## SavedVariables: BlockForgeDB
+## X-Curse-Project-ID: 1816970
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## AddonCompartmentFunc: BlockForge_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: BlockForge_OnAddonCompartmentEnter

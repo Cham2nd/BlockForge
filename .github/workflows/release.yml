@@ -1,18 +1,31 @@
 name: Release
 
-# Un tag vX.Y.Z pousse : tests, zip de l'add-on, release GitHub avec le zip et les notes du changelog.
+# Un tag vX.Y.Z pousse : tests, zip de l'add-on, release GitHub, puis envoi sur CurseForge si la cle est la.
+# Lancement manuel avec un tag existant : refait le zip de ce tag et l'envoie (la release GitHub existante est gardee).
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag existant a publier (ex. v0.6.0)"
+        required: true
 
 permissions:
   contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  CF_PROJECT_ID: "1816970"
+  CF_API_KEY: ${{ secrets.CF_API_KEY }}
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -20,14 +33,35 @@ jobs:
         working-directory: tests
       - run: npm test
         working-directory: tests
-      - name: Zip et release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+      - name: Zip et notes
         run: |
           VERSION="${TAG#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           grep -qx "## Version: $VERSION" BlockForge/BlockForge.toc || { echo "Le TOC n'est pas en version $VERSION"; exit 1; }
           zip -r "BlockForge-$VERSION.zip" BlockForge
           # notes : premiere section du changelog, sans son titre
           awk '/^# /{n++; next} n==1' release/CHANGELOG.md > notes.md
-          gh release create "$TAG" "BlockForge-$VERSION.zip" --title "BlockForge $VERSION" --notes-file notes.md
+      - name: Release GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" "BlockForge-$VERSION.zip" --title "BlockForge $VERSION" --notes-file notes.md
+      - name: Envoi CurseForge
+        if: env.CF_API_KEY != ''
+        run: |
+          # 88568 = type de version "WoW Forever" sur CurseForge ; version de jeu tiree de l'interface du TOC (16001 -> 1.60.1)
+          IFACE=$(sed -n 's/^## Interface: *\([0-9]*\).*/\1/p' BlockForge/BlockForge.toc)
+          GAME="${IFACE:0:1}.${IFACE:1:2}.$((10#${IFACE:3}))"
+          VERSIONS=$(curl -sS -H "x-api-token: $CF_API_KEY" https://wow.curseforge.com/api/game/wow/versions)
+          ID=$(echo "$VERSIONS" | jq -r --arg v "$GAME" 'map(select(.gameVersionTypeID == 88568 and .name == $v)) | max_by(.id) | .id // empty')
+          # version exacte absente : la plus recente de Forever
+          [ -n "$ID" ] || ID=$(echo "$VERSIONS" | jq -r 'map(select(.gameVersionTypeID == 88568)) | max_by(.id) | .id // empty')
+          [ -n "$ID" ] || { echo "Aucune version de jeu Forever trouvee sur CurseForge"; exit 1; }
+          jq -n --arg name "BlockForge $VERSION" --argjson id "$ID" --rawfile log notes.md \
+            '{displayName: $name, gameVersions: [$id], releaseType: "release", changelog: $log, changelogType: "markdown"}' > metadata.json
+          CODE=$(curl -sS --retry 3 --retry-delay 10 -o cf_result.json -w "%{http_code}" \
+            -H "x-api-token: $CF_API_KEY" -F "metadata=<metadata.json" -F "file=@BlockForge-$VERSION.zip" \
+            "https://wow.curseforge.com/api/projects/$CF_PROJECT_ID/upload-file")
+          echo "CurseForge : HTTP $CODE, version de jeu $GAME (id $ID)"
+          [ "$CODE" = "200" ] || { cat cf_result.json; exit 1; }
