@@ -1,3 +1,14 @@
+# BlockForge 0.9.0
+
+- Mon grimoire : le bouton « Mon grimoire » de l'éditeur ouvre, à la place de la liste des blocs, une grille de vos sorts (sans les passifs), des techniques de votre familier et des objets utilisables de vos sacs et de vos deux emplacements de bijou, avec un champ de recherche.
+- Un clic sur une icône ajoute le bloc « Lancer un sort » ou « Utiliser un objet » en bas de la macro, ou remplit le bloc choisi s'il attend encore son sort. Maj+clic ouvre l'Assistant pour ce sort.
+- Assistant : choisissez un sort, une technique de familier ou un objet, et l'Assistant propose des macros toutes faites adaptées (sort offensif ou d'aide) : survol puis cible, focus avec Maj, interruption sur le focus, ennemi le plus proche, sur soi avec Alt, avec le familier, bijoux puis sort, annuler l'incantation en cours, séquence, objet puis sort.
+- Trois options refont toutes les macros proposées en direct : « #showtooltip », « Ne pas viser les morts » et « Arrêter l'attaque avant ».
+- « Créer la macro » enregistre tout de suite une macro du jeu au nom du sort (16 caractères au plus, icône automatique) ; « Ouvrir dans l'éditeur » permet de la retoucher d'abord.
+- L'Assistant s'ouvre par le bouton « Assistant » de l'éditeur ou par `/bf assistant`.
+- Tutoriel : deux étapes de plus, pour le grimoire et l'Assistant (12 étapes).
+- `/bf test` compte aussi les sorts, les techniques de familier et les objets trouvés, et contrôle les recettes de l'Assistant.
+
 # BlockForge 0.8.0
 
 - Annuler / Rétablir : chaque modification des blocs s'annule et se rétablit (boutons en bas de la zone, ou Ctrl+Z / Ctrl+Y), jusqu'à 50 étapes.

@@ -72,7 +72,11 @@ local OPTIONAL = { "RAID_CLASS_COLORS", "GetMacroIcons", "GetPetActionInfo", "C_
   -- cycle 3, lot 2 : envoi a un joueur, cible pre-remplie, Ctrl+Z / Ctrl+Y
   "C_ChatInfo.RegisterAddonMessagePrefix", "C_ChatInfo.SendAddonMessage", "GetTime", "UnitName", "GetNormalizedRealmName",
   "UnitExists", "UnitIsPlayer", "UnitIsFriend", "UnitIsUnit", "GetUnitName", "IsControlKeyDown", "GetCurrentKeyBoardFocus",
-  "canaccessvalue" }
+  "canaccessvalue",
+  -- cycle 4, lot 1 : grimoire integre et Assistant
+  "C_Spell.IsSpellPassive", "IsPassiveSpell", "C_Spell.IsSpellHarmful", "C_Spell.IsSpellHelpful", "IsHarmfulSpell", "IsHelpfulSpell",
+  "C_Container.GetContainerNumSlots", "C_Container.GetContainerItemID", "GetContainerNumSlots", "GetContainerItemID",
+  "C_Item.GetItemSpell", "GetItemSpell", "GetInventoryItemID", "NUM_BAG_SLOTS", "IsShiftKeyDown" }
 
 local function Lookup(path)
   local v = _G
@@ -173,6 +177,25 @@ local CHECKS = {
     out[#out + 1] = ("INFO lot 2: sharing %s (accept %s), text editor %s, undo keys %s, personal macros %d, tutorial seen %s"):format(
       ns.CanShare() and "on" or "absent", tostring(ns.db.acceptShared), w.textToggle and "on" or "absent",
       ns.ed.keys and "on" or "absent", #ns.db.personal, tostring(ns.db.tutorialSeen))
+  end },
+  { "cycle 4", function(out)
+    local spells, kinds = ns.GrimoireSpells(), { harm = 0, help = 0, either = 0 }
+    for _, e in ipairs(spells) do
+      local kind = ns.SpellKind(e.name)
+      kinds[kind] = kinds[kind] + 1
+    end
+    out[#out + 1] = ("INFO grimoire: %d castable spells (%d harmful, %d helpful, %d either), %d pet abilities, %d usable items, pet out %s"):format(
+      #spells, kinds.harm, kinds.help, kinds.either, #ns.PetAbilities(), #ns.BagItems(), tostring(ns.HasPet()))
+    -- chaque recette, pour un vrai sort du personnage : relue sans perte et sans avertissement
+    local name, bad = spells[1] and spells[1].name or "Test", {}
+    for _, r in ipairs(ns.Recipes) do
+      local text = r.build(name, { kind = "either", showtooltip = true, nodead = true, stopattack = true })
+      local _, warnings = ns.Diagnose(ns.Parse(text))
+      if ns.Compile(ns.Parse(text)) ~= text or #text > ns.MAX_CHARS or #warnings > 0 then bad[#bad + 1] = r.id end
+    end
+    out[#out + 1] = (#bad == 0 and "OK" or "FAIL") .. (" assistant recipes: %d, broken: %s"):format(#ns.Recipes, First(bad, 20))
+    local w = ns.ed.w
+    out[#out + 1] = (w.grimoireButton and w.assistantButton and "OK" or "FAIL") .. " grimoire and assistant buttons"
   end },
 }
 

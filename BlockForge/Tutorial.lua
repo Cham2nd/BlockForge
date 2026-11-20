@@ -30,6 +30,13 @@ ns.TutorialSteps = {
   { tab = "editor", anchor = W("templates"), at = { "BOTTOMLEFT", "TOPRIGHT", 126, 8 }, -- 400 a 720, -252 a -392
     title = L["Les modèles"],
     text = L["Pas d'idée ? Pars d'un modèle (familier, PvP), puis glisse tes sorts sur les blocs marqués « (argument ?) ». À côté, « Annuler » et « Rétablir » reviennent sur tes dernières modifications."] },
+  -- boutons sur la ligne des onglets, de +25 a +3 au-dessus de la page : le panneau se pose dessous, aligne a droite
+  { tab = "editor", anchor = W("grimoireButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 438 a 758, -5 a -145
+    title = L["Mon grimoire"],
+    text = L["Tes sorts, les techniques de ton familier et les objets utilisables de tes sacs, en icônes. Un clic ajoute le sort à ta macro, ou remplit le bloc choisi s'il attend un sort. Maj+clic ouvre l'Assistant pour ce sort."] },
+  { tab = "editor", anchor = W("assistantButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 564 a 884, -5 a -145
+    title = L["L'Assistant"],
+    text = L["Une bonne macro en deux clics : choisis un sort, l'Assistant propose des macros toutes faites (survol, focus, interruption, familier, bijoux…). « Créer la macro » l'enregistre, « Ouvrir dans l'éditeur » te laisse la retoucher."] },
   { tab = "library", anchor = W("libraryList"), at = { "TOPLEFT", "TOPRIGHT", 8, -40 }, -- 490 a 810, -40 a -180
     title = L["La bibliothèque"],
     text = L["Des centaines de macros prêtes, par classe. Cherche par nom, filtre par catégorie, garde tes favoris. « Mes sorts seulement » cache celles que ton personnage ne peut pas lancer. « Mes modèles » : tes propres macros, pour tous tes personnages."] },
@@ -113,6 +120,9 @@ function Tutorial.Start(manual)
     return
   end
   ns.Open()
+  -- le grimoire couvrirait la palette, l'Assistant tout l'editeur
+  if ns.HideGrimoire then ns.HideGrimoire() end
+  if ns.assistant then ns.assistant:Hide() end
   if not coach then Build() end
   ns.db.tutorialSeen = true
   Show(1)

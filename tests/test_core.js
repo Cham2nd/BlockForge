@@ -329,6 +329,90 @@ assert(ns.Plain("|cffff0000Admin|r") == "||cffff0000Admin||r" and ns.Plain(12) =
 print("test_core lot 2 OK")
 `), "lot2");
 
+// Cycle 4, lot 1 : recettes de l'Assistant, pour chaque recette x type de sort x options
+run(to_luastring(String.raw`
+local ns = NS
+local long = string.rep("x", 30) -- nom de sort de 30 caracteres
+local ids, perKind, built = {}, {}, 0
+local function applicable(kind, hasPet)
+  local list = {}
+  for _, r in ipairs(ns.Recipes) do
+    if r.applies(kind, hasPet) then list[#list + 1] = r.id end
+  end
+  return table.concat(list, " ")
+end
+for _, r in ipairs(ns.Recipes) do
+  assert(type(r.id) == "string" and not ids[r.id] and #r.title > 3 and #r.desc > 20, "recette mal decrite : " .. tostring(r.id))
+  ids[r.id] = true
+  for _, kind in ipairs({ "harm", "help", "either", "pet", "item" }) do
+    for _, hasPet in ipairs({ true, false }) do
+      if r.applies(kind, hasPet) then
+        perKind[kind] = (perKind[kind] or 0) + 1
+        for bits = 0, 7 do
+          local o = { kind = kind, showtooltip = bits % 2 == 1, nodead = math.floor(bits / 2) % 2 == 1, stopattack = bits >= 4 }
+          local text = r.build(long, o)
+          local where = r.id .. " / " .. kind .. " / " .. bits .. " :\n" .. text
+          assert(ns.Compile(ns.Parse(text)) == text, "aller-retour : " .. where)
+          assert(#text <= ns.MAX_CHARS, "trop long : " .. where)
+          local _, warnings = ns.Diagnose(ns.Parse(text))
+          assert(#warnings == 0, "avertissement « " .. tostring(warnings[1]) .. " » : " .. where)
+          assert(text:find(long, 1, true), "sans le sort : " .. where)
+          assert((text:sub(1, 12) == "#showtooltip") == o.showtooltip and (text:find("nodead", 1, true) == nil or o.nodead), where)
+          assert((text:find("/stopattack", 1, true) ~= nil) == (o.stopattack and kind ~= "help" and kind ~= "item"), where)
+          built = built + 1
+        end
+      end
+    end
+  end
+end
+assert(#ns.Recipes >= 10 and built > 300, built)
+for _, kind in ipairs({ "harm", "help", "either", "pet", "item" }) do assert((perKind[kind] or 0) >= 2, "type sans recette : " .. kind) end
+-- recettes proposees selon le type du sort ; « Avec le familier » seulement avec un familier
+assert(applicable("harm", false) == "mouseover_harm focus_mod interrupt_focus nearest trinkets stopcasting sequence", applicable("harm", false))
+assert(applicable("harm", true) == "mouseover_harm focus_mod interrupt_focus nearest with_pet trinkets stopcasting sequence", applicable("harm", true))
+assert(applicable("help", true) == "mouseover_help focus_mod self_alt stopcasting sequence", applicable("help", true))
+assert(applicable("item", true) == "stopcasting item_fallback", applicable("item", true))
+local all = applicable("either", true) -- type inconnu : toutes les recettes de sort
+for id in pairs(ids) do assert(id == "item_fallback" or all:find(id, 1, true), "recette absente pour un sort de type inconnu : " .. id) end
+-- textes exacts
+local function build(id, kind, o)
+  for _, r in ipairs(ns.Recipes) do
+    if r.id == id then
+      o = o or { showtooltip = true, nodead = true }
+      o.kind = kind
+      return r.build("Peur", o), r
+    end
+  end
+end
+assert(build("mouseover_harm", "harm") == "#showtooltip\n/cast [@mouseover,harm,nodead][] Peur")
+assert(build("mouseover_harm", "harm", {}) == "/cast [@mouseover,harm][] Peur")
+assert(build("mouseover_help", "help") == "#showtooltip\n/cast [@mouseover,help,nodead][help,nodead][@player] Peur")
+assert(build("focus_mod", "harm") == "#showtooltip\n/cast [mod:shift,@focus][@mouseover,harm,nodead][] Peur")
+assert(build("focus_mod", "either", {}) == "/cast [mod:shift,@focus][@mouseover,exists][] Peur")
+assert(build("interrupt_focus", "harm") == "#showtooltip\n/stopcasting\n/cast [@focus,harm,nodead][] Peur")
+assert(build("nearest", "harm") == "#showtooltip\n/targetenemy [noexists][dead]\n/cast Peur")
+assert(build("nearest", "harm", { stopattack = true }) == "/stopattack\n/targetenemy [noexists]\n/cast Peur")
+assert(build("self_alt", "help", { stopattack = true }) == "/cast [mod:alt,@player][@mouseover,help][] Peur")
+assert(build("with_pet", "harm") == "#showtooltip\n/petattack\n/cast Peur")
+assert(build("trinkets", "harm") == "#showtooltip Peur\n/use 13\n/use 14\n/cast Peur") -- sans le nom, l'icone serait celle du bijou
+assert(build("stopcasting", "item") == "#showtooltip\n/stopcasting\n/use Peur")
+local seq, seqRecipe = build("sequence", "harm")
+assert(seq == "#showtooltip\n/castsequence reset=target Peur, Deuxième sort" and seqRecipe.editorOnly == true)
+local item, itemRecipe = build("item_fallback", "item")
+assert(item == "#showtooltip\n/use Peur\n/cast Sort de secours" and itemRecipe.editorOnly == true)
+-- le simulateur lit bien ce que la recette promet
+local sim = ns.Simulate(ns.Parse(build("focus_mod", "harm", {})), { mod = "shift", target = "harm", mouseover = "harm", focus = "harm" })
+assert(sim[1].unit == "focus")
+sim = ns.Simulate(ns.Parse(build("mouseover_harm", "harm")), { mod = false, target = "harm", mouseover = "none", focus = "none" })
+assert(sim[2].unit == "target")
+-- MacroName : 16 octets au plus, jamais au milieu d'un caractere accentue
+assert(ns.MacroName("Peur") == "Peur" and ns.MacroName("  Trait de l'ombre  ") == "Trait de l'ombre")
+assert(ns.MacroName("Éclair de givre pénétrant") == "Éclair de givre", ns.MacroName("Éclair de givre pénétrant"))
+assert(ns.MacroName("Brûlure de l'âme") == "Brûlure de l'â", ns.MacroName("Brûlure de l'âme"))
+assert(ns.MacroName("abcdefghijklmnoé") == "abcdefghijklmno" and ns.MacroName("") == "")
+print("test_core recettes OK (" .. #ns.Recipes .. " recettes, " .. built .. " macros)")
+`), "recettes");
+
 // Langue : Locale.lua + Core.lua avec un client anglais, puis sans GetLocale (hors jeu : francais)
 function loadLocalized(locale) {
   const S = lauxlib.luaL_newstate();

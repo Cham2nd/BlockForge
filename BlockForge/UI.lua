@@ -239,6 +239,16 @@ local function AddBlock(id, at, arg)
   Select(block)
 end
 
+-- sort ou objet choisi dans le grimoire integre : il remplit l'emplacement vide du bloc choisi, sinon un bloc s'ajoute en bas
+function view.Insert(name, id)
+  if selected and selected.clauses and (selected.type == id or selected.type == "castsequence") then
+    for _, clause in ipairs(selected.clauses) do
+      if ns.trim(clause.arg) == "" then clause.arg = name return Select(selected) end
+    end
+  end
+  AddBlock(id, nil, name)
+end
+
 ---------------------------------------------------------------------------
 -- Rendu d'un bloc : barre de type, icone, commande, pastilles de conditions, argument
 ---------------------------------------------------------------------------
@@ -477,29 +487,26 @@ if StaticPopupDialogs then
   }
 end
 
-local function Save()
-  local name = ns.trim(nameBox:GetText())
-  local body = ns.Compile(blocks)
+-- icon : icone choisie (nil = automatique) ; keepIcon : une macro du jeu de meme nom garde la sienne
+local function SaveMacro(name, body, forChar, icon, keepIcon)
   if InCombatLockdown() then return Msg(L["Impossible de modifier une macro en combat."]) end
   if name == "" then return Msg(L["Donne un nom à la macro."]) end
   if body == "" then return Msg(L["La macro est vide."]) end
   if #body > ns.MAX_CHARS then return Msg(L["Macro trop longue : %d / %d."]:format(#body, ns.MAX_CHARS)) end
   local index = GetMacroIndexByName(name)
   if index and index > 0 then
-    -- l'icone de la macro du jeu n'est remplacee que si le joueur en a choisi une dans la grille
-    local icon = view.touched and (view.icon or "INV_Misc_QuestionMark") or nil
+    local newIcon = not keepIcon and (icon or "INV_Misc_QuestionMark") or nil
     if ns.db.confirmOverwrite and StaticPopup_Show then
-      StaticPopup_Show("BLOCKFORGE_OVERWRITE", name, nil, { name = name, body = body, icon = icon })
+      StaticPopup_Show("BLOCKFORGE_OVERWRITE", name, nil, { name = name, body = body, icon = newIcon })
     else
-      Overwrite(name, body, icon)
+      Overwrite(name, body, newIcon)
     end
     return
   end
-  local forChar = perChar:GetChecked() and true or false
   local numAccount, numChar = GetNumMacros()
   if forChar and numChar >= MAX_CHARACTER then return Msg(L["Plus de place dans les macros du personnage."]) end
   if not forChar and numAccount >= MAX_ACCOUNT then return Msg(L["Plus de place dans les macros générales."]) end
-  local created = CreateMacro(name, view.icon or "INV_Misc_QuestionMark", body, forChar)
+  local created = CreateMacro(name, icon or "INV_Misc_QuestionMark", body, forChar)
   if not created or created == 0 then return Msg(L["Le jeu a refusé de créer la macro."]) end
   if ns.db.pickupAfterCreate then
     PickupMacro(created) -- la macro vient sous le curseur : il reste a la poser sur une barre
@@ -507,6 +514,12 @@ local function Save()
   else
     Msg(L["Macro « %s » créée (%s)."]:format(name, forChar and L["macros du personnage"] or L["macros générales"]))
   end
+end
+view.SaveMacro = SaveMacro -- l'Assistant cree ses macros par le meme chemin
+
+local function Save()
+  -- l'icone de la macro du jeu n'est remplacee que si le joueur en a choisi une dans la grille
+  SaveMacro(ns.trim(nameBox:GetText()), ns.Compile(blocks), perChar:GetChecked() and true or false, view.icon, not view.touched)
 end
 
 function ns.ApplyPerCharDefault()
@@ -1169,6 +1182,7 @@ local function BuildEditor(parent)
   local w = view.w
   w.page, w.palette, w.canvas, w.insp = parent, palette, canvas, insp
   if ns.BuildEditorTools then ns.BuildEditorTools() end
+  if ns.BuildGrimoire then ns.BuildGrimoire() end
 end
 
 ---------------------------------------------------------------------------
@@ -2027,5 +2041,6 @@ SlashCmdList.BLOCKFORGE = function(msg)
   if msg == "options" or msg == "config" or msg == "param" then return ns.OpenSettings() end
   if msg == "test" then return ns.SelfTest() end
   if msg == "tuto" or msg == "tutorial" or msg == "help" then return ns.Tutorial.Start(true) end
+  if msg == "assistant" then return ns.OpenAssistant() end
   ns.Toggle()
 end

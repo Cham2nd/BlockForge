@@ -1292,7 +1292,7 @@ SlashCmdList.BLOCKFORGE("") -- rouvre : premiere ouverture hors combat
 local tour, steps = ns.Tutorial, ns.TutorialSteps
 local coach = tour.coach
 assert(db.tutorialSeen == true and tour.step == 1 and coach and coach:IsShown() and tour.frame:IsShown(), "visite non lancee")
-assert(#steps >= 8 and #steps <= 10, #steps)
+assert(#steps >= 8 and #steps <= 12, #steps)
 assert(coach._parent == BlockForgeFrame and coach._w == 320 and coach._h == 140)
 local tabs = { editor = byText("Éditeur"), library = byText("Bibliothèque"), macros = byText("Mes macros", BlockForgeFrame), settings = byText("Paramètres", BlockForgeFrame) }
 local seenTabs = {}
@@ -1827,4 +1827,327 @@ assert(NS.ed.keys == nil, "clavier arme sans SetPropagateKeyboardInput : les tou
 fire(byText("Annuler"), "OnClick")
 `, "=sans multiligne");
 
-console.log("test_ui.js : OK (8 scenarios)");
+// ---------------------------------------------------------------- 8. cycle 4, lot 1 : grimoire integre et Assistant
+boot("{ tutorialSeen = true }", String.raw`
+SHIFT, HAS_PET = false, false
+function IsShiftKeyDown() return SHIFT end
+BOOK = { "Corruption", "Peur", "Éclair de givre", "Soins rapides", "Maîtrise passive" }
+C_SpellBook = {
+  GetNumSpellBookSkillLines = function() return 1 end,
+  GetSpellBookSkillLineInfo = function() return { itemIndexOffset = 0, numSpellBookItems = #BOOK } end,
+  GetSpellBookItemName = function(i) return BOOK[i] end,
+}
+Enum = { SpellBookSpellBank = { Player = 0 } }
+C_Spell.GetSpellInfo = function(name) for _, n in ipairs(BOOK) do if n == name then return {} end end end
+C_Spell.IsSpellPassive = function(name) return name == "Maîtrise passive" end
+C_Spell.IsSpellHarmful = function(name) assert(not COMBAT, "type de sort lu en combat") return name == "Corruption" or name == "Peur" end
+C_Spell.IsSpellHelpful = function(name) return name == "Soins rapides" end
+PET = { "PET_ACTION_ATTACK", "Morsure" }
+function GetPetActionInfo(i) if PET[i] then return PET[i], 132000 + i end end
+function UnitExists(unit) return unit == "pet" and HAS_PET end
+BAGS = { [0] = { 5512, 2589 }, [1] = { 5512, 118 } } -- 2589 : etoffe, sans effet « Utiliser »
+ITEMS = { [5512] = "Pierre de soins", [2589] = "Étoffe de lin", [118] = "Potion de soins", [9000] = "Bijou de test" }
+C_Container = {
+  GetContainerNumSlots = function(bag) return BAGS[bag] and #BAGS[bag] or 0 end,
+  GetContainerItemID = function(bag, slot) return BAGS[bag][slot] end,
+}
+C_Item.GetItemInfo = function(id) return ITEMS[id] end
+C_Item.GetItemSpell = function(id) if id ~= 2589 then return "Effet", 1 end end
+function GetInventoryItemID(unit, slot) assert(unit == "player") if slot == 13 then return 9000 end end
+`);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+local function said(fragment) return lastLine():find(fragment, 1, true) ~= nil end
+local function names(list)
+  local out = {}
+  for i, e in ipairs(list) do out[i] = e.name end
+  return table.concat(out, ",")
+end
+local function text() return ns.Compile(ns.ed.Blocks()) end
+local function created()
+  local n, last = 0, nil
+  for _, c in ipairs(CALLS) do if c[1] == "CreateMacro" then n, last = n + 1, c end end
+  return n, last
+end
+SlashCmdList.BLOCKFORGE("")
+local w = ns.ed.w
+local bookButton, assistantButton = w.grimoireButton, w.assistantButton
+assert(bookButton._text == "Mon grimoire" and assistantButton._text == "Assistant", "boutons de l'editeur absents")
+assert(inside(bookButton, w.page) and bookButton._w == 120 and assistantButton._point[2] == w.page and assistantButton._point[1] == "BOTTOMRIGHT")
+assert(ns.grimoire == nil and ns.assistant == nil, "panneaux construits avant d'etre demandes")
+
+-- A. tiroir : sorts sans le passif, icone connue ou point d'interrogation, 4 x 9 cases dans la largeur de la palette
+fire(bookButton, "OnClick")
+local drawer = ns.grimoire
+local grid = drawer.grid
+assert(drawer:IsShown() and drawer._w == 160 and drawer._h == 430 and drawer._point[2] == w.palette and #grid.cells == 36)
+assert(names(grid.shown) == "Corruption,Peur,Éclair de givre,Soins rapides", names(grid.shown))
+assert(grid.cells[1]._tex == nil and grid.cells[1].icon._tex == 136118 and grid.cells[2].icon._tex:find("QuestionMark"))
+assert(grid.cells[4]:IsShown() and not grid.cells[5]:IsShown() and grid.range._text == "")
+for i, cell in ipairs(grid.cells) do -- aucune case hors du panneau (160 x 430, bord interieur a 157 et -427)
+  local x, y = 9 + cell._point[2], -28 + cell._point[3]
+  assert(x >= 3 and x + cell._w <= 157 and y - cell._h >= -427, "case " .. i .. " hors du tiroir")
+end
+-- recherche sans accents ni casse
+grid.search._text = "ECLAIR"
+fire(grid.search, "OnTextChanged", true)
+assert(names(grid.shown) == "Éclair de givre" and grid.cells[1]:IsShown() and not grid.cells[2]:IsShown())
+grid.search._text = "zzz"
+fire(grid.search, "OnTextChanged", true)
+assert(#grid.shown == 0 and not grid.cells[1]:IsShown())
+grid.search._text = ""
+fire(grid.search, "OnTextChanged", true)
+assert(#grid.shown == 4)
+-- familier : les ordres (jetons PET_) sont ecartes ; objets : bijou porte puis sacs, sans doublon ni objet sans effet
+fire(grid.chips[2], "OnClick")
+assert(names(grid.shown) == "Morsure" and grid.cells[1].icon._tex == 132002 and ns.PetSpells.morsure, names(grid.shown))
+fire(grid.chips[3], "OnClick")
+assert(names(grid.shown) == "Bijou de test,Pierre de soins,Potion de soins", names(grid.shown))
+assert(grid.cells[1].icon._tex == 135000 and grid.cells[2].icon._tex == 135230)
+-- clic : un bloc /use ou /cast s'ajoute en bas
+fire(grid.cells[2], "OnClick")
+assert(text() == "/use Pierre de soins", text())
+fire(grid.chips[1], "OnClick")
+fire(grid.cells[1], "OnClick")
+assert(text() == "/use Pierre de soins\n/cast Corruption", text())
+-- bloc choisi avec un emplacement vide : le clic le remplit ; bloc choisi d'un autre type : ajout en bas
+ns.ed.Load("", "#showtooltip\n/cast [@mouseover,harm,nodead][]\n/use")
+local rows = {}
+for _, c in ipairs(w.canvas._children) do if c.pills then rows[#rows + 1] = c end end
+fire(grid.cells[2], "OnClick") -- #showtooltip est choisi
+assert(text() == "#showtooltip\n/cast [@mouseover,harm,nodead][]\n/use\n/cast Peur", text())
+fire(rows[2], "OnClick")
+fire(grid.cells[2], "OnClick")
+assert(text() == "#showtooltip\n/cast [@mouseover,harm,nodead][] Peur\n/use\n/cast Peur", text())
+fire(grid.cells[1], "OnClick") -- le bloc choisi est plein : ajout en bas
+assert(text():find("\n/cast Corruption$"), text())
+fire(rows[3], "OnClick")
+fire(grid.chips[3], "OnClick")
+fire(grid.cells[3], "OnClick")
+assert(text():find("\n/use Potion de soins\n", 1, true), text())
+fire(grid.chips[1], "OnClick")
+-- evenements : la grille visible suit le grimoire et le familier ; fermee, elle ne relit rien
+BOOK[#BOOK + 1] = "Nouveau sort"
+fireEvent("SPELLS_CHANGED")
+assert(#grid.shown == 5 and grid.shown[5].name == "Nouveau sort", names(grid.shown))
+fire(grid.chips[2], "OnClick")
+PET[3] = "Griffe"
+fireEvent("UNIT_PET", "target")
+assert(#grid.shown == 1, "UNIT_PET d'une autre unite")
+fireEvent("UNIT_PET", "player")
+assert(names(grid.shown) == "Morsure,Griffe")
+fire(grid.chips[3], "OnClick")
+BAGS[1][3], ITEMS[929] = 929, "Potion de mana"
+fireEvent("BAG_UPDATE_DELAYED")
+assert(#grid.shown == 4)
+fire(find(function(x) return x._parent == drawer and x.text and x.text._text == "x" end), "OnClick") -- croix du bandeau
+assert(not drawer:IsShown())
+BAGS[1][4], ITEMS[930] = 930, "Parchemin"
+fireEvent("BAG_UPDATE_DELAYED")
+assert(#grid.shown == 4, "grille fermee relue")
+fire(bookButton, "OnClick")
+assert(drawer:IsShown() and #grid.shown == 5)
+fire(bookButton, "OnClick") -- le bouton referme
+assert(not drawer:IsShown())
+-- molette : 60 sorts dans 36 cases, par deux lignes
+fire(bookButton, "OnClick")
+fire(grid.chips[1], "OnClick")
+for i = 1, 55 do BOOK[#BOOK + 1] = "Sort " .. i end
+fireEvent("SPELLS_CHANGED")
+assert(#grid.shown == 60 and grid.range._text == "1-36 / 60", grid.range._text)
+fire(grid.frame, "OnMouseWheel", -1)
+assert(grid.offset == 8 and grid.range._text == "9-44 / 60")
+for _ = 1, 9 do fire(grid.frame, "OnMouseWheel", -1) end
+assert(grid.offset == 24 and grid.range._text == "25-60 / 60" and grid.cells[36]:IsShown(), grid.range._text)
+for _ = 1, 9 do fire(grid.frame, "OnMouseWheel", 1) end
+assert(grid.offset == 0)
+-- combat : pas de clic, pas d'ouverture, tout se ferme
+local before = text()
+COMBAT = true
+fire(grid.cells[1], "OnClick")
+assert(said("combat") and text() == before, "bloc ajoute en combat")
+fireEvent("PLAYER_REGEN_DISABLED")
+assert(not drawer:IsShown())
+PRINTS = {}
+fire(bookButton, "OnClick")
+assert(said("combat") and not drawer:IsShown())
+PRINTS = {}
+fire(assistantButton, "OnClick")
+assert(said("combat") and ns.assistant == nil)
+SlashCmdList.BLOCKFORGE("assistant")
+assert(ns.assistant == nil)
+COMBAT = false
+
+-- B. Maj+clic : l'Assistant s'ouvre sur ce sort, le tiroir se ferme, rien n'est ajoute a la macro
+fire(bookButton, "OnClick")
+SHIFT = true
+fire(grid.cells[1], "OnClick")
+SHIFT = false
+local panel = ns.assistant
+local state, cards = panel.state, panel.cards
+assert(panel:IsShown() and not drawer:IsShown() and text() == before, "Maj+clic")
+assert(panel._w == 884 and panel._h == 566 and panel._parent == w.page and #cards == 4 and #panel.grid.cells == 72)
+assert(state.entry.name == "Corruption" and state.kind == "harm" and panel.name._text == "Corruption" and panel.kind._text == "Sort offensif")
+assert(panel.icon._tex == 136118 and not panel.intro:IsShown() and panel.grid.picked == "Corruption")
+local function ids()
+  local out = {}
+  for i, r in ipairs(state.recipes) do out[i] = r.id end
+  return table.concat(out, " ")
+end
+-- seulement les recettes d'un sort offensif, sans celle du familier (aucun familier sorti)
+assert(ids() == "mouseover_harm focus_mod interrupt_focus nearest trinkets stopcasting sequence", ids())
+local body = "#showtooltip\n/cast [@mouseover,harm,nodead][] Corruption"
+assert(cards[1].recipe.id == "mouseover_harm" and cards[1].body == body and plain(cards[1].code._text) == body, cards[1].body)
+assert(cards[1].code._text:find("|cff") and cards[1].title._text == "Survol, sinon cible" and #cards[1].desc._text > 20)
+assert(cards[1].count._text == #body .. " / 255" and cards[4]:IsShown() and panel.range._text == "1-4 / 7  (molette)", panel.range._text)
+for i, card in ipairs(cards) do -- cartes dans le panneau : 248 + 628 <= 881, derniere finie avant -563
+  assert(card._w == 628 and card._h == 119 and -70 + card._point[3] - card._h >= -563 and card.code._h == 68, "carte " .. i)
+end
+-- options : chaque puce refait le texte des cartes
+local tooltipChip, deadChip, attackChip = panel.chips[1], panel.chips[2], panel.chips[3]
+assert(tooltipChip.text._text == "#showtooltip" and deadChip.text._text == "Ne pas viser les morts" and attackChip:IsShown())
+fire(deadChip, "OnClick")
+assert(cards[1].body == "#showtooltip\n/cast [@mouseover,harm][] Corruption", cards[1].body)
+fire(tooltipChip, "OnClick")
+assert(cards[1].body == "/cast [@mouseover,harm][] Corruption" and cards[1].count._text == "36 / 255")
+fire(attackChip, "OnClick")
+assert(cards[1].body == "/stopattack\n/cast [@mouseover,harm][] Corruption")
+fire(attackChip, "OnClick")
+fire(tooltipChip, "OnClick")
+fire(deadChip, "OnClick")
+assert(cards[1].body == body)
+-- molette : les 7 recettes dans 4 cartes ; la sequence ne se cree pas telle quelle
+for _ = 1, 9 do fire(panel.deck, "OnMouseWheel", -1) end
+assert(cards[1].recipe.id == "nearest" and cards[4].recipe.id == "sequence" and panel.range._text == "4-7 / 7  (molette)", panel.range._text)
+assert(cards[4].create._enabled == false and cards[3].create._enabled == true)
+for _ = 1, 9 do fire(panel.deck, "OnMouseWheel", 1) end
+assert(cards[1].recipe.id == "mouseover_harm" and cards[1].create._enabled == true)
+-- autre sort dans la grille de l'Assistant : aide, donc d'autres recettes et pas de /stopattack
+fire(panel.grid.cells[4], "OnClick")
+assert(state.entry.name == "Soins rapides" and state.kind == "help" and panel.kind._text == "Sort d'aide")
+assert(ids() == "mouseover_help focus_mod self_alt stopcasting sequence" and not attackChip:IsShown(), ids())
+assert(cards[2].body == "#showtooltip\n/cast [mod:shift,@focus][@mouseover,help,nodead][] Soins rapides", cards[2].body)
+-- type inconnu du jeu : toutes les recettes de sort ; familier sorti : sa recette en plus
+fire(panel.grid.cells[3], "OnClick")
+assert(state.kind == "either" and #state.recipes == 9 and attackChip:IsShown(), ids())
+HAS_PET = true
+fire(panel.grid.cells[1], "OnClick")
+assert(ids() == "mouseover_harm focus_mod interrupt_focus nearest with_pet trinkets stopcasting sequence", ids())
+fire(panel.grid.chips[2], "OnClick")
+fire(panel.grid.cells[1], "OnClick")
+assert(state.kind == "pet" and panel.kind._text == "Technique du familier" and ids():find("with_pet", 1, true), ids())
+HAS_PET = false
+-- objet : /use, et seulement ses recettes
+fire(panel.grid.chips[3], "OnClick")
+fire(panel.grid.cells[2], "OnClick")
+assert(state.kind == "item" and ids() == "stopcasting item_fallback" and not cards[3]:IsShown() and panel.range._text == "", ids())
+assert(cards[1].body == "#showtooltip\n/stopcasting\n/use Pierre de soins" and cards[2].create._enabled == false)
+
+-- C. « Ouvrir dans l'editeur » : les blocs de la recette, le nom du sort, l'Assistant se ferme ; Ctrl+Z rend l'ancien contenu
+ns.ed.Load("", "/cast Peur")
+fire(cards[1].open, "OnClick")
+assert(not panel:IsShown() and text() == "#showtooltip\n/stopcasting\n/use Pierre de soins" and ns.ed.Name() == "Pierre de soins", text())
+assert(#ns.ed.Blocks() == 3 and ns.ed.Blocks()[3].type == "use")
+ns.ed.Step(false)
+assert(text() == "/cast Peur", "annuler apres l'Assistant : " .. text())
+
+-- D. « Creer la macro » : une seule macro, nom de 16 octets au plus, icone automatique ; meme nom : confirmation
+BOOK[1] = "Éclair de givre pénétrant du grand nord"
+fireEvent("SPELLS_CHANGED")
+SlashCmdList.BLOCKFORGE("assistant")
+assert(panel:IsShown() and state.entry.name == "Pierre de soins", "/bf assistant")
+fire(panel.grid.chips[1], "OnClick")
+fire(panel.grid.cells[1], "OnClick")
+assert(state.entry.name == BOOK[1] and state.kind == "either")
+local n0 = created()
+fire(cards[1].create, "OnClick")
+local n1, call = created()
+assert(n1 == n0 + 1 and call[2] == "Éclair de givre" and #call[2] <= 16 and call[3] == cards[1].body and call[5] == "INV_Misc_QuestionMark", call[2])
+assert(call[4] == false and said("créée") and panel:IsShown())
+assert(#cards[1].body <= 255 and cards[1].body:find(BOOK[1], 1, true))
+local popups = #POPUPS
+fire(cards[2].create, "OnClick")
+assert(created() == n1 and #POPUPS == popups + 1 and POPUPS[#POPUPS].which == "BLOCKFORGE_OVERWRITE", "remplacement sans confirmation")
+StaticPopupDialogs.BLOCKFORGE_OVERWRITE.OnAccept({}, POPUPS[#POPUPS].data)
+assert(MACROS["Éclair de givre"].body == cards[2].body and MACROS["Éclair de givre"].icon == "INV_Misc_QuestionMark" and created() == n1)
+-- macros du personnage par defaut : la macro de l'Assistant y va aussi
+db.perCharDefault = true
+fire(panel.grid.cells[2], "OnClick")
+fire(cards[1].create, "OnClick")
+local n2, charCall = created()
+assert(n2 == n1 + 1 and charCall[2] == "Peur" and charCall[4] == true)
+db.perCharDefault = false
+-- combat : refus, rien de cree, l'Assistant se ferme et ne se rouvre pas
+local calls = #CALLS
+COMBAT = true
+PRINTS = {}
+fire(cards[3].create, "OnClick")
+assert(said("combat") and #CALLS == calls, "macro creee en combat")
+fireEvent("PLAYER_REGEN_DISABLED")
+assert(not panel:IsShown())
+SlashCmdList.BLOCKFORGE("assistant")
+assert(not panel:IsShown())
+COMBAT = false
+-- bouton de l'editeur, depuis un autre onglet : retour a l'editeur, dernier sort garde ; croix : ferme
+fire(byText("Bibliothèque"), "OnClick")
+fire(assistantButton, "OnClick")
+assert(panel:IsShown() and byText("Éditeur").line:IsShown() and state.entry.name == "Peur")
+fire(find(function(x) return x._parent == panel and x.text and x.text._text == "x" end), "OnClick")
+assert(not panel:IsShown())
+-- la visite guidee ferme l'Assistant et montre les deux boutons
+fire(assistantButton, "OnClick")
+SlashCmdList.BLOCKFORGE("tuto")
+assert(not panel:IsShown() and ns.Tutorial.step == 1)
+local seen = {}
+for i, s in ipairs(ns.TutorialSteps) do seen[s.anchor()] = i end
+assert(#ns.TutorialSteps == 12 and seen[bookButton] and seen[assistantButton] == seen[bookButton] + 1, "etapes du grimoire et de l'Assistant")
+fire(assistantButton, "OnClick")
+assert(panel:IsShown() and ns.Tutorial.step == nil, "visite encore la sous l'Assistant")
+
+-- E. /bf test
+GetLocale = function() return "frFR" end
+SlashCmdList.BLOCKFORGE("test")
+GetLocale = nil
+local report = table.concat(db.selftest.lines, "\n")
+assert(report:find("INFO grimoire: 60 castable spells (1 harmful, 1 helpful, 58 either), 2 pet abilities, 5 usable items, pet out false", 1, true), report)
+assert(report:find("OK assistant recipes: " .. #ns.Recipes .. ", broken: ", 1, true) and report:find("OK grimoire and assistant buttons", 1, true), report)
+assert(report:find("OK tutorial: 12 steps, anchors missing: ", 1, true), report)
+assert(report:find("INFO optional api present: C_Spell.IsSpellPassive", 1, true) and report:find("INFO optional api absent: IsHarmfulSpell", 1, true)
+  and report:find("INFO optional api present: C_Container.GetContainerItemID", 1, true) and report:find("INFO optional api absent: NUM_BAG_SLOTS", 1, true), report)
+for _, x in ipairs(ALL) do
+  if x._scripts.OnEnter then x._scripts.OnEnter(x) end
+end
+`, "=grimoire");
+
+// client sans les API facultatives du lot (ni grimoire enumerable, ni sacs, ni type de sort), en anglais : listes vides, aucune erreur
+boot("{ tutorialSeen = true }", `function GetLocale() return "enUS" end  IsShiftKeyDown = nil  UnitExists = nil  GetInventoryItemTexture = nil`);
+run(String.raw`
+local ns = NS
+SlashCmdList.BLOCKFORGE("")
+fire(byText("My spellbook"), "OnClick")
+local grid = ns.grimoire.grid
+for i = 1, 3 do
+  fire(grid.chips[i], "OnClick")
+  assert(#grid.shown == 0 and not grid.cells[1]:IsShown(), "source " .. i)
+end
+assert(grid.chips[1].text._text == "Spells" and grid.chips[2].text._text == "Pet" and grid.chips[3].text._text == "Items")
+assert(ns.SpellKind("Corruption") == "either" and ns.HasPet() == false)
+SlashCmdList.BLOCKFORGE("assistant")
+local panel = ns.assistant
+assert(panel:IsShown() and not ns.grimoire:IsShown() and panel.intro:IsShown() and panel.name._text == "Pick a spell on the left." and not panel.cards[1]:IsShown())
+-- un sort tape a la main dans l'editeur n'a pas besoin de la grille : l'Assistant accepte une entree directe
+ns.OpenAssistant({ name = "Fireball", kind = "spell" })
+assert(#panel.state.recipes == 9 and panel.cards[1].title._text == "Mouseover, else target" and panel.kind._text == "Harmful or helpful spell")
+for _, r in ipairs(ns.Recipes) do
+  for _, c in ipairs({ "é", "è", "ê", "à", "ù", "ç", "«", "»", " :", " ;" }) do
+    assert(not (r.title .. r.desc .. r.build("X", {})):find(c, 1, true), "recette en francais : " .. r.id)
+  end
+end
+fire(panel.cards[1].create, "OnClick")
+assert(CALLS[#CALLS][1] == "PickupMacro" and CALLS[#CALLS - 1][2] == "Fireball" and CALLS[#CALLS - 1][3] == "#showtooltip\n/cast [@mouseover,harm,nodead][] Fireball", CALLS[#CALLS - 1][3])
+for _, x in ipairs(ALL) do
+  if x._scripts.OnEnter then x._scripts.OnEnter(x) end
+end
+`, "=grimoire sans api");
+
+console.log("test_ui.js : OK (9 scenarios)");

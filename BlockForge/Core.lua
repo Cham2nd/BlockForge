@@ -783,3 +783,92 @@ function ns.Simulate(blocks, state)
   end
   return out
 end
+
+---------------------------------------------------------------------------
+-- Assistant : recettes de macros pour un sort ou un objet
+--   kind : "harm" | "help" | "either" (inconnu, ou les deux) | "pet" (technique du familier) | "item"
+--   applies(kind, hasPet) ; build(nom, options) -> texte de macro
+--   options : kind, showtooltip, nodead, stopattack (sans effet pour une aide ou un objet)
+--   editorOnly : la macro contient un nom a remplacer, elle ne se cree pas telle quelle
+--   desc tient sur une ligne de carte (608 px) : une centaine de caracteres au plus
+---------------------------------------------------------------------------
+local function forKinds(list)
+  local set = {}
+  for kind in list:gmatch("%a+") do set[kind] = true end
+  return function(kind) return set[kind] == true end
+end
+
+local function alive(o) return o.nodead and ",nodead" or "" end
+
+-- ce que le sort attend de l'unite survolee
+local function wanted(o) return (o.kind == "harm" or o.kind == "help") and o.kind or "exists" end
+
+-- tooltipName : #showtooltip nomme le sort, quand une ligne /use passe avant lui
+local function recipeText(o, lines, tooltipName)
+  local out = {}
+  if o.showtooltip then out[1] = tooltipName and ("#showtooltip " .. tooltipName) or "#showtooltip" end
+  if o.stopattack and o.kind ~= "help" and o.kind ~= "item" then out[#out + 1] = "/stopattack" end
+  for _, line in ipairs(lines) do out[#out + 1] = line end
+  return table.concat(out, "\n")
+end
+
+ns.Recipes = {
+  { id = "mouseover_harm", title = L["Survol, sinon cible"],
+    desc = L["Lance le sort sur l'ennemi sous ta souris ; sans survol, sur ta cible."],
+    applies = forKinds("harm either pet"),
+    build = function(name, o) return recipeText(o, { "/cast [@mouseover,harm" .. alive(o) .. "][] " .. name }) end },
+  { id = "mouseover_help", title = L["Survol, sinon cible, sinon moi"],
+    desc = L["Lance le sort sur l'allié sous ta souris, sinon sur ta cible amie, sinon sur toi."],
+    applies = forKinds("help either pet"),
+    build = function(name, o)
+      return recipeText(o, { "/cast [@mouseover,help" .. alive(o) .. "][help" .. alive(o) .. "][@player] " .. name })
+    end },
+  { id = "focus_mod", title = L["Focus avec Maj"],
+    desc = L["Maj maintenue : sur ton focus. Sinon sur l'unité sous ta souris, sinon sur ta cible."],
+    applies = forKinds("harm help either pet"),
+    build = function(name, o)
+      return recipeText(o, { "/cast [mod:shift,@focus][@mouseover," .. wanted(o) .. alive(o) .. "][] " .. name })
+    end },
+  { id = "interrupt_focus", title = L["Interruption sur le focus"],
+    desc = L["Arrête ton incantation, puis lance le sort sur ton focus s'il est hostile, sinon sur ta cible."],
+    applies = forKinds("harm either pet"),
+    build = function(name, o) return recipeText(o, { "/stopcasting", "/cast [@focus,harm" .. alive(o) .. "][] " .. name }) end },
+  { id = "nearest", title = L["Ennemi le plus proche si pas de cible"],
+    desc = L["Sans cible, prend l'ennemi le plus proche, puis lance le sort."],
+    applies = forKinds("harm either"),
+    build = function(name, o)
+      return recipeText(o, { "/targetenemy [noexists]" .. (o.nodead and "[dead]" or ""), "/cast " .. name })
+    end },
+  { id = "self_alt", title = L["Sur moi avec Alt"],
+    desc = L["Alt maintenue : sur toi. Sinon sur l'allié sous ta souris, sinon sur ta cible."],
+    applies = forKinds("help either"),
+    build = function(name, o) return recipeText(o, { "/cast [mod:alt,@player][@mouseover,help" .. alive(o) .. "][] " .. name }) end },
+  { id = "with_pet", title = L["Avec le familier"],
+    desc = L["Ton familier attaque ta cible, puis tu lances le sort."],
+    applies = function(kind, hasPet) return hasPet == true and (kind == "harm" or kind == "either" or kind == "pet") end,
+    build = function(name, o) return recipeText(o, { "/petattack", "/cast " .. name }) end },
+  { id = "trinkets", title = L["Bijoux puis sort"],
+    desc = L["Utilise tes deux bijoux (emplacements 13 et 14), puis lance le sort."],
+    applies = forKinds("harm either"),
+    build = function(name, o) return recipeText(o, { "/use 13", "/use 14", "/cast " .. name }, name) end },
+  { id = "stopcasting", title = L["Annuler l'incantation en cours"],
+    desc = L["Arrête ce que tu incantes, pour que celui-ci parte tout de suite."],
+    applies = forKinds("harm help either pet item"),
+    build = function(name, o) return recipeText(o, { "/stopcasting", (o.kind == "item" and "/use " or "/cast ") .. name }) end },
+  { id = "sequence", title = L["Séquence de deux sorts"], editorOnly = true,
+    desc = L["Chaque appui lance le sort suivant. Remplace « Deuxième sort » dans l'éditeur."],
+    applies = forKinds("harm help either"),
+    build = function(name, o) return recipeText(o, { "/castsequence reset=target " .. name .. ", " .. L["Deuxième sort"] }) end },
+  { id = "item_fallback", title = L["Objet, puis sort"], editorOnly = true,
+    desc = L["Utilise l'objet, puis lance le sort. Remplace « Sort de secours » dans l'éditeur."],
+    applies = forKinds("item"),
+    build = function(name, o) return recipeText(o, { "/use " .. name, "/cast " .. L["Sort de secours"] }) end },
+}
+
+-- nom de macro tire d'un nom de sort : 16 octets au plus, sans couper un caractere UTF-8
+function ns.MacroName(name)
+  name = trim(name)
+  local last = math.min(#name, 16)
+  while last > 0 and last < #name and name:byte(last + 1) >= 128 and name:byte(last + 1) < 192 do last = last - 1 end
+  return trim(name:sub(1, last))
+end

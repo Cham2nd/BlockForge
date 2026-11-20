@@ -23,6 +23,8 @@ For WoW Forever. Interface in English and French, following the game client lang
 - **Duplicate a block.** One click copies a line right below it.
 - **My templates.** Keep your own macros in a personal library shared by all your characters: search, rename, notes, export and import.
 - **Send to a player.** Send a macro in game to another player who has BlockForge. They are asked first, nothing is saved on their side without their consent, and receiving can be turned off in the settings.
+- **Built-in spellbook.** A grid of your spells, your pet's abilities and the usable items in your bags, with a search box. One click adds the spell to your macro or fills the selected block.
+- **Assistant.** Pick a spell and get ready-made macros for it (mouseover, focus with a modifier key, interrupt on focus, nearest enemy, self-cast with Alt, pet attack, trinkets, cast sequence), with three options. Create the macro in one click, or open it in the editor.
 - **Guided tour.** A short tutorial walks through the window the first time you open it; `/bf tuto` replays it.
 - **Settings.** Window scale, minimap button, per-character macros by default, confirmation before overwrite, accent color (your class color or gold).
 
@@ -31,6 +33,7 @@ For WoW Forever. Interface in English and French, following the game client lang
 - `/bf` or the minimap button opens the window.
 - `/bf options` opens the settings.
 - `/bf tuto` replays the guided tour.
+- `/bf assistant` opens the macro assistant.
 - `/bf test` runs a self-check of the add-on in game.
 - Save creates a real game macro. Drag it to your action bar.
 
@@ -68,6 +71,8 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 - **Dupliquer un bloc.** Un clic copie une ligne juste en dessous.
 - **Mes modèles.** Gardez vos propres macros dans une bibliothèque personnelle commune à tous vos personnages : recherche, renommage, notes, export et import.
 - **Envoi à un joueur.** Envoyez une macro en jeu à un autre joueur qui a BlockForge. Il doit d'abord l'accepter, rien n'est enregistré chez lui sans son accord, et la réception se coupe dans les paramètres.
+- **Grimoire intégré.** Une grille de vos sorts, des techniques de votre familier et des objets utilisables de vos sacs, avec un champ de recherche. Un clic ajoute le sort à la macro ou remplit le bloc choisi.
+- **Assistant.** Choisissez un sort et obtenez des macros toutes faites pour lui (survol, focus avec touche de modification, interruption sur focus, ennemi le plus proche, sur soi avec Alt, attaque du familier, bijoux, séquence), avec trois options. Créez la macro en un clic, ou ouvrez-la dans l'éditeur.
 - **Visite guidée.** Un court tutoriel présente la fenêtre à la première ouverture ; `/bf tuto` le relance.
 - **Paramètres.** Échelle de la fenêtre, bouton de minicarte, macros par personnage par défaut, confirmation avant écrasement, couleur d'accent (celle de votre classe ou or).
 
@@ -76,6 +81,7 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 - `/bf` ou le bouton de minicarte ouvre la fenêtre.
 - `/bf options` ouvre les paramètres.
 - `/bf tuto` relance la visite guidée.
+- `/bf assistant` ouvre l'assistant de macros.
 - `/bf test` lance un contrôle de l'add-on dans le jeu.
 - Enregistrer crée une vraie macro du jeu. Glissez-la dans votre barre d'action.
 
