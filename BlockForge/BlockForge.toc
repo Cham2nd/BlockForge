@@ -2,7 +2,7 @@
 ## Title: BlockForge
 ## Notes: Block-based macro editor and per-class macro library. /bf
 ## Notes-frFR: Éditeur de macros par blocs et bibliothèque de macros par classe. /bf
-## Version: 0.6.0
+## Version: 0.6.1
 ## SavedVariables: BlockForgeDB
 ## X-Curse-Project-ID: 1816970
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
