@@ -273,24 +273,35 @@ function ns.Parse(text)
 end
 
 ---------------------------------------------------------------------------
--- Traduction : remplace les noms de sorts anglais par ceux de la langue du client
---   getName(id) -> nom localise ou nil (C_Spell.GetSpellName en jeu)
---   rankWord    -> mot "Rank" localise (global RANK en jeu)
+-- Traduction : remplace les noms de sorts et d'objets anglais par ceux de la langue du client
+--   getName(id)     -> nom de sort localise ou nil (C_Spell.GetSpellName en jeu)
+--   rankWord        -> mot "Rank" localise (global RANK en jeu)
+--   getItemName(id) -> nom d'objet localise ou nil tant qu'il n'est pas en cache (facultatif)
 ---------------------------------------------------------------------------
 local sortedNames
 local function isWordChar(c) return c ~= "" and c:find("^[%w\128-\255]") ~= nil end
 
-function ns.Localize(body, getName, rankWord)
+-- l'objet d'abord ; le sort de meme nom sert tant que l'objet n'est pas en cache
+local function lookup(name, getName, getItemName)
+  local item = getItemName and ns.ItemIDs and ns.ItemIDs[name]
+  local spell = ns.SpellIDs and ns.SpellIDs[name]
+  return (item and getItemName(item)) or (spell and getName(spell))
+end
+
+function ns.Localize(body, getName, rankWord, getItemName)
   if not sortedNames then
     sortedNames = {}
     for name in pairs(ns.SpellIDs or {}) do sortedNames[#sortedNames + 1] = name end
+    for name in pairs(ns.ItemIDs or {}) do
+      if not (ns.SpellIDs and ns.SpellIDs[name]) then sortedNames[#sortedNames + 1] = name end
+    end
     -- les plus longs d'abord : "Blessing of Sacrifice" avant "Sacrifice"
     table.sort(sortedNames, function(a, b) return #a > #b or (#a == #b and a < b) end)
   end
   local localized = {}
   for i, name in ipairs(sortedNames) do
     -- on teste la presence avant getName : 151 appels x plusieurs centaines de noms
-    local target = body:find(name, 1, true) and getName(ns.SpellIDs[name])
+    local target = body:find(name, 1, true) and lookup(name, getName, getItemName)
     if target and target ~= name then
       local from = 1
       while true do

@@ -10,7 +10,7 @@ For WoW Forever. Interface in English and French, following the game client lang
 - **Spell and item drop.** Drag a spell from the spellbook or an item from your bags onto a block.
 - **Live checks.** Character counter (255 max), and warnings for common mistakes: missing spell, two spells on the global cooldown, pet command right after a dismount.
 - **Macro library.** 274 macros for the 9 classes, sorted by PvE, PvP, pet and utility. Open one in the editor, change it, save it.
-- **Client language.** Spell names in the library are translated to your game language.
+- **Client language.** Spell and item names in the library are translated to your game language.
 - **Templates.** Five starting points for pet and PvP macros (pet attack + spell, pet modes on modifier keys, interrupt on focus, crowd control on mouseover, trinket then spell). Drop a spell on the empty slot.
 - **Knows your character.** Warns about a spell your character does not know or a misspelled name; the library greys out or hides macros you cannot use yet.
 - **Simulator.** Shows which line of the macro would fire for a given modifier key, target, mouseover and focus.
@@ -28,7 +28,7 @@ For WoW Forever. Interface in English and French, following the game client lang
 
 - Macros cannot be created or edited in combat. This is a game rule.
 - The add-on does not cast spells and does not read cooldowns. It only writes standard macros.
-- Items named in library macros (potions, poisons, mounts) are in English, whatever the client language. Replace them with the name shown in your client.
+- A few library macros contain a placeholder to replace with your own item (mount name, weapon and shield names).
 - Some library macros are not yet tested in game.
 
 ---
@@ -45,7 +45,7 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 - **Dépôt de sorts et d'objets.** Glissez un sort du grimoire ou un objet des sacs sur un bloc.
 - **Contrôles en direct.** Compteur de caractères (255 max) et avertissements : sort manquant, deux sorts sur le temps de recharge global, ordre de familier juste après une descente de monture.
 - **Bibliothèque.** 274 macros pour les 9 classes, classées en PvE, PvP, familier et utilitaire. Ouvrez-en une dans l'éditeur, modifiez-la, enregistrez-la.
-- **Langue du client.** Les noms de sorts de la bibliothèque sont traduits dans la langue du jeu.
+- **Langue du client.** Les noms de sorts et d'objets de la bibliothèque sont traduits dans la langue du jeu.
 - **Modèles.** Cinq points de départ pour les macros de familier et de PvP (attaque du familier + sort, modes du familier sur touches, interruption sur focus, contrôle sur survol, bijou puis sort). Glissez un sort sur l'emplacement vide.
 - **Connaît votre personnage.** Avertit d'un sort inconnu de votre personnage ou mal écrit ; la bibliothèque grise ou cache les macros que vous ne pouvez pas encore utiliser.
 - **Simulateur.** Montre quelle ligne de la macro partirait selon la touche, la cible, le survol et le focus.
@@ -63,5 +63,5 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 
 - Impossible de créer ou modifier une macro en combat. C'est une règle du jeu.
 - L'add-on ne lance aucun sort et ne lit pas les temps de recharge. Il écrit seulement des macros standard.
-- Les objets cités dans la bibliothèque (potions, poisons, montures) sont en anglais. Remplacez-les par le nom affiché dans votre client.
+- Quelques macros de la bibliothèque contiennent un nom à remplacer par le vôtre (monture, arme, bouclier).
 - Certaines macros de la bibliothèque ne sont pas encore testées en jeu.

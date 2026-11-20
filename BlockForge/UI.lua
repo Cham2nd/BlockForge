@@ -922,11 +922,14 @@ end
 local ENGLISH = GetLocale and GetLocale() ~= "frFR"
 local function LibraryDesc(entry) return ENGLISH and entry.descEN or entry.desc end
 
+-- nom d'objet : nil tant que l'objet n'est pas en cache (demande dans BuildLibrary)
+local GetItemName = C_Item and C_Item.GetItemNameByID
+
 -- la bibliotheque est ecrite en anglais : traduite a la demande, et seulement si le reglage le veut
 local function LibraryBody(entry)
   if not ns.db.localizeLibrary then return entry.body end
   if not entry.localized then
-    entry.localized = ns.Localize(entry.body, (C_Spell and C_Spell.GetSpellName) or GetSpellInfo, RANK)
+    entry.localized = ns.Localize(entry.body, (C_Spell and C_Spell.GetSpellName) or GetSpellInfo, RANK, GetItemName)
   end
   return entry.localized
 end
@@ -1113,6 +1116,25 @@ local function BuildLibrary(parent, showEditor)
   if not (start and classChips[start]) then start = classChips[playerClass] and playerClass or "ALL" end
   ShowClass(start)
   ns.RefreshLibrary = function() ShowDetail() Render() end
+
+  -- objets hors cache : demandes une seule fois ; a leur arrivee, les macros qui les citent sont retraduites
+  if GetItemName and C_Item.RequestLoadItemDataByID then
+    local nameOf = {}
+    for name, id in pairs(ns.ItemIDs or {}) do
+      nameOf[id] = name
+      if not GetItemName(id) then C_Item.RequestLoadItemDataByID(id) end
+    end
+    local itemEvents = CreateFrame("Frame")
+    itemEvents:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+    itemEvents:SetScript("OnEvent", function(_, _, itemID)
+      local name = nameOf[itemID]
+      if not name then return end
+      for _, entry in ipairs(ns.Library or {}) do
+        if entry.body:find(name, 1, true) then entry.localized = nil end
+      end
+      ns.RefreshLibrary()
+    end)
+  end
 end
 
 ---------------------------------------------------------------------------

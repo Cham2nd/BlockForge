@@ -1,3 +1,9 @@
+# BlockForge 0.6.0
+
+- Bibliothèque : les noms d'objets (pierres, potions, poisons, bandages, nourriture) sont traduits dans la langue du client, comme les sorts.
+- Contrôle automatique de la bibliothèque à chaque modification : champs, limites du jeu, identifiant de chaque sort.
+- Tests automatiques sur GitHub ; un tag de version publie la release avec son zip.
+
 # BlockForge 0.5.0
 
 - Nouvel onglet « Mes macros » : liste des macros du jeu, détail, ouverture dans l'éditeur.

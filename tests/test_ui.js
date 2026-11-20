@@ -163,7 +163,11 @@ C_Spell = {
   GetSpellName = function(id) return id == 172 and "Corruption" or ("Sort" .. id) end,
   GetSpellTexture = function(name) assert(not COMBAT, "recherche d'icone en combat") if name == "Corruption" then return 136118 end end,
 }
-C_Item = { GetItemInfo = function(id) return "Pierre de soins", "link" end, GetItemIconByID = function() return 135230 end }
+ITEM_NAMES = {}     -- cache d'objets du client : id -> nom traduit
+ITEM_REQUESTS = {}  -- appels a RequestLoadItemDataByID
+C_Item = { GetItemInfo = function(id) return "Pierre de soins", "link" end, GetItemIconByID = function() return 135230 end,
+  GetItemNameByID = function(id) return ITEM_NAMES[id] end,
+  RequestLoadItemDataByID = function(id) ITEM_REQUESTS[#ITEM_REQUESTS + 1] = id end }
 function GetInventoryItemTexture() return 135000 end
 function UnitClass() return "Démoniste", "WARLOCK", 9 end
 function InCombatLockdown() return COMBAT end
@@ -619,6 +623,26 @@ assert(rows[1].full == "/cast " .. spell, "l'editeur doit recevoir le texte angl
 click(cb("Traduire"), true)
 assert(bodyLabel._text == "/cast " .. C_Spell.GetSpellName(id))
 
+-- objet hors cache : nom anglais et demande, puis GET_ITEM_INFO_RECEIVED retraduit le detail
+local nItems = 0
+for _ in pairs(ns.ItemIDs) do nItems = nItems + 1 end
+assert(#ITEM_REQUESTS == nItems, "objets demandes : " .. #ITEM_REQUESTS .. " / " .. nItems)
+local stone = ns.ItemIDs["Major Soulstone"]
+ns.Library[#ns.Library + 1] = { class = "ALL", name = "ZZ Objet", category = "PvE", body = "/use [@player] Major Soulstone" }
+fire(byText("Bibliothèque"), "OnClick")
+fire(byText("Toutes classes"), "OnClick")
+for _ = 1, 30 do fire(listPanel, "OnMouseWheel", -1) end
+local itemRow
+for _, r in ipairs(libRows) do if r:IsShown() and r.text._text:find("ZZ Objet") then itemRow = r end end
+fire(itemRow, "OnClick")
+assert(bodyLabel._text == "/use [@player] Major Soulstone", "objet hors cache : " .. bodyLabel._text)
+assert(#ITEM_REQUESTS == nItems, "demande repetee a l'affichage")
+ITEM_NAMES[stone] = "Pierre d'âme majeure"
+fireEvent("GET_ITEM_INFO_RECEIVED", 999999, true) -- autre objet : rien
+assert(bodyLabel._text == "/use [@player] Major Soulstone")
+fireEvent("GET_ITEM_INFO_RECEIVED", stone, true)
+assert(bodyLabel._text == "/use [@player] Pierre d'âme majeure", "objet non retraduit : " .. bodyLabel._text)
+
 click(cb("Infobulles"), false)
 TOOLTIP_LINES = 0
 fire(saveBtn, "OnEnter")
@@ -883,7 +907,7 @@ L = null;
 L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 run(MOCK, "=mock");
-run(`Settings = nil  Minimap = nil  CATEGORIES = {}
+run(`Settings = nil  Minimap = nil  CATEGORIES = {}  C_Item = {}
      function InterfaceOptions_AddCategory(p) assert(p.name == "BlockForge") CATEGORIES[#CATEGORIES + 1] = p end
      BlockForgeDB = nil`, "=classic");
 for (const f of tocFiles) loadAddonFile(f);

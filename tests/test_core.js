@@ -30,6 +30,7 @@ ns.ToggleCond(cl, "@mouseover")
 assert(table.concat(cl.conds, ",") == "@mouseover,harm", table.concat(cl.conds, ","))
 -- Localize : bornes de mots, appels getName evites, % dans Rank
 NS.SpellIDs = { Heal = 1, Fear = 2 }
+NS.ItemIDs = { ["Major Soulstone"] = 16896, ["Kreeg's Stout Beatdown"] = 18284, ["Roasted Quail"] = 8952, Fear = 5 }
 local calls = 0
 local get = function(id) calls = calls + 1 return ({ "Soin", "Peur" })[id] end
 assert(ns.Localize("/use Healing Potion", get) == "/use Healing Potion")
@@ -37,6 +38,12 @@ assert(ns.Localize("/cast Heal(Rank 2)", get, "R%1") == "/cast Soin(R%1 2)")
 calls = 0
 ns.Localize("/cast Fear", get)
 assert(calls == 1, calls)
+-- Localize : objets comme les sorts ; hors cache (nil) : nom anglais ; objet hors cache de meme nom qu'un sort : nom du sort
+local items = { [16896] = "Pierre d'âme majeure", [18284] = "Raclée de Kreeg" }
+local getItem = function(id) return items[id] end
+local out = ns.Localize("/use [@player] Major Soulstone\n/use Kreeg's Stout Beatdown\n/use Roasted Quail\n/cast Fear", get, nil, getItem)
+assert(out == "/use [@player] Pierre d'âme majeure\n/use Raclée de Kreeg\n/use Roasted Quail\n/cast Peur", out)
+assert(ns.Localize("/use Major Soulstone", get) == "/use Major Soulstone") -- sans getItemName : rien pour les objets
 -- Diagnose : pas de faux positif sur casts conditionnels
 local function blk(arg, cond) local x = ns.NewBlock("cast"); x.clauses[1].arg = arg; if cond then x.clauses[1].conds = { cond } end return x end
 local _, w = ns.Diagnose({ blk("A", "mod:shift"), blk("B", "nomod") })
