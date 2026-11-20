@@ -85,7 +85,10 @@ local OPTIONAL = { "RAID_CLASS_COLORS", "GetMacroIcons", "GetPetActionInfo", "C_
   "C_SpecializationInfo.GetActiveSpecGroup", "C_SpecializationInfo.GetNumSpecGroups", "C_SpecializationInfo.GetSpecialization",
   "GetNumSpecGroups", "GetActiveSpecGroup", "C_Traits", "C_ClassTalents", "GetTalentInfo", "C_Container.GetContainerItemInfo",
   "SecureCmdOptionParse", "RegisterAttributeDriver", "UnregisterAttributeDriver", "RegisterStateDriver", "SecureHandlerWrapScript",
-  "AddonCompartmentFrame", "BlockForge_OnAddonCompartmentClick" }
+  "AddonCompartmentFrame", "BlockForge_OnAddonCompartmentClick",
+  -- V1 lot B : macros vivantes, kits, profils
+  "C_Timer.After", "UnitLevel", "C_Item.GetItemInfoInstant", "GetItemInfoInstant", "SetBinding",
+  "C_EncodingUtil.DecompressString", "C_EncodingUtil.DecodeBase64", "Enum.CompressionMethod" }
 
 local function Lookup(path)
   local v = _G
@@ -301,6 +304,74 @@ local CHECKS = {
       #ns.HomeActions, home and #home.suggestions or 0, gauge, level)
     out[#out + 1] = ("INFO health: %d macros, %d broken, %d duplicates, %d orphans (bars fully read: %s), %d at risk ; undo pending: %s"):format(
       report.total, #report.broken, #report.duplicates, #report.orphans, tostring(report.orphansKnown), #report.risky, tostring(ns.UndoLabel()))
+  end },
+  -- Lecture seule : aucune macro, aucune touche, aucun emplacement n'est modifie.
+  { "v1 lot B", function(out)
+    local function has(path) return Lookup(path) ~= nil and "present" or "absent" end
+    -- macros vivantes : ce que chaque jeton donne pour ce personnage, puis les ID embarques que le client ne nomme pas
+    local env, found = ns.Living.Env(), {}
+    for _, token in ipairs(ns.LivingTokens) do
+      if token.id ~= "sort" then
+        local name, real = ns.ResolveToken(token.id, "", env)
+        found[#found + 1] = token.id .. "=" .. (real and tostring(name) or "none")
+      end
+    end
+    out[#out + 1] = ("INFO living tokens (level %s, %d bag items): %s"):format(tostring(env.level), #env.bags, table.concat(found, ", "))
+    local english, unresolved, wrong, n = {}, {}, {}, 0
+    for name, id in pairs(ns.ItemIDs) do english[id] = name end
+    for token, list in pairs(ns.LivingItems) do
+      for _, e in ipairs(list) do
+        n = n + 1
+        local name = env.itemName(e[1])
+        if not name then
+          unresolved[#unresolved + 1] = token .. ":" .. e[1]
+        elseif GetLocale and GetLocale() == "enUS" and english[e[1]] and english[e[1]] ~= name then
+          wrong[#wrong + 1] = e[1] .. "=" .. name -- sur un client anglais, le nom attendu est connu
+        end
+      end
+    end
+    table.sort(unresolved)
+    out[#out + 1] = ("INFO living item ids without a name (not cached yet, or wrong id): %d / %d %s"):format(#unresolved, n, First(unresolved, 40))
+    if #wrong > 0 then out[#out + 1] = "FAIL living item ids with another name: " .. First(wrong, 20) end
+    local spellName = (C_Spell and C_Spell.GetSpellName) or GetSpellInfo
+    out[#out + 1] = ("INFO living: %d macros, %d journal lines ; food effect (spell 433) %s, drink effect (spell 430) %s ; C_Timer.After %s, UnitLevel %s, GetItemInfoInstant %s / %s"):format(
+      #ns.Living.List(), #ns.db.living.journal, tostring(spellName and spellName(433)), tostring(spellName and spellName(430)), has("C_Timer.After"), has("UnitLevel"),
+      has("C_Item.GetItemInfoInstant"), has("GetItemInfoInstant"))
+    -- kits : donnees, puis le kit « montee de niveau » de cette classe
+    local problems, kits = ns.KitProblems(), 0
+    for _, byRole in pairs(ns.Kits) do
+      for _, role in ipairs(ns.KitRoles) do
+        if byRole[role.id] then kits = kits + 1 end
+      end
+    end
+    out[#out + 1] = (#problems == 0 and "OK" or "FAIL") .. (" kits: %d, dangling references or bad counts: %d %s"):format(kits, #problems, First(problems, 5))
+    local items, usable, there = ns.KitsUI.Build({ role = "leveling", hover = true, pet = true }) or {}, 0, 0
+    for _, item in ipairs(items) do
+      if item.exists then there = there + 1 elseif #item.unknown == 0 then usable = usable + 1 end
+    end
+    out[#out + 1] = ("INFO kit of this class (leveling, mouseover, pet): %d macros, %d usable now, %d already there ; kit remembered %s, waiting macros now ready %d"):format(
+      #items, usable, there, tostring(ns.db.kits[ns.CharKey()] ~= nil), #ns.KitsUI.Ready())
+    -- profils, double specialisation, export « BF2: »
+    local profiles, autos, others, sets = 0, 0, 0, 0
+    for _, p in pairs(ns.db.profiles) do
+      profiles = profiles + 1
+      if p.auto then autos = autos + 1 end
+      if p.owner and p.owner ~= ns.CharKey() then others = others + 1 end
+    end
+    for _ in pairs(ns.db.sets) do sets = sets + 1 end
+    out[#out + 1] = ("INFO profiles: %d (%d automatic backups, %d from other characters), old sets kept %d ; spec API active group %s, SetBinding %s"):format(
+      profiles, autos, others, sets, tostring(ns.Profiles.ActiveSpec()), has("SetBinding"))
+    local macros = {}
+    for i = 1, math.min(20, #ns.Library) do macros[i] = { name = ns.Library[i].name, body = ns.Library[i].body, char = i % 2 == 0 } end
+    local codec = ns.Profiles.Codec()
+    local text = ns.ExportProfile("Test", macros, codec)
+    local back = ns.ImportProfile(text, codec)
+    local same = back ~= nil and #back.macros == #macros
+    for i, m in ipairs(same and macros or {}) do
+      same = same and back.macros[i].name == m.name and back.macros[i].body == m.body and back.macros[i].char == m.char
+    end
+    out[#out + 1] = (same and "OK" or "FAIL") .. (" BF2 profile round trip: %d macros, %d bytes, %s"):format(#macros, #text,
+      text:sub(1, 5) == "BF2z:" and "compressed with C_EncodingUtil" or codec and "plain (compression did not round-trip, or was not shorter)" or "plain (C_EncodingUtil absent)")
   end },
 }
 

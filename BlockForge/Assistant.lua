@@ -48,7 +48,7 @@ local function Render()
       card.recipe, card.body = recipe, recipe.build(entry.name, options)
       card.title:SetText(recipe.title)
       card.desc:SetText(recipe.desc)
-      card.code:SetText(ns.Code(card.body))
+      card.code:SetText(ns.Code(ns.TokenText(card.body))) -- un jeton vivant se lit « <Potion de soin> »
       card.count:SetText(("%d / %d"):format(#card.body, ns.MAX_CHARS))
       card.create:SetText(state.slot and L["Créer et poser"] or L["Créer la macro"])
       -- un nom reste a remplacer : la macro passe par l'editeur
@@ -68,7 +68,8 @@ local function Pick(entry, slot)
   state.recipes, state.offset = {}, 0
   local hasPet = ns.HasPet()
   for _, recipe in ipairs(ns.Recipes) do
-    if recipe.applies(state.kind, hasPet) then state.recipes[#state.recipes + 1] = recipe end
+    -- feature : recette d'une fonction que le joueur peut couper (macros vivantes)
+    if (not recipe.feature or ns.Enabled(recipe.feature)) and recipe.applies(state.kind, hasPet) then state.recipes[#state.recipes + 1] = recipe end
   end
   Render()
 end
@@ -83,7 +84,7 @@ local function BuildCard(deck, i)
   card.title:SetWidth(270)
   card.title:SetWordWrap(false)
   card.create = ui.Button(card, L["Créer la macro"], 120, function()
-    local name = state.entry.macroName or ns.MacroName(state.entry.name)
+    local name = card.recipe.name or state.entry.macroName or ns.MacroName(state.entry.name)
     if state.slot then
       -- la macro prend la place du sort ; retour a l'image des barres, ou « Annuler » attend
       return ns.Bars.Upgrade(state.slot, name, card.body, function()
@@ -103,7 +104,7 @@ local function BuildCard(deck, i)
   card.open = ui.Button(card, L["Ouvrir dans l'éditeur"], 150, function()
     local typed = ns.ed.Name()
     -- le contenu remplace reste a portee de « Annuler » (Ctrl+Z)
-    ns.ed.Load(typed ~= "" and typed or ns.MacroName(state.entry.name), card.body)
+    ns.ed.Load(typed ~= "" and typed or card.recipe.name or ns.MacroName(state.entry.name), card.body)
     panel:Hide()
   end)
   card.open:SetPoint("RIGHT", card.create, "LEFT", -6, 0)

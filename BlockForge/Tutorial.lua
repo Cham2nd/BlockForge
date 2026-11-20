@@ -5,7 +5,7 @@ local T = ns.Theme
 
 local function W(key) return function() return ns.ed.w[key] end end
 
--- Etapes : onglet, fonction (facultatif : l'etape est sautee si le joueur l'a coupee), widget explique, position du panneau { son point, point du widget, x, y }, titre, texte.
+-- Douze etapes au plus. Etapes : onglet, fonction (facultatif : l'etape est sautee si le joueur l'a coupee), widget explique, position du panneau { son point, point du widget, x, y }, titre, texte.
 -- Le panneau fait 320 x 140. Positions calculees dans la page de 884 x 570 (fenetre de 900 x 640) :
 --   blocs 0-160, zone 166-582, reglages 588-884 (hauteur 430) ; apercu en dessous, de -436 a -566.
 ns.TutorialSteps = {
@@ -13,12 +13,22 @@ ns.TutorialSteps = {
   { tab = "home", feature = "home", anchor = W("homeActions"), at = { "TOPLEFT", "BOTTOMLEFT", 8, -8 }, -- 8 a 328, -260 a -400
     title = L["L'accueil"],
     text = L["BlockForge s'ouvre ici. « Améliorer ma barre » remplace un sort de ta barre par sa macro, à la même place. En bas, le bilan de santé repère tes macros cassées, en double ou jamais utilisées, à côté de macros suggérées pour ton personnage."] },
+  -- any : montree si au moins une de ces fonctions est active ; text peut etre une fonction, qui ne parle que de celles-la
+  { tab = "home", feature = "home", any = { "kits", "profiles", "living" }, anchor = W("homeActions"), at = { "TOPLEFT", "BOTTOMLEFT", 8, -8 },
+    title = L["Kits, profils, macros vivantes"],
+    text = function()
+      local parts = {}
+      if ns.Enabled("kits") then parts[#parts + 1] = L["« Équiper mon personnage » installe d'un coup un kit de macros pour ta classe et ton rôle."] end
+      if ns.Enabled("profiles") then parts[#parts + 1] = L["« Profils » garde tes macros, tes touches et tes barres, pour une autre spé ou un autre personnage."] end
+      if ns.Enabled("living") then parts[#parts + 1] = L["Une macro « vivante » suit tes sacs et ton équipement : BlockForge la réécrit hors combat."] end
+      return table.concat(parts, " ")
+    end },
   { tab = "editor", anchor = W("palette"), at = { "TOPLEFT", "TOPRIGHT", 8, -40 }, -- 168 a 488, -40 a -180
     title = L["Les blocs"],
     text = L["Chaque bloc est une ligne de macro : lancer un sort, utiliser un objet, donner un ordre au familier… Clique sur un bloc pour l'ajouter à ta macro, ou glisse-le à l'endroit voulu."] },
   { tab = "editor", anchor = W("canvas"), at = { "BOTTOMLEFT", "BOTTOMLEFT", 40, 40 }, -- 206 a 526, -250 a -390
     title = L["Ta macro"],
-    text = L["Les blocs s'empilent ici, dans l'ordre où le jeu les lit. Glisse une ligne pour la déplacer ; « x2 » la duplique, « x » la supprime. Tu peux aussi déposer ici un sort du grimoire ou un objet des sacs."] },
+    text = L["Les blocs s'empilent ici, dans l'ordre où le jeu les lit. Glisse une ligne pour la déplacer ; « x2 » la duplique, « x » la supprime. En bas : « Modèles » pour partir d'un exemple, « Annuler » et « Rétablir » pour revenir en arrière."] },
   { tab = "editor", anchor = W("insp"), at = { "TOPRIGHT", "TOPLEFT", -8, -40 }, -- 260 a 580, -40 a -180
     title = L["Les conditions"],
     text = L["Clique sur un bloc, puis règle-le ici : son sort et ses conditions (cible survolée, focus, touche maintenue, combat…). Le « + » ajoute une alternative, essayée quand la précédente ne s'applique pas."] },
@@ -28,9 +38,6 @@ ns.TutorialSteps = {
   { tab = "editor", anchor = W("save"), at = { "BOTTOMLEFT", "TOPLEFT", 0, 60 }, -- 450 a 770, -294 a -434
     title = L["Nommer et enregistrer"],
     text = L["Donne un nom (16 caractères au plus), puis « Créer / mettre à jour » : c'est une vraie macro du jeu, à poser sur une barre d'action. À gauche, le bouton montre son icône : clique dessus pour la changer. « Plus… » la garde dans ta bibliothèque ou l'envoie à un joueur."] },
-  { tab = "editor", anchor = W("templates"), at = { "BOTTOMLEFT", "TOPRIGHT", 126, 8 }, -- 400 a 720, -252 a -392
-    title = L["Les modèles"],
-    text = L["Pas d'idée ? Pars d'un modèle (familier, PvP), puis glisse tes sorts sur les blocs marqués « (argument ?) ». À côté, « Annuler » et « Rétablir » reviennent sur tes dernières modifications."] },
   -- boutons sur la ligne des onglets, de +25 a +3 au-dessus de la page : le panneau se pose dessous, aligne a droite
   { tab = "editor", feature = "grimoire", anchor = W("grimoireButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 438 a 758, -5 a -145
     title = L["Mon grimoire"],
@@ -63,7 +70,7 @@ local function Show(i)
   if not anchor then return Tutorial.Stop() end -- onglet qui n'a pas pu se construire
   Tutorial.step = i
   coach.title:SetText(s.title)
-  coach.text:SetText(s.text)
+  coach.text:SetText(type(s.text) == "function" and s.text() or s.text)
   coach.count:SetText(("%d / %d"):format(i, #steps))
   coach:ClearAllPoints()
   coach:SetPoint(s.at[1], anchor, s.at[2], s.at[3], s.at[4])
@@ -123,14 +130,17 @@ function Tutorial.Start(manual)
   ns.Open()
   -- le grimoire couvrirait la palette, l'Assistant tout l'editeur
   if ns.HideGrimoire then ns.HideGrimoire() end
-  if ns.assistant then ns.assistant:Hide() end
-  if ns.wand then ns.wand:Hide() end
-  if ns.health then ns.health:Hide() end
+  ns.HidePanels()
   if not coach then Build() end
   ns.db.tutorialSeen = true
   Tutorial.steps = {}
   for _, s in ipairs(ns.TutorialSteps) do
-    if not s.feature or ns.Enabled(s.feature) then Tutorial.steps[#Tutorial.steps + 1] = s end
+    local on = not s.feature or ns.Enabled(s.feature)
+    for i, feature in ipairs(s.any or {}) do
+      if ns.Enabled(feature) then break end
+      if i == #s.any then on = false end
+    end
+    if on then Tutorial.steps[#Tutorial.steps + 1] = s end
   end
   Show(1)
 end

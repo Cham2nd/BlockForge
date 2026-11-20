@@ -376,8 +376,9 @@ function ns.Localize(body, getName, rankWord, getItemName)
   local localized = {}
   for i, name in ipairs(sortedNames) do
     -- on teste la presence avant getName : 151 appels x plusieurs centaines de noms
-    local target = body:find(name, 1, true) and lookup(name, getName, getItemName)
-    if target and target ~= name then
+    -- un nom present mais pas encore traduit est protege tel quel : « Bandage » n'est pas remplace dans « Heavy Bandage »
+    local target = body:find(name, 1, true) and (lookup(name, getName, getItemName) or name)
+    if target then
       local from = 1
       while true do
         local s, e = body:find(name, from, true)
@@ -863,6 +864,20 @@ ns.Recipes = {
     desc = L["Utilise l'objet, puis lance le sort. Remplace « Sort de secours » dans l'éditeur."],
     applies = forKinds("item"),
     build = function(name, o) return recipeText(o, { "/use " .. name, "/cast " .. L["Sort de secours"] }) end },
+  -- Recettes vivantes (feature : coupees avec la fonction). Les jetons {bf:...} sont remplaces par de vrais noms a l'enregistrement.
+  -- name : nom de la macro, quand elle ne porte pas celui du sort choisi.
+  -- Pierre et potion n'ont pas le meme temps de recharge : selon le jeu, les deux peuvent partir sur le meme appui.
+  -- Le bandage se canalise : il reste derriere une touche, pour ne pas partir avec la potion.
+  { id = "survival", feature = "living", name = L["Survie"], title = L["Bouton de survie"],
+    desc = L["Pierre de soins, sinon ta meilleure potion ; avec une touche tenue : bandage. Suit tes sacs tout seul."],
+    applies = forKinds("item"),
+    build = function(_, o)
+      return recipeText(o, { "/use [nomod] {bf:pierre_soin}", "/use [nomod] {bf:potion_soin}", "/use [mod] {bf:bandage}" })
+    end },
+  { id = "living_trinkets", feature = "living", title = L["Bijoux vivants"],
+    desc = L["Tes deux bijoux par leur nom, puis le sort : la macro suit les bijoux que tu portes."],
+    applies = forKinds("harm either"),
+    build = function(name, o) return recipeText(o, { "/use {bf:bijou13}", "/use {bf:bijou14}", "/cast " .. name }, name) end },
 }
 
 -- nom de macro tire d'un nom de sort : 16 octets au plus (max : moins, pour laisser la place a un suffixe), sans couper un caractere UTF-8
@@ -1047,4 +1062,240 @@ function ns.Suggestions(candidates, macros, max)
     end
   end
   return out
+end
+
+---------------------------------------------------------------------------
+-- V1 lot B : macros vivantes, profils. Logique pure : sacs, equipement, raccourcis et barres sont injectes (env).
+---------------------------------------------------------------------------
+-- Objets des jetons, du meilleur au moins bon : { ID, niveau requis }. IDs ecrits de memoire des donnees de l'ere
+-- classique, a verifier en jeu par /bf test. Pierres de soins : trois ID par rang (talent), aucun niveau retenu.
+-- shortcut: bandages sans controle de la competence Secourisme, a lire dans les metiers si un bandage trop haut est choisi
+ns.LivingItems = {
+  potion_soin = { { 13446, 45 }, { 3928, 35 }, { 1710, 21 }, { 929, 12 }, { 858, 3 }, { 118, 1 } },
+  potion_mana = { { 13444, 49 }, { 13443, 41 }, { 6149, 31 }, { 3827, 22 }, { 3385, 14 }, { 2455, 5 } },
+  pierre_soin = { { 19013, 1 }, { 19012, 1 }, { 9421, 1 }, { 19011, 1 }, { 19010, 1 }, { 5510, 1 }, { 19009, 1 }, { 19008, 1 }, { 5509, 1 },
+                  { 19007, 1 }, { 19006, 1 }, { 5511, 1 }, { 19005, 1 }, { 19004, 1 }, { 5512, 1 } },
+  bandage = { { 14530, 1 }, { 14529, 1 }, { 8545, 1 }, { 8544, 1 }, { 6451, 1 }, { 6450, 1 }, { 3531, 1 }, { 3530, 1 }, { 2581, 1 }, { 1251, 1 } },
+  nourriture = { { 22895, 55 }, { 8076, 45 }, { 8075, 35 }, { 1487, 25 }, { 1114, 15 }, { 1113, 5 }, { 5349, 1 },
+                 { 8950, 45 }, { 4601, 35 }, { 4544, 25 }, { 4542, 15 }, { 4541, 5 }, { 4540, 1 },
+                 { 8952, 45 }, { 4599, 35 }, { 3771, 25 }, { 3770, 15 }, { 2287, 5 }, { 117, 1 } },
+  eau = { { 8079, 55 }, { 8078, 45 }, { 8077, 35 }, { 3772, 25 }, { 2136, 15 }, { 2288, 5 }, { 5350, 1 },
+          { 8766, 45 }, { 1645, 35 }, { 1708, 25 }, { 1205, 15 }, { 1179, 5 }, { 159, 1 } },
+}
+
+-- Jetons proposes par « Vivant… ». slot : emplacement d'equipement lu par son nom. Le focus n'en fait pas partie : il change en combat.
+ns.LivingTokens = {
+  { id = "potion_soin", label = L["Potion de soin"], tip = L["La meilleure potion de soin de tes sacs que ton niveau permet."] },
+  { id = "potion_mana", label = L["Potion de mana"], tip = L["La meilleure potion de mana de tes sacs que ton niveau permet."] },
+  { id = "pierre_soin", label = L["Pierre de soins"], tip = L["La meilleure pierre de soins de démoniste de tes sacs, quel que soit son rang."] },
+  { id = "bandage", label = L["Bandage"], tip = L["Le meilleur bandage de tes sacs."] },
+  { id = "nourriture", label = L["Nourriture"], tip = L["La meilleure nourriture de tes sacs que ton niveau permet."] },
+  { id = "eau", label = L["Eau"], tip = L["La meilleure boisson de tes sacs que ton niveau permet."] },
+  { id = "bijou13", slot = 13, label = L["Bijou du haut"], tip = L["Le nom du bijou que tu portes dans cet emplacement."] },
+  { id = "bijou14", slot = 14, label = L["Bijou du bas"], tip = L["Le nom du bijou que tu portes dans cet emplacement."] },
+  { id = "arme", slot = 16, label = L["Arme en main droite"], tip = L["Le nom de l'arme que tu tiens en main droite."] },
+  { id = "main_gauche", slot = 17, label = L["Main gauche"], tip = L["Le nom de l'arme ou du bouclier que tu tiens en main gauche."] },
+  { id = "monture", label = L["Ma monture"], tip = L["La première monture trouvée dans tes sacs, si les montures sont des objets sur ce client."] },
+  { id = "familier", label = L["Nom de mon familier"], tip = L["Le nom du familier sorti."] },
+  { id = "sort", label = L["Plus haut rang du sort"], tip = L["Écrit le nom du sort sans son rang : le jeu lance alors le plus haut rang que tu connais."] },
+}
+local tokenById, TOKEN = {}, "{bf:([%w_]+):?([^}]*)}"
+for _, t in ipairs(ns.LivingTokens) do tokenById[t.id] = t end
+-- objets reconnus par leur type quand le client le donne (nourriture, boisson, monture), en plus des listes ci-dessus
+local TOKEN_KIND = { nourriture = "food", eau = "drink", monture = "mount" }
+
+function ns.HasTokens(text) return (text or ""):find("{bf:", 1, true) ~= nil end
+
+-- jetons d'un texte, sans doublon : { raw = "{bf:sort:Peur}", id = "sort", param = "Peur", label }
+function ns.TokensOf(text)
+  local list, seen = {}, {}
+  for raw, id, param in (text or ""):gmatch("(" .. TOKEN .. ")") do
+    if not seen[raw] then
+      seen[raw] = true
+      list[#list + 1] = { raw = raw, id = id, param = param, label = tokenById[id] and tokenById[id].label or id }
+    end
+  end
+  return list
+end
+
+-- texte montre au joueur : « <Potion de soin> » a la place du jeton
+function ns.TokenText(text)
+  return (text:gsub(TOKEN, function(id, param)
+    return "<" .. (tokenById[id] and tokenById[id].label or id) .. (param ~= "" and (" " .. param) or "") .. ">"
+  end))
+end
+
+-- env : level ; bags = { { id, name, kind ("food" | "drink" | "mount" | nil), level } } ; slots[13 | 14 | 16 | 17] = nom ;
+-- pet = nom ; itemName(id) (facultatif). Renvoie le nom, et true s'il vient vraiment des sacs ou de l'equipement.
+function ns.ResolveToken(id, param, env)
+  local def = tokenById[id]
+  if not def then return nil, false end
+  if id == "sort" then
+    local name = trim(((param or ""):gsub("%s*%(.-%)%s*$", "")))
+    if name == "" then return nil, false end
+    return name, true
+  elseif id == "familier" then
+    return env.pet, env.pet ~= nil
+  elseif def.slot then
+    local name = env.slots and env.slots[def.slot]
+    return name, name ~= nil
+  end
+  local curated, rank = ns.LivingItems[id] or {}, {}
+  for i, e in ipairs(curated) do rank[e[1]] = i end
+  local best, bestLevel, bestRank
+  for _, item in ipairs(env.bags or {}) do
+    local r = rank[item.id]
+    local level = (r and curated[r][2]) or (item.kind ~= nil and item.kind == TOKEN_KIND[id] and (item.level or 0)) or nil
+    if level and item.name and level <= (env.level or 60) then
+      r = r or 1000
+      if not best or level > bestLevel or (level == bestLevel and r < bestRank) then best, bestLevel, bestRank = item.name, level, r end
+    end
+  end
+  if best then return best, true end
+  -- rien dans les sacs : le plus petit objet de la liste donne au moins un nom a ecrire
+  local lowest = curated[#curated]
+  return lowest and env.itemName and env.itemName(lowest[1]) or nil, false
+end
+
+-- Remplace chaque jeton du modele par un vrai nom. last[jeton] : nom ecrit la derniere fois, garde quand les sacs sont vides.
+-- Renvoie le texte (nil si un jeton n'a aucun nom), names[jeton] = nom, et la liste des jetons sans objet (« rien dans les sacs »).
+function ns.ResolveLiving(template, env, last)
+  local names, missing, body = {}, {}, template
+  for _, t in ipairs(ns.TokensOf(template)) do
+    local name, found = ns.ResolveToken(t.id, t.param, env)
+    if not found then
+      name = (last and last[t.raw]) or name
+      missing[#missing + 1] = t.raw
+    end
+    if not name then return nil, names, missing end
+    names[t.raw] = name
+    body = body:gsub(t.raw:gsub("%p", "%%%0"), (name:gsub("%%", "%%%%")))
+  end
+  return body, names, missing
+end
+
+---------------------------------------------------------------------------
+-- Profil entier en texte : "BF2:nom:nombre" puis, par macro, ":a|c:nom:corps" (a = generale, c = personnage).
+-- Macros seulement : ni raccourcis ni barres. Meme echappement et memes controles que "BF1:".
+---------------------------------------------------------------------------
+local MAX_PROFILE_MACROS, MAX_PROFILE_BYTES = 150, 200000
+
+-- codec (facultatif) : pack(texte) -> texte compresse imprimable, unpack(texte) -> texte ; nil ou erreur si le client ne sait pas
+function ns.ExportProfile(name, macros, codec)
+  local parts = { "BF2", escape(name), tostring(#macros) }
+  for _, m in ipairs(macros) do
+    parts[#parts + 1] = m.char and "c" or "a"
+    parts[#parts + 1] = escape(m.name)
+    parts[#parts + 1] = escape(m.body)
+  end
+  local plain = table.concat(parts, ":")
+  -- compresse seulement si l'aller-retour redonne le texte exact, et s'il est plus court
+  local ok, packed = pcall(function()
+    local z = codec and codec.pack and codec.pack(plain)
+    return type(z) == "string" and not z:find("[^%w%+/=_%-]") and codec.unpack(z) == plain and z or nil
+  end)
+  if ok and packed and #packed + 5 < #plain then return "BF2z:" .. packed end
+  return plain
+end
+
+-- renvoie { name, macros = { { name, body, char } } }, ou nil et la raison
+function ns.ImportProfile(str, codec)
+  str = trim(type(str) == "string" and str or "")
+  if #str > MAX_PROFILE_BYTES then return nil, L["Texte trop long."] end
+  local packed = str:match("^BF2z:(.+)$")
+  if packed then
+    local ok, plain = pcall(function() return codec and codec.unpack and codec.unpack(packed) end)
+    if not ok or type(plain) ~= "string" then
+      return nil, L["Ce texte est compressé et ce client ne sait pas le lire : demande un export non compressé."]
+    end
+    if #plain > MAX_PROFILE_BYTES then return nil, L["Texte trop long."] end
+    str = plain
+  end
+  local fields = {}
+  for field in (str .. ":"):gmatch("([^:]*):") do fields[#fields + 1] = field end
+  if fields[1] ~= "BF2" then return nil, L["Texte non reconnu : il doit commencer par « BF2: »."] end
+  local n = tonumber(fields[3])
+  if not n or n < 1 or n > MAX_PROFILE_MACROS or n ~= math.floor(n) or #fields ~= 3 + n * 3 then
+    return nil, L["Profil abîmé : le nombre de macros ne correspond pas."]
+  end
+  if fields[2]:gsub("%%%x%x", ""):find("[%%|%c]") then return nil, L["Texte abîmé : caractère inattendu."] end
+  local profile, seen = { name = trim((unescape(fields[2]):gsub("[|%c]", ""))):sub(1, 40), macros = {} }, {}
+  for i = 1, n do
+    local scope = fields[3 * i + 1]
+    local name, body = ns.Import("BF1:" .. fields[3 * i + 2] .. ":" .. fields[3 * i + 3])
+    if not name then return nil, body end
+    if (scope ~= "a" and scope ~= "c") or seen[scope .. name] then return nil, L["Profil abîmé : le nombre de macros ne correspond pas."] end
+    seen[scope .. name] = true
+    profile.macros[i] = { name = name, body = body, char = scope == "c" }
+  end
+  return profile
+end
+
+---------------------------------------------------------------------------
+-- Activation d'un profil : ce qui changerait, sans rien toucher.
+-- profile : { macros = { { name, body, char, icon } }, bindings = { [macro] = { touches } }, bars = { [emplacement] = macro } }
+-- opts : update (reecrire une macro de meme nom au texte different), remove (retirer les macros absentes), keys, bars
+-- env.binding(touche) -> action liee ou "" ; env.slot(emplacement) -> entree de ns.ScanBars ; env.unknown(corps) -> noms inconnus
+-- Renvoie create, same, left (listes de macros), update ({ macro, old }), remove, binds ({ key, macro, replaces }),
+-- slots ({ slot, macro, before }), blocked (emplacements jamais touches), need / freed [macro du personnage ?], unknown.
+---------------------------------------------------------------------------
+function ns.ProfilePlan(profile, macros, opts, env)
+  local plan = { create = {}, update = {}, left = {}, same = {}, remove = {}, binds = {}, slots = {}, blocked = {},
+                 need = { [false] = 0, [true] = 0 }, freed = { [false] = 0, [true] = 0 }, unknown = 0 }
+  local have, wanted, names = {}, {}, {}
+  local function key(m) return (m.char and "c" or "a") .. m.name end
+  for _, m in ipairs(macros) do have[key(m)] = m end
+  for _, m in ipairs(type(profile.macros) == "table" and profile.macros or {}) do
+    local valid = type(m) == "table" and type(m.name) == "string" and type(m.body) == "string" and trim(m.name) ~= ""
+      and #m.name:gsub("[\128-\191]", "") <= 16 and #m.body <= ns.MAX_CHARS
+    if valid and not wanted[key(m)] then
+      wanted[key(m)], names[m.name] = m, true
+      local old, char = have[key(m)], m.char and true or false
+      if not old then
+        plan.create[#plan.create + 1] = m
+        plan.need[char] = plan.need[char] + 1
+      elseif ns.NormBody(old.body) == ns.NormBody(m.body) then
+        plan.same[#plan.same + 1] = m
+      elseif opts.update then
+        plan.update[#plan.update + 1] = { macro = m, old = old }
+      else
+        plan.left[#plan.left + 1] = m
+      end
+      if env.unknown and #env.unknown(m.body) > 0 then plan.unknown = plan.unknown + 1 end
+    end
+  end
+  if opts.remove then
+    for _, m in ipairs(macros) do
+      if not wanted[key(m)] then
+        plan.remove[#plan.remove + 1] = m
+        plan.freed[m.char and true or false] = plan.freed[m.char and true or false] + 1
+      end
+    end
+  end
+  if opts.keys and type(profile.bindings) == "table" then
+    for name, keys in pairs(profile.bindings) do
+      for _, k in ipairs(names[name] and type(keys) == "table" and keys or {}) do
+        local now = type(k) == "string" and (env.binding(k) or "") or nil
+        if now and now ~= "MACRO " .. name then
+          plan.binds[#plan.binds + 1] = { key = k, macro = name, replaces = now ~= "" and now or nil }
+        end
+      end
+    end
+    table.sort(plan.binds, function(a, b) return a.key < b.key end)
+  end
+  if opts.bars and type(profile.bars) == "table" then
+    for slot, name in pairs(profile.bars) do
+      local now = type(slot) == "number" and names[name] and env.slot(slot)
+      if now and now.macroName ~= name then
+        if now.kind == "other" then
+          plan.blocked[#plan.blocked + 1] = slot
+        else
+          plan.slots[#plan.slots + 1] = { slot = slot, macro = name, before = now }
+        end
+      end
+    end
+    table.sort(plan.slots, function(a, b) return a.slot < b.slot end)
+    table.sort(plan.blocked)
+  end
+  return plan
 end

@@ -20,6 +20,17 @@ ns.HomeActions = {
     run = function() ns.Open("macros") end },
 }
 
+-- Ajouts au bandeau de l'accueil : fonctions (bandeau, page) appelees a la fin de ns.BuildHome par les fichiers charges ensuite.
+-- Place libre a droite du compte des macros : de 640 a 876, deux lignes de 18 px a -50 et a -72.
+ns.HomeBuilders = {}
+
+-- un seul grand panneau a la fois par-dessus une page
+function ns.HidePanels()
+  for _, key in ipairs({ "wand", "health", "assistant", "kitsPanel", "livingPanel", "profilesPanel" }) do
+    if ns[key] then ns[key]:Hide() end
+  end
+end
+
 local home -- widgets de la page, poses par ns.BuildHome
 
 -- jauge de l'en-tete (visible sur tous les onglets) et du bandeau de l'accueil
@@ -110,6 +121,8 @@ function ns.BuildHome(page)
   hello:SetWidth(864)
   hello:SetWordWrap(false)
   home.counts = ui.Label(top, "", 10, -54, "GameFontHighlight")
+  home.counts:SetWidth(620) -- les lignes des kits et des macros vivantes commencent a 640
+  home.counts:SetWordWrap(false)
   -- deux barres de 300 x 6 a -76 : macros generales de 10 a 310, macros du personnage de 330 a 630
   for i = 1, 2 do
     local bg = top:CreateTexture(nil, "ARTWORK")
@@ -209,6 +222,7 @@ function ns.BuildHome(page)
   home.noSuggestion:SetWidth(556)
 
   w.home, w.homeTop, w.homeActions, w.homeHealth, w.homeSuggest = page, top, actions, health, suggest
+  for _, build in ipairs(ns.HomeBuilders) do build(top, page) end
   page:SetScript("OnEvent", function() if w.main:IsVisible() then ns.RefreshHome() end end)
   page:HookScript("OnShow", ns.RefreshHome)
   T.OnChange(function() Refresh(false) end)

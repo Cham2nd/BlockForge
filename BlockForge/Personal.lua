@@ -59,7 +59,8 @@ end
 
 -- Archive sans question (bilan de sante) : renvoie le nom sous lequel le modele est range, nil si la bibliotheque est pleine.
 -- Un modele de meme nom n'est jamais ecrase : meme texte, il sert d'archive ; texte different, le nom recoit un suffixe.
-function ns.ArchivePersonal(name, body, icon)
+-- note (facultatif) : d'ou vient l'archive, quand ce n'est pas le bilan de sante.
+function ns.ArchivePersonal(name, body, icon, note)
   local base = ns.trim((name or ""):gsub("[|%c]", ""))
   if base == "" then base = "?" end
   local stored, n = base, 1
@@ -72,7 +73,7 @@ function ns.ArchivePersonal(name, body, icon)
   end
   if #ns.db.personal >= MAX_PERSONAL then return nil end
   if type(icon) ~= "string" and type(icon) ~= "number" then icon = nil end
-  ns.db.personal[#ns.db.personal + 1] = { name = stored, body = body or "", icon = icon, note = L["Archivée par le bilan de santé."] }
+  ns.db.personal[#ns.db.personal + 1] = { name = stored, body = body or "", icon = icon, note = note or L["Archivée par le bilan de santé."] }
   Changed()
   return stored
 end

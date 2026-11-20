@@ -356,7 +356,7 @@ for _, r in ipairs(ns.Recipes) do
           assert(#text <= ns.MAX_CHARS, "trop long : " .. where)
           local _, warnings = ns.Diagnose(ns.Parse(text))
           assert(#warnings == 0, "avertissement « " .. tostring(warnings[1]) .. " » : " .. where)
-          assert(text:find(long, 1, true), "sans le sort : " .. where)
+          assert(r.name or text:find(long, 1, true), "sans le sort : " .. where) -- r.name : recette sans sort (bouton de survie)
           assert((text:sub(1, 12) == "#showtooltip") == o.showtooltip and (text:find("nodead", 1, true) == nil or o.nodead), where)
           assert((text:find("/stopattack", 1, true) ~= nil) == (o.stopattack and kind ~= "help" and kind ~= "item"), where)
           built = built + 1
@@ -368,12 +368,12 @@ end
 assert(#ns.Recipes >= 10 and built > 300, built)
 for _, kind in ipairs({ "harm", "help", "either", "pet", "item" }) do assert((perKind[kind] or 0) >= 2, "type sans recette : " .. kind) end
 -- recettes proposees selon le type du sort ; « Avec le familier » seulement avec un familier
-assert(applicable("harm", false) == "mouseover_harm focus_mod interrupt_focus nearest trinkets stopcasting sequence", applicable("harm", false))
-assert(applicable("harm", true) == "mouseover_harm focus_mod interrupt_focus nearest with_pet trinkets stopcasting sequence", applicable("harm", true))
+assert(applicable("harm", false) == "mouseover_harm focus_mod interrupt_focus nearest trinkets stopcasting sequence living_trinkets", applicable("harm", false))
+assert(applicable("harm", true) == "mouseover_harm focus_mod interrupt_focus nearest with_pet trinkets stopcasting sequence living_trinkets", applicable("harm", true))
 assert(applicable("help", true) == "mouseover_help focus_mod self_alt stopcasting sequence", applicable("help", true))
-assert(applicable("item", true) == "stopcasting item_fallback", applicable("item", true))
+assert(applicable("item", true) == "stopcasting item_fallback survival", applicable("item", true))
 local all = applicable("either", true) -- type inconnu : toutes les recettes de sort
-for id in pairs(ids) do assert(id == "item_fallback" or all:find(id, 1, true), "recette absente pour un sort de type inconnu : " .. id) end
+for id in pairs(ids) do assert(id == "item_fallback" or id == "survival" or all:find(id, 1, true), "recette absente pour un sort de type inconnu : " .. id) end
 -- textes exacts
 local function build(id, kind, o)
   for _, r in ipairs(ns.Recipes) do
@@ -578,3 +578,160 @@ assert(table.concat(names, ",") == "Glace,Autre1,Autre2,Autre3,Autre4", table.co
 assert(#ns.Suggestions(cands, {}) == 5 and #ns.Suggestions({}, owned) == 0)
 print("test_core V1 lot A OK")
 `), "v1a");
+
+// ---------------------------------------------------------------- V1 lot B : jetons vivants, export « BF2: », plan d'activation d'un profil
+run(to_luastring(String.raw`
+local ns = NS
+local function bag(...) local list = {} for i, id in ipairs({ ... }) do list[i] = { id = id, name = "objet" .. id } end return list end
+local function tok(id, env, param) return ns.ResolveToken(id, param or "", env) end
+
+-- 1. jetons d'un texte : sans doublon, parametre, libelle ; texte montre au joueur
+local t = ns.TokensOf("/use {bf:potion_soin}\n/cast {bf:sort:Éclair de givre(Rang 3)}\n/use {bf:potion_soin}\n/use {bf:inconnu}")
+assert(#t == 3 and t[1].raw == "{bf:potion_soin}" and t[1].id == "potion_soin" and t[1].param == "" and t[1].label == "Potion de soin")
+assert(t[2].id == "sort" and t[2].param == "Éclair de givre(Rang 3)" and t[3].label == "inconnu")
+assert(ns.HasTokens("/use {bf:eau}") and not ns.HasTokens("/use Eau") and not ns.HasTokens(nil))
+assert(ns.TokenText("/use {bf:bijou13}\n/cast {bf:sort:Peur}") == "/use <Bijou du haut>\n/cast <Plus haut rang du sort Peur>")
+assert(#ns.LivingTokens == 13)
+for _, def in ipairs(ns.LivingTokens) do
+  assert(def.id ~= "focus" and #def.label > 2 and #def.tip > 10, def.id) -- le focus change en combat : jamais un jeton
+end
+-- chaque liste : des ID entiers, sans doublon, un niveau entre 1 et 60
+for id, list in pairs(ns.LivingItems) do
+  local seen = {}
+  assert(#list >= 6, id)
+  for _, e in ipairs(list) do
+    assert(type(e[1]) == "number" and e[1] == math.floor(e[1]) and not seen[e[1]] and e[2] >= 1 and e[2] <= 60, id .. " : " .. tostring(e[1]))
+    seen[e[1]] = true
+  end
+end
+
+-- 2. potions : la meilleure presente, dans la limite du niveau
+local env = { level = 60, bags = bag(118, 929, 13446, 3928, 2455) }
+assert(tok("potion_soin", env) == "objet13446" and select(2, tok("potion_soin", env)) == true)
+env.level = 44
+assert(tok("potion_soin", env) == "objet3928", "niveau 44 : la potion majeure (45) est exclue")
+env.level = 11
+assert(tok("potion_soin", env) == "objet118", "niveau 11 : la potion de soins (12) est exclue")
+env.level = 4
+assert(tok("potion_mana", env) == nil and select(2, tok("potion_mana", env)) == false, "niveau 4 : la potion de mana mineure (5) est exclue")
+env.level = 5
+assert(tok("potion_mana", env) == "objet2455")
+-- rien dans les sacs : pas trouve ; avec itemName, le nom du plus petit objet de la liste
+env = { level = 60, bags = bag(2589) }
+local name, found = tok("potion_soin", env)
+assert(name == nil and found == false)
+env.itemName = function(id) return "nom" .. id end
+name, found = tok("potion_soin", env)
+assert(name == "nom118" and found == false)
+-- un objet sans nom (pas en cache) est ignore
+assert(tok("potion_soin", { level = 60, bags = { { id = 13446 }, { id = 929, name = "Potion" } } }) == "Potion")
+-- 3. pierres de soins : n'importe quel rang, la plus haute d'abord, amelioree comprise ; bandages : le meilleur
+assert(tok("pierre_soin", { level = 60, bags = bag(5512, 5509, 19006) }) == "objet5509")
+assert(tok("pierre_soin", { level = 60, bags = bag(5510, 19012) }) == "objet19012")
+assert(tok("pierre_soin", { level = 1, bags = bag(9421) }) == "objet9421", "aucun niveau retenu pour les pierres")
+assert(tok("bandage", { level = 60, bags = bag(1251, 6451, 3530) }) == "objet6451")
+-- 4. nourriture et eau : listes, plus les objets que le client classe lui-meme (kind), au niveau requis lu
+env = { level = 60, bags = { { id = 4540, name = "Pain" }, { id = 70001, name = "Festin", kind = "food", level = 45 },
+                             { id = 70002, name = "Trop haut", kind = "food", level = 61 }, { id = 70003, name = "Jus", kind = "drink", level = 10 },
+                             { id = 159, name = "Eau de source" }, { id = 70004, name = "Cheval", kind = "mount", level = 0 } } }
+assert(tok("nourriture", env) == "Festin" and tok("eau", env) == "Jus" and tok("monture", env) == "Cheval")
+env.level = 9
+assert(tok("nourriture", env) == "Pain" and tok("eau", env) == "Eau de source")
+assert(tok("nourriture", { level = 60, bags = bag(5349, 4540, 117) }) == "objet5349", "meme niveau : l'ordre de la liste")
+assert(tok("monture", { level = 60, bags = bag(118), itemName = function() return "x" end }) == nil, "pas de liste de montures : rien a proposer")
+-- 5. equipement, familier, plus haut rang
+env = { level = 60, bags = {}, slots = { [13] = "Bijou A", [16] = "Épée" }, pet = "Rex" }
+assert(tok("bijou13", env) == "Bijou A" and tok("bijou14", env) == nil and tok("arme", env) == "Épée" and tok("main_gauche", env) == nil)
+assert(tok("familier", env) == "Rex" and tok("familier", { bags = {} }) == nil)
+assert(tok("sort", env, "Éclair de givre(Rang 3)") == "Éclair de givre" and tok("sort", env, "Peur") == "Peur" and tok("sort", env, "") == nil)
+assert(tok("focus", env) == nil and tok("inconnu", env) == nil)
+
+-- 6. texte entier : noms ecrits, jetons sans objet, dernier nom garde, nil si un jeton n'a aucun nom
+env = { level = 60, bags = bag(929), slots = { [13] = "Bijou 100%" } }
+local body, names, missing = ns.ResolveLiving("#showtooltip\n/use {bf:potion_soin}\n/use {bf:bijou13}\n/use {bf:potion_soin}", env)
+assert(body == "#showtooltip\n/use objet929\n/use Bijou 100%\n/use objet929" and #missing == 0 and names["{bf:bijou13}"] == "Bijou 100%", body)
+body, names, missing = ns.ResolveLiving("/use {bf:potion_soin}\n/use {bf:bijou14}", env, { ["{bf:bijou14}"] = "Ancien bijou" })
+assert(body == "/use objet929\n/use Ancien bijou" and #missing == 1 and missing[1] == "{bf:bijou14}", body)
+body, names, missing = ns.ResolveLiving("/use {bf:potion_soin}\n/use {bf:bijou14}", env)
+assert(body == nil and missing[#missing] == "{bf:bijou14}")
+env.bags = {}
+body, names, missing = ns.ResolveLiving("/use {bf:potion_soin}", env, { ["{bf:potion_soin}"] = "Potion d'avant" })
+assert(body == "/use Potion d'avant" and missing[1] == "{bf:potion_soin}", "sacs vides : le nom precedent est garde")
+assert(ns.ResolveLiving("/cast Peur", env) == "/cast Peur")
+-- la recette du bouton de survie : trois lignes /use, jamais de jeton lie au combat
+for _, r in ipairs(ns.Recipes) do
+  if r.id == "survival" then
+    local text = r.build("", { kind = "item", showtooltip = true })
+    assert(text == "#showtooltip\n/use [nomod] {bf:pierre_soin}\n/use [nomod] {bf:potion_soin}\n/use [mod] {bf:bandage}" and r.feature == "living" and r.name == "Survie", text)
+    local out = ns.ResolveLiving(text, { level = 60, bags = bag(9421, 13446, 14530) })
+    assert(out == "#showtooltip\n/use [nomod] objet9421\n/use [nomod] objet13446\n/use [mod] objet14530", out)
+  end
+end
+
+-- 8. profil en texte : aller-retour, onglet de chaque macro, caracteres speciaux
+local macros = { { name = "Soin: 1", body = "#showtooltip\n/cast [@mouseover,help] Soins|100%", char = false },
+                 { name = "Éclair", body = "/cast Éclair de givre", char = true }, { name = "Vide", body = "", char = false } }
+local text = ns.ExportProfile("Raid: mardi", macros)
+assert(text:sub(1, 4) == "BF2:" and not text:find("[|\n]") and text:find(":3:a:", 1, true), text)
+local p = ns.ImportProfile("  " .. text .. "\n")
+assert(p and p.name == "Raid: mardi" and #p.macros == 3)
+for i, m in ipairs(macros) do assert(p.macros[i].name == m.name and p.macros[i].body == m.body and p.macros[i].char == m.char, "macro " .. i) end
+-- compression : seulement si le client la propose, si l'aller-retour est exact et si le texte est plus court
+local store = {}
+local good = { pack = function(s) store.K1 = s return "K1" end, unpack = function(z) return store[z] end }
+local packed = ns.ExportProfile("Raid", macros, good)
+assert(packed == "BF2z:K1", packed)
+p = ns.ImportProfile(packed, good)
+assert(p and #p.macros == 3 and p.macros[2].char == true)
+local _, err = ns.ImportProfile(packed)
+assert(err:find("compressé"), err)
+_, err = ns.ImportProfile(packed, { unpack = function() error("boum") end })
+assert(err:find("compressé"), err)
+local plain = ns.ExportProfile("Raid", macros)
+assert(ns.ExportProfile("Raid", macros, { pack = function() return "K1" end, unpack = function() return "autre" end }) == plain, "aller-retour faux : texte en clair")
+assert(ns.ExportProfile("Raid", macros, { pack = function() error("boum") end, unpack = function() end }) == plain, "erreur du client : texte en clair")
+assert(ns.ExportProfile("Raid", macros, { pack = function(s) return s .. "AAAA" end, unpack = function(z) return z:sub(1, -5) end }) == plain, "pas plus court : texte en clair")
+assert(ns.ExportProfile("Raid", macros, { pack = function() return "K 1" end, unpack = function() return plain end }) == plain, "texte non imprimable : en clair")
+-- textes abimes ou hostiles : toujours nil et une raison, jamais une erreur
+local bad = { "", "BF1:a:b", "BF2:x", "BF2:x:0", "BF2:x:2:a:A:%2Fsit", "BF2:x:1:z:A:%2Fsit", "BF2:x:1:a::%2Fsit", "BF2:x:1:a:A:%ZZ",
+  "BF2:x:1:a:A:a|b", "BF2:x:1.5:a:A:b", "BF2:x:151", "BF2:x:2:a:A:b:a:A:c", "BF2:x:1:a:" .. string.rep("n", 17) .. ":b",
+  "BF2:x:1:a:A:" .. string.rep("b", 256), "BF2:x%7C:1:a:A:b:extra", string.rep("x", 200001), 5, nil }
+for i = 1, 18 do
+  local ok, res, why = pcall(ns.ImportProfile, bad[i])
+  assert(ok and res == nil and type(why) == "string" and #why > 5, "texte abime accepte : " .. tostring(bad[i]):sub(1, 40))
+end
+p = ns.ImportProfile("BF2:%7CNom%0A:1:c:A:b")
+assert(p and p.name == "Nom" and p.macros[1].char == true, "nom de profil nettoye")
+local many = {}
+for i = 1, 150 do many[i] = { name = "M" .. i, body = string.rep("x", 255), char = i > 120 } end
+p = ns.ImportProfile(ns.ExportProfile("Tout", many))
+assert(p and #p.macros == 150 and p.macros[150].char == true, "150 macros de 255 caracteres")
+
+-- 9. plan d'activation
+local current = { { name = "Kick", body = "/cast Autre", index = 1 }, { name = "Meme", body = " /sit ", index = 2 },
+                  { name = "Extra", body = "/dance", index = 3 }, { name = "Perso", body = "/x", char = true, index = 121 } }
+local profile = { macros = { { name = "Kick", body = "/cast Peur" }, { name = "Meme", body = "/sit" }, { name = "Neuve", body = "/a" },
+                             { name = "Perso", body = "/b" }, { name = "Kick", body = "/doublon" }, { name = "PersoNeuve", body = "/c", char = true },
+                             { name = "", body = "/vide" }, { name = "Longue", body = string.rep("x", 256) }, 7 },
+                  bindings = { Kick = { "F", "G", 5 }, Neuve = { "H" }, Absente = { "J" } },
+                  bars = { [5] = "Kick", [6] = "Neuve", [7] = "Kick", [8] = "Absente", [9] = "Meme", x = "Kick" } }
+local slots = { [5] = { kind = "spell", name = "Corruption" }, [6] = { kind = "macro", macroName = "Neuve" }, [7] = { kind = "other" }, [9] = { kind = "empty" } }
+local penv = { binding = function(k) return ({ F = "ACTIONBUTTON1", G = "MACRO Kick", H = "" })[k] end, slot = function(s) return slots[s] end,
+               unknown = function(b) return b == "/a" and { "x" } or {} end }
+local plan = ns.ProfilePlan(profile, current, { update = true, keys = true, bars = true }, penv)
+assert(#plan.create == 3 and plan.create[1].name == "Neuve" and plan.create[2].name == "Perso" and plan.create[3].name == "PersoNeuve")
+assert(plan.need[false] == 2 and plan.need[true] == 1 and #plan.update == 1 and plan.update[1].macro.body == "/cast Peur" and plan.update[1].old.index == 1)
+assert(#plan.same == 1 and #plan.left == 0 and #plan.remove == 0 and plan.unknown == 1)
+assert(#plan.binds == 2 and plan.binds[1].key == "F" and plan.binds[1].replaces == "ACTIONBUTTON1" and plan.binds[2].key == "H" and plan.binds[2].replaces == nil)
+assert(#plan.slots == 2 and plan.slots[1].slot == 5 and plan.slots[1].before.name == "Corruption" and plan.slots[2].slot == 9 and plan.slots[2].macro == "Meme")
+assert(#plan.blocked == 1 and plan.blocked[1] == 7)
+-- sans « reecrire » : la macro de meme nom est laissee ; sans touches ni barres : rien de ce cote
+plan = ns.ProfilePlan(profile, current, {}, penv)
+assert(#plan.update == 0 and #plan.left == 1 and plan.left[1].name == "Kick" and #plan.binds == 0 and #plan.slots == 0 and #plan.remove == 0)
+-- « retirer les absentes » : meme nom dans l'autre onglet = absente ; les places liberees sont comptees par onglet
+plan = ns.ProfilePlan(profile, current, { remove = true }, penv)
+assert(#plan.remove == 2 and plan.remove[1].name == "Extra" and plan.remove[2].name == "Perso" and plan.freed[false] == 1 and plan.freed[true] == 1)
+plan = ns.ProfilePlan({}, current, { update = true, remove = true, keys = true, bars = true }, penv)
+assert(#plan.create == 0 and #plan.remove == 4, "profil sans macros")
+print("test_core V1 lot B OK")
+`), "v1b");

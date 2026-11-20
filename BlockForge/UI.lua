@@ -309,7 +309,8 @@ local function UnknownSpells(blockList)
   local unknown = {}
   if InCombatLockdown() or not (C_Spell and C_Spell.GetSpellInfo) then return unknown end
   for _, name in ipairs(ns.SpellsOf(blockList)) do
-    if not ns.PetSpells[name:lower()] and not tonumber(name) and not C_Spell.GetSpellInfo(name) then
+    -- un jeton vivant n'est pas un nom de sort
+    if not ns.PetSpells[name:lower()] and not tonumber(name) and not ns.HasTokens(name) and not C_Spell.GetSpellInfo(name) then
       unknown[#unknown + 1] = name
     end
   end
@@ -374,6 +375,7 @@ local function LayoutRow(row, block, def)
     put(t, t:GetStringWidth() or 0)
   end
   local needsArg = def.arg and not def.optional
+  if ns.HasTokens(row.full) then pill(L["vivant"], T.accent) end -- un jeton : la macro suivra les sacs et l'equipement
 
   if not def.clauses then
     local arg = ns.trim(block.arg or "")
@@ -475,6 +477,7 @@ local function Overwrite(name, body, icon)
   local index = GetMacroIndexByName(name) -- relu : l'index a pu changer pendant la confirmation
   if not index or index == 0 then return Msg(L["La macro « %s » n'existe plus."]:format(name)) end
   EditMacro(index, name, icon, body)
+  ns.LivingCommit(name)
   Msg(L["Macro « %s » mise à jour."]:format(name))
 end
 
@@ -492,6 +495,9 @@ local function SaveMacro(name, body, forChar, icon, keepIcon)
   if InCombatLockdown() then return Msg(L["Impossible de modifier une macro en combat."]) end
   if name == "" then return Msg(L["Donne un nom à la macro."]) end
   if body == "" then return Msg(L["La macro est vide."]) end
+  -- jetons vivants : la macro du jeu recoit les vrais noms, le modele reste dans BlockForge
+  body = ns.LivingPrepare(name, body)
+  if not body then return end
   if #body > ns.MAX_CHARS then return Msg(L["Macro trop longue : %d / %d."]:format(#body, ns.MAX_CHARS)) end
   local index = GetMacroIndexByName(name)
   if index and index > 0 then
@@ -508,6 +514,7 @@ local function SaveMacro(name, body, forChar, icon, keepIcon)
   if not forChar and numAccount >= MAX_ACCOUNT then return Msg(L["Plus de place dans les macros générales."]) end
   local created = CreateMacro(name, icon or "INV_Misc_QuestionMark", body, forChar)
   if not created or created == 0 then return Msg(L["Le jeu a refusé de créer la macro."]) end
+  ns.LivingCommit(name)
   if ns.db.pickupAfterCreate then
     PickupMacro(created) -- la macro vient sous le curseur : il reste a la poser sur une barre
     Msg(L["Macro « %s » créée. Pose-la sur une barre d'action."]:format(name))
@@ -530,7 +537,8 @@ end
 local function LoadText(name, body, icon)
   argBox:ClearFocus() -- sinon le champ garderait le texte de l'ancien bloc
   resetBox:ClearFocus()
-  blocks = ns.Parse(body or "")
+  -- une macro vivante s'ouvre sur son modele a jetons, pas sur les noms du moment
+  blocks = ns.Parse(ns.LivingBody(name, body or ""))
   view.icon, view.touched = CustomIcon(icon), false
   nameBox:SetText(name or "")
   selected, activeClause, editOffset = blocks[1], 1, 0
@@ -697,6 +705,18 @@ function view.Count(len)
 end
 
 function view.Blocks() return blocks end
+
+-- pour Living.lua : type du bloc choisi et son argument ; fn(argument) le remplace
+function view.Arg(fn)
+  local holder = EditedArgHolder()
+  if not holder then return nil end
+  if fn then
+    holder.arg = fn(holder.arg or "") or holder.arg
+    argBox:ClearFocus()
+    Refresh()
+  end
+  return selected.type, holder.arg
+end
 function view.Name() return ns.trim(nameBox:GetText()) end
 
 -- remplace la liste de blocs (texte libre, annuler / retablir) ; le bloc choisi reste celui de meme rang
@@ -1107,6 +1127,8 @@ local function BuildEditor(parent)
   Tip(remove, function() return L["Retirer l'alternative affichée"] end)
 
   argLabel = Label(inspBody, "", 10, -72)
+  argLabel:SetWidth(190) -- « Vivant… » (Living.lua) va de 206 a 286 sur cette ligne
+  argLabel:SetWordWrap(false)
   argBox = Edit(inspBody, 268, function(text)
     EditedArgHolder().arg = text
     Refresh()
@@ -1183,6 +1205,7 @@ local function BuildEditor(parent)
   w.page, w.palette, w.canvas, w.insp = parent, palette, canvas, insp
   if ns.BuildEditorTools then ns.BuildEditorTools() end
   if ns.BuildGrimoire then ns.BuildGrimoire() end
+  if ns.BuildLiving then ns.BuildLiving() end
 end
 
 ---------------------------------------------------------------------------
@@ -1530,31 +1553,8 @@ local function FindMacro(name, char)
 end
 -- pour Bars.lua, Health.lua et Home.lua
 ns.ReadMacros, ns.FindMacro, ns.UnknownSpells, ns.LibraryBody, ns.LibraryDesc = ReadMacros, FindMacro, UnknownSpells, LibraryBody, LibraryDesc
+function ns.RefreshSets() if RefreshMacros then RefreshMacros() end end -- pour Profiles.lua : la liste des profils a change
 function ns.MacroLimits() return MAX_ACCOUNT, MAX_CHARACTER end
-
-local function RestoreSet(setName)
-  if InCombatLockdown() then return Msg(L["Impossible de modifier une macro en combat."]) end
-  local set = ns.db.sets[setName]
-  if type(set) ~= "table" then return end
-  local updated, created, skipped = 0, 0, 0
-  for _, m in ipairs(set) do
-    if type(m) == "table" and type(m.name) == "string" and type(m.body) == "string" then
-      local char = m.char and true or false
-      local index = FindMacro(m.name, char)
-      if index then
-        EditMacro(index, m.name, m.icon, m.body)
-        updated = updated + 1
-      else
-        local numAccount, numChar = GetNumMacros()
-        local room = (char and numChar < MAX_CHARACTER) or (not char and numAccount < MAX_ACCOUNT)
-        local done = room and CreateMacro(m.name, m.icon or "INV_Misc_QuestionMark", m.body, char)
-        if done and done ~= 0 then created = created + 1 else skipped = skipped + 1 end
-      end
-    end
-  end
-  Msg(L["Sauvegarde « %s » restaurée : %d mises à jour, %d créées, %d ignorées faute de place."]:format(setName, updated, created, skipped))
-  if RefreshMacros then RefreshMacros() end
-end
 
 local function BindMacro(key, name)
   if InCombatLockdown() then return Msg(L["Impossible de changer un raccourci en combat."]) end
@@ -1567,18 +1567,11 @@ local function BindMacro(key, name)
 end
 
 if StaticPopupDialogs then
-  StaticPopupDialogs.BLOCKFORGE_RESTORE = {
-    text = L["Restaurer la sauvegarde « %s » ?\nLes macros du jeu de même nom (même onglet) seront remplacées, les autres créées s'il reste de la place. Les macros absentes de la sauvegarde ne sont pas touchées."],
-    button1 = YES or L["Oui"], button2 = NO or L["Non"],
-    OnAccept = function(_, setName) RestoreSet(setName) end,
-    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
-  }
   StaticPopupDialogs.BLOCKFORGE_DELETE_SET = {
     text = L["Supprimer la sauvegarde « %s » ? C'est définitif."],
     button1 = YES or L["Oui"], button2 = NO or L["Non"],
     OnAccept = function(_, setName)
-      ns.db.sets[setName] = nil
-      if RefreshMacros then RefreshMacros() end
+      ns.Profiles.Delete(setName)
     end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
@@ -1601,7 +1594,7 @@ local function BuildMacros(parent, showEditor)
   listPanel:SetPoint("TOPLEFT", 0, 0)
   local detail = Panel(parent, 396, 566, L["Détail"])
   detail:SetPoint("TOPLEFT", listPanel, "TOPRIGHT", 6, 0)
-  local setsPanel = Panel(parent, 176, 566, L["Sauvegardes"])
+  local setsPanel = Panel(parent, 176, 566, L["Profils"])
   setsPanel:SetPoint("TOPLEFT", detail, "TOPRIGHT", 6, 0)
 
   local macros, current, offset, rowsM = {}, nil, 0, {}
@@ -1623,8 +1616,9 @@ local function BuildMacros(parent, showEditor)
     if not current then return end
     title:SetText(current.name)
     local key = GetBindingKey("MACRO " .. current.name)
+    local living = ns.LivingLabel(current.name, current.char)
     info:SetText((current.char and L["Macro du personnage"] or L["Macro générale"]) .. "  ·  "
-      .. (key and L["Raccourci : %s"]:format(key) or L["Aucun raccourci"]))
+      .. (key and L["Raccourci : %s"]:format(key) or L["Aucun raccourci"]) .. (living and ("  ·  " .. living) or ""))
     body:SetText(ns.Code(current.body))
   end
 
@@ -1708,7 +1702,7 @@ local function BuildMacros(parent, showEditor)
       if m then
         row.icon:SetTexture(m.icon or QUESTION)
         row.text:SetText(m.name)
-        row.scope:SetText(m.char and L["Personnage"] or L["Générale"])
+        row.scope:SetText(ns.LivingLabel(m.name, m.char) and L["Vivante"] or m.char and L["Personnage"] or L["Générale"])
         Tint(row, m.char and T.accent or T.grey, m == current and 1 or 0.5)
         row.mark:SetShown(m == current)
       end
@@ -1745,7 +1739,8 @@ local function BuildMacros(parent, showEditor)
     Render()
   end)
 
-  -- Sauvegardes : nom, bouton, liste (18 lignes de -84 a -478), restaurer / supprimer en bas
+  -- Profils (Profiles.lua), macros seules ici : nom, bouton, liste (18 lignes de -84 a -478), « Profils… » de -510 a -532
+  -- pour les touches, les barres et le partage ; voir / supprimer en bas
   local setRows, setNames, chosen, setOffset = {}, {}, nil, 0
   local setName = Edit(setsPanel, 150, function() end)
   setName:SetPoint("TOPLEFT", 14, -30)
@@ -1757,16 +1752,15 @@ local function BuildMacros(parent, showEditor)
 
   local function RenderSets()
     setNames = {}
-    for name in pairs(ns.db.sets) do setNames[#setNames + 1] = name end
+    for name in pairs(ns.db.profiles) do setNames[#setNames + 1] = name end
     table.sort(setNames, function(a, b) return a > b end) -- dates recentes en haut
-    if chosen and not ns.db.sets[chosen] then chosen = nil end
+    if chosen and not ns.db.profiles[chosen] then chosen = nil end
     setOffset = math.max(0, math.min(setOffset, #setNames - MAX_SET_ROWS))
     for i, row in ipairs(setRows) do
       local name = setNames[setOffset + i]
       row:SetShown(name ~= nil)
       if name then
-        local set = ns.db.sets[name]
-        row.text:SetText(name .. "  |cff888888(" .. (type(set) == "table" and #set or 0) .. ")|r")
+        row.text:SetText(ns.Plain(name) .. "  |cff888888(" .. #ns.db.profiles[name].macros .. ")|r")
         Tint(row, name == chosen and T.accent or T.grey, name == chosen and 0.95 or 0.6)
       end
     end
@@ -1774,20 +1768,16 @@ local function BuildMacros(parent, showEditor)
   end
 
   local function SaveSet(name)
-    if InCombatLockdown() then return Msg(L["Impossible de lire les macros en combat."]) end
-    local replaced = ns.db.sets[name] ~= nil
-    local list = ReadMacros()
-    ns.db.sets[name] = list
+    if not ns.Profiles.Save(name) then return end
     chosen = name
     setName:SetText("")
-    Msg((replaced and L["Sauvegarde « %s » remplacée (%d macros)."] or L["Sauvegarde « %s » enregistrée (%d macros)."]):format(name, #list))
     RenderSets()
   end
   local saveSet = Button(setsPanel, L["Sauvegarder mes macros"], 160, function()
     if InCombatLockdown() then return Msg(L["Impossible de lire les macros en combat."]) end
     local name = ns.trim(setName:GetText())
     if name == "" then name = date("%Y-%m-%d") end
-    if ns.db.sets[name] == nil then return SaveSet(name) end
+    if ns.db.profiles[name] == nil then return SaveSet(name) end
     StaticPopup_Show("BLOCKFORGE_REPLACE_SET", name, nil, function() SaveSet(name) end)
   end)
   saveSet:SetPoint("TOPLEFT", 8, -54)
@@ -1808,12 +1798,15 @@ local function BuildMacros(parent, showEditor)
     RenderSets()
   end)
   restore = Button(setsPanel, L["Restaurer"], 78, function()
-    if not chosen then return end
-    if InCombatLockdown() then return Msg(L["Impossible de modifier une macro en combat."]) end
-    StaticPopup_Show("BLOCKFORGE_RESTORE", chosen, nil, chosen)
+    if chosen then ns.OpenProfiles(chosen) end
   end)
   restore:SetPoint("BOTTOMLEFT", 8, 8)
-  Tip(restore, function() return L["Restaurer"], L["Hors combat seulement."] end)
+  Tip(restore, function() return L["Restaurer"], L["Ouvre l'aperçu de ce profil : ce qui sera créé, réécrit ou laissé. Rien ne change avant « Activer »."] end)
+  local profiles = Button(setsPanel, L["Profils…"], 160, function() ns.OpenProfiles(chosen) end)
+  profiles:SetPoint("BOTTOMLEFT", 8, 34)
+  T.Watch(function() Tint(profiles, T.accent, 0.9) end)
+  Tip(profiles, function() return L["Profils…"], L["Enregistrer aussi tes touches et tes barres, copier le profil d'un autre personnage, l'associer à une spécialisation, l'exporter en texte."] end)
+  ns.OnFeatures(function() setsPanel:SetShown(ns.Enabled("profiles")) end, true)
   delete = Button(setsPanel, L["Supprimer"], 78, function()
     if chosen then StaticPopup_Show("BLOCKFORGE_DELETE_SET", chosen, nil, chosen) end
   end)
@@ -2073,5 +2066,8 @@ SlashCmdList.BLOCKFORGE = function(msg)
   if msg == "assistant" then return ns.OpenAssistant() end
   if msg == "barre" or msg == "bars" then return ns.OpenWand() end
   if msg == "bilan" or msg == "health" then return ns.OpenHealth() end
+  if msg == "kit" then return ns.OpenKits() end
+  if msg == "profil" or msg == "profile" then return ns.OpenProfiles() end
+  if msg == "vivant" or msg == "living" then return ns.OpenLiving() end
   ns.Toggle()
 end

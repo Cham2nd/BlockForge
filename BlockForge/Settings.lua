@@ -17,7 +17,11 @@ ns.DEFAULTS = {
   helpTooltips = true,
   accent = "class",        -- couleur d'accent : "class" (classe du joueur) ou "gold"
   favorites = {},          -- [classe .. "/" .. nom] = true (bibliotheque)
-  sets = {},               -- [nom] = { { name, icon, body, char }, ... } (sauvegardes de "Mes macros")
+  sets = {},               -- avant la 1.0 : [nom] = { { name, icon, body, char }, ... } ; relu et copie dans profiles (Profiles.lua)
+  profiles = {},           -- [nom] = { macros, bindings, bars, owner, class, auto } : profils et sauvegardes automatiques
+  specProfiles = {},       -- [personnage] = { [groupe de talents] = nom du profil propose }
+  living = { chars = {}, account = {}, journal = {} }, -- macros vivantes : modeles a jetons et 20 dernieres reecritures (Living.lua)
+  kits = {},               -- [personnage] = { class, role, hover, pet, waiting } : kit choisi (Kits.lua)
   personal = {},           -- { { name, body, icon, note }, ... } : "Mes modeles", communs a tous les personnages
   acceptShared = true,     -- proposer les macros envoyees par d'autres joueurs (Share.lua)
   tutorialSeen = false,    -- la visite guidee s'est deja lancee toute seule
@@ -92,6 +96,10 @@ for _, def in ipairs({
     desc = L["Envoyer une macro à un joueur et recevoir les siennes. Une macro reçue t'est toujours proposée avant d'être ouverte. Désactivé : rien n'est envoyé, et ce qui arrive est ignoré sans rien afficher."] },
   { id = "tutorial", label = L["Visite guidée à la première ouverture"], desc = L["Désactivé : la visite ne se lance plus toute seule. /bf tuto la lance toujours."] },
   { id = "colorize", label = L["Aperçu coloré"], desc = L["Désactivé : le texte des macros s'affiche d'une seule couleur."] },
+  { id = "living", label = L["Macros vivantes"], desc = L["Désactivé : BlockForge ne réécrit plus aucune macro tout seul, et « Vivant… » disparaît de l'éditeur. Tes macros gardent leur dernier texte."] },
+  { id = "kits", label = L["Kits de personnage"], desc = L["Désactivé : plus de « Équiper mon personnage », ni d'annonce des macros de ton kit devenues disponibles."] },
+  { id = "profiles", label = L["Profils"], desc = L["Désactivé : la colonne des profils de « Mes macros » disparaît. Les sauvegardes automatiques restent faites avant chaque opération de masse."] },
+  { id = "specProfiles", label = L["Proposer un profil au changement de spé"], desc = L["Désactivé : BlockForge ne propose plus rien quand tu changes de spécialisation."] },
 }) do ns.RegisterFeature(def) end -- false ou une valeur, controlee par Sanitize
 
 -- Complete db avec les valeurs par defaut ; une valeur du mauvais type est remplacee.
@@ -166,7 +174,7 @@ end
 function ns.ResetDB()
   -- favoris, sauvegardes et modeles ne sont pas des reglages : la reinitialisation les garde (et ne relance pas la visite)
   local keep = {}
-  for _, k in ipairs({ "favorites", "sets", "personal", "tutorialSeen", "undo" }) do keep[k] = BlockForgeDB[k] end
+  for _, k in ipairs({ "favorites", "sets", "profiles", "specProfiles", "living", "kits", "personal", "tutorialSeen", "undo" }) do keep[k] = BlockForgeDB[k] end
   for k in pairs(BlockForgeDB) do BlockForgeDB[k] = nil end
   for k, v in pairs(keep) do BlockForgeDB[k] = v end
   ns.personalCache = nil

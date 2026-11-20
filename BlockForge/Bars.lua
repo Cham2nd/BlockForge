@@ -87,6 +87,7 @@ end
 
 -- ce que l'emplacement contenait, tel qu'il est garde pour l'annulation (BlockForgeDB)
 local function Content(e) return { kind = e.kind, id = e.id, name = e.name, macroName = e.macroName } end
+Bars.Content = Content
 
 local function PickupFor(kind)
   if kind == "spell" then return (C_Spell and C_Spell.PickupSpell) or PickupSpell end
@@ -182,7 +183,8 @@ Bars.FindExact = FindExact
 ---------------------------------------------------------------------------
 -- Annulation de la derniere operation : BlockForgeDB.undo = { label, ops }, relu apres un /reload.
 -- ops, rejouees a l'envers : { op = "slot", slot, before, macro } ; { op = "created", name, char, body } ;
--- { op = "edit", name, char, body } ; { op = "delete", name, char, body, icon, slots }
+-- { op = "edit", name, char, body, icon } ; { op = "delete", name, char, body, icon, slots } ;
+-- { op = "bind", key, macro, before } (touche liee a une macro par un profil ; before : son ancienne action, "" si libre)
 ---------------------------------------------------------------------------
 function ns.SetUndo(record) ns.db.undo = record end
 
@@ -216,7 +218,16 @@ function UNDO.edit(op)
   if type(op.name) ~= "string" or type(op.body) ~= "string" then return false end
   local index = ns.FindMacro(op.name, op.char and true or false)
   if not index then return false end
-  EditMacro(index, op.name, nil, op.body)
+  EditMacro(index, op.name, (type(op.icon) == "string" or type(op.icon) == "number") and op.icon or nil, op.body)
+  return true
+end
+
+-- la touche ne reprend son ancienne action que si elle mene encore a la macro du profil
+function UNDO.bind(op)
+  if type(op.key) ~= "string" or type(op.macro) ~= "string" or not SetBinding then return false end
+  if GetBindingAction(op.key) ~= "MACRO " .. op.macro then return false end
+  SetBinding(op.key, type(op.before) == "string" and op.before ~= "" and op.before or nil)
+  SaveBindings(GetCurrentBindingSet())
   return true
 end
 
@@ -310,10 +321,14 @@ function Bars.Upgrade(slot, name, body, onDone, confirmed)
       return
     end
   end
+  -- jetons d'une recette vivante : la macro du jeu recoit les vrais noms
+  body = ns.LivingPrepare(name, body)
+  if not body then return end
   local ops = {}
   local result, info = Apply(slot, name, body, ns.db.perCharDefault and true or false, ops, true)
   if #ops > 0 then ns.SetUndo({ label = L["« %s » sur l'emplacement %d"]:format(name, slot), ops = ops }) end
   if not result then return ns.Msg(info) end
+  ns.LivingCommit(name)
   if result == "placed" then
     ns.Msg(L["Macro « %s » posée sur l'emplacement %d, à la place de « %s ». « Annuler » remet tout comme avant."]:format(name, slot, before.name or "?"))
   else

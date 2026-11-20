@@ -251,8 +251,7 @@ function ns.OpenWand()
   if ns.Tutorial then ns.Tutorial.Stop() end -- le panneau de la visite passerait dessous
   if not ns.ed.w.home then return end -- l'accueil n'a pas pu se construire
   if not panel then Build() end
-  if ns.health then ns.health:Hide() end
-  if ns.assistant then ns.assistant:Hide() end
+  ns.HidePanels()
   state.plan = nil
   Refresh()
   panel:Show()

@@ -1,4 +1,5 @@
 // Controle la bibliotheque : champs, limites du jeu, doublons, et chaque sort lance doit avoir son ID.
+// Controle aussi les kits de personnage (KitData.lua) : 27 kits, aucune reference dans le vide, de 8 a 20 macros chacun.
 // Usage : node check_library.js [dossier BlockForge] [SpellName.csv du build]
 // Avec le CSV (export wago.tools de la table SpellName), verifie aussi que chaque ID porte bien ce nom.
 const fs = require("fs");
@@ -12,7 +13,7 @@ const run = (code) => { if (lauxlib.luaL_dostring(L, to_luastring(code)) !== lua
 
 run("NS = {}");
 const optional = fs.existsSync(dir + "/ItemIDs.lua") ? ["ItemIDs.lua"] : [];
-for (const f of ["Locale.lua", "Core.lua", "Library.lua", "SpellIDs.lua", ...optional]) {
+for (const f of ["Locale.lua", "Core.lua", "Library.lua", "SpellIDs.lua", ...optional, "KitData.lua"]) {
   const src = fs.readFileSync(dir + "/" + f);
   if (lauxlib.luaL_loadbuffer(L, src, src.length, to_luastring("@" + f)) !== lua.LUA_OK) fail();
   lua.lua_pushstring(L, to_luastring("BlockForge"));
@@ -59,7 +60,34 @@ for _, m in ipairs(ns.Library) do
     end
   end
 end
-print("check_library.js : " .. #ns.Library .. " macros, " .. #errors .. " erreur(s)" .. (CSV and "" or " (sans table du build)"))
+-- kits : 9 classes x 3 roles, chaque reference trouvee (macro de la bibliotheque, recette, sort avec ID), de 8 a 20 macros
+local kits = 0
+for _, class in ipairs({ "WARLOCK", "HUNTER", "ROGUE", "MAGE", "PRIEST", "DRUID", "WARRIOR", "PALADIN", "SHAMAN" }) do
+  for _, role in ipairs(ns.KitRoles) do
+    if ns.Kits[class] and ns.Kits[class][role.id] then kits = kits + 1 else errors[#errors + 1] = "kit absent : " .. class .. " / " .. role.id end
+  end
+end
+for _, problem in ipairs(ns.KitProblems()) do errors[#errors + 1] = "kit " .. problem end
+-- le controle voit bien une reference dans le vide, un sort sans ID et un kit trop court
+local real = ns.Kits.MAGE.pvp
+ns.Kits.MAGE.pvp = { { lib = "Macro qui n'existe pas" }, { recipe = "nearest", spell = "Sort Sans ID" }, { recipe = "recette absente" } }
+local found = table.concat(ns.KitProblems(), "\n")
+ns.Kits.MAGE.pvp = real
+for _, expected in ipairs({ "macro absente de la bibliotheque Macro qui n'existe pas", "sort sans ID Sort Sans ID", "recette inconnue recette absente", "MAGE / pvp : 7 macros" }) do
+  if not found:find(expected, 1, true) then errors[#errors + 1] = "controle des kits aveugle : " .. expected end
+end
+-- objets des macros vivantes : chaque ID de ns.LivingItems qui a un nom anglais dans ItemIDs.lua le porte une seule fois
+local byId = {}
+for name, id in pairs(ns.ItemIDs or {}) do
+  if byId[id] then errors[#errors + 1] = "ID d'objet en double : " .. id .. " (" .. name .. ", " .. byId[id] .. ")" end
+  byId[id] = name
+end
+-- traduction : un nom pas encore en cache protege le nom plus court qu'il contient (« Healthstone » dans « Create Healthstone »)
+local cached = { [14529] = "Bandage runique", [5509] = "Pierre de soins" }
+local out = ns.Localize("/use Heavy Runecloth Bandage\n/use Runecloth Bandage\n/cast Create Healthstone\n/use Healthstone",
+  function() return nil end, "Rang", function(id) return cached[id] end)
+if out ~= "/use Heavy Runecloth Bandage\n/use Bandage runique\n/cast Create Healthstone\n/use Pierre de soins" then errors[#errors + 1] = "Localize : " .. out end
+print("check_library.js : " .. #ns.Library .. " macros, " .. kits .. " kits, " .. #errors .. " erreur(s)" .. (CSV and "" or " (sans table du build)"))
 for _, e in ipairs(errors) do print("  " .. e) end
 assert(#errors == 0)
 `);

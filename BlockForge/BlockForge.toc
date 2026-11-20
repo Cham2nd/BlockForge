@@ -15,6 +15,7 @@ Core.lua
 Library.lua
 SpellIDs.lua
 ItemIDs.lua
+KitData.lua
 Theme.lua
 Settings.lua
 Debug.lua
@@ -28,6 +29,9 @@ Bars.lua
 Wand.lua
 Health.lua
 Home.lua
+Kits.lua
+Profiles.lua
+Living.lua
 Tutorial.lua
 IconPicker.lua
 Minimap.lua

@@ -800,7 +800,7 @@ fire(byText("Paramètres", BlockForgeFrame), "OnClick")
 local settingsPanel = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, BlockForgeFrame) and w ~= perChar and w:IsVisible() end)._parent
 assert(settingsPanel:IsVisible(), "onglet Parametres non affiche")
 local checks = checkboxes(settingsPanel)
-assert(#checks == 21, "cases : " .. #checks) -- 7 reglages + 2 choix de classe + 2 couleurs d'accent + 10 fonctions
+assert(#checks == 25, "cases : " .. #checks) -- 7 reglages + 2 choix de classe + 2 couleurs d'accent + 14 fonctions
 for _, c in ipairs(checks) do assert(c.label, "case sans libelle") end
 local function cb(fragment)
   for _, c in ipairs(checks) do if c.label:find(fragment, 1, true) then return c.box end end
@@ -1040,22 +1040,23 @@ share._text = "n'importe quoi"
 fire(byText("Importer", mPage), "OnClick")
 assert(lastLine():find("BF1:", 1, true), lastLine())
 
--- sauvegarde puis restauration : mise a jour + creation + manque de place
+-- sauvegarde (un profil, macros seules) puis restauration par l'apercu du profil : mise a jour + creation + manque de place
 COMBAT = true
 fire(byText("Sauvegarder mes macros"), "OnClick")
-assert(lastLine():find("combat") and next(db.sets) == nil, "sauvegarde en combat")
+assert(lastLine():find("combat") and next(db.profiles) == nil, "sauvegarde en combat")
 COMBAT = false
 fire(byText("Sauvegarder mes macros"), "OnClick")
-local set = db.sets["2026-11-20"]
-assert(set and #set == 3, "sauvegarde absente")
+local set = db.profiles["2026-11-20"]
+assert(set and #set.macros == 3 and set.bindings == nil and set.bars == nil and set.owner == "Moi-Royaume" and set.class == "WARLOCK", "sauvegarde absente")
+assert(set.macros[1].index == nil and next(db.sets) == nil, "le profil ne garde que nom, icone, texte et onglet")
 setBox._text = "2026-11-20"
 fire(byText("Sauvegarder mes macros"), "OnClick")
 local replacePop = POPUPS[#POPUPS]
 assert(replacePop.which == "BLOCKFORGE_REPLACE_SET" and replacePop.text:find("2026-11-20", 1, true) and not lastLine():find("remplac"), "confirmation attendue avant de remplacer")
 StaticPopupDialogs.BLOCKFORGE_REPLACE_SET.OnAccept({}, replacePop.data)
 assert(lastLine():find("remplac"), lastLine())
-set = db.sets["2026-11-20"]
-set[#set + 1] = { name = "Trop", body = "/sit", char = true }
+set = db.profiles["2026-11-20"]
+set.macros[#set.macros + 1] = { name = "Trop", body = "/sit", char = true }
 MACROS["Soin"].body = "/cast Autre"
 MACROS["Sans curseur"] = nil       -- supprimee en jeu : les index suivants glissent
 MACROS["Soin"].index = 1
@@ -1063,30 +1064,43 @@ for i = 2, 30 do MACROS["Perso" .. i] = { index = 120 + i, body = "/sit", char =
 local restoreBtn = byText("Restaurer")
 COMBAT = true
 fire(restoreBtn, "OnClick")
-assert(lastLine():find("combat"), "restauration en combat")
+assert(lastLine():find("combat") and ns.profilesPanel == nil, "apercu du profil en combat")
 COMBAT = false
 local popupsBefore2 = #POPUPS
 fire(restoreBtn, "OnClick")
-local pop = POPUPS[#POPUPS]
-assert(#POPUPS == popupsBefore2 + 1 and pop.which == "BLOCKFORGE_RESTORE" and pop.text:find("2026-11-20", 1, true), "confirmation attendue")
+local pp = ns.profilesPanel
+assert(#POPUPS == popupsBefore2 and pp and pp:IsShown() and pp.state.chosen == "2026-11-20" and pp._w == 884 and pp._h == 566, "apercu du profil attendu")
+assert(pp.activate._text == "Activer (3)" and pp.summary._text:find("À créer : 2 · à réécrire : 1 · laissées : 0 · déjà identiques : 1", 1, true), pp.summary._text)
+-- pas assez de place : rien n'est touche, le manque est chiffre
+local callsBefore2 = #CALLS
+fire(pp.activate, "OnClick")
+assert(lastLine():find("il manque 0 place(s) dans les macros générales et 1 dans celles du personnage. Rien n'a été changé", 1, true), lastLine())
+assert(#CALLS == callsBefore2 and MACROS["Soin"].body == "/cast Autre" and ns.UndoLabel() == nil and db.profiles["2026-11-20"] and not next(db.profiles, "2026-11-20"), "profil applique a moitie")
+set.macros[#set.macros] = nil
+ns.Profiles.Render()
 COMBAT = true
-StaticPopupDialogs.BLOCKFORGE_RESTORE.OnAccept({}, pop.data) -- combat commence pendant la confirmation
-assert(MACROS["Soin"].body == "/cast Autre", "restauration en combat")
+fire(pp.activate, "OnClick") -- combat commence pendant l'apercu
+assert(MACROS["Soin"].body == "/cast Autre" and lastLine():find("combat"), "activation en combat")
 COMBAT = false
-StaticPopupDialogs.BLOCKFORGE_RESTORE.OnAccept({}, pop.data)
+fire(pp.activate, "OnClick")
 assert(MACROS["Soin"].body == soinBody and MACROS["Test BM"] and MACROS["Sans curseur"], "restauration incomplete")
 assert(MACROS["Sans curseur"].index == 2 and not MACROS["Trop"], "creation ou place")
-assert(lastLine():find("2 mises à jour, 1 créées, 1 ignorées"), lastLine())
+assert(PRINTS[#PRINTS - 1]:find("1 macro(s) créée(s), 1 mise(s) à jour, 0 archivée(s) puis retirée(s), 0 touche(s), 0 emplacement(s) ; 0 étape(s) refusée(s)", 1, true), PRINTS[#PRINTS - 1])
+assert(lastLine():find("Sauvegarde automatique « Auto 2026-11-20 12:00:00 profil »", 1, true) and ns.UndoLabel() == "profil « 2026-11-20 »", lastLine())
+local auto = db.profiles["Auto 2026-11-20 12:00:00 profil"]
+assert(auto and auto.auto == true and #auto.macros == 31, "sauvegarde automatique absente")
 assert(MACROS["Perso2"].body == "/sit", "macro absente de la sauvegarde modifiee")
+db.undo = false
+pp:Hide()
 for i = 2, 30 do MACROS["Perso" .. i] = nil end
 fireEvent("UPDATE_MACROS")
 -- les sauvegardes survivent a la reinitialisation, la suppression demande confirmation
 ns.ResetDB()
-assert(db.sets["2026-11-20"], "sauvegarde perdue a la reinitialisation")
+assert(db.profiles["2026-11-20"] and db.profiles["Auto 2026-11-20 12:00:00 profil"], "sauvegarde perdue a la reinitialisation")
 fire(byText("Supprimer", mPage), "OnClick")
 assert(POPUPS[#POPUPS].which == "BLOCKFORGE_DELETE_SET")
 StaticPopupDialogs.BLOCKFORGE_DELETE_SET.OnAccept({}, POPUPS[#POPUPS].data)
-assert(db.sets["2026-11-20"] == nil, "sauvegarde non supprimee")
+assert(db.profiles["2026-11-20"] == nil and db.profiles["Auto 2026-11-20 12:00:00 profil"], "sauvegarde non supprimee")
 
 -- raccourci : sans conflit, avec conflit, Echap, combat
 fire(mRow("Soin"), "OnClick")
@@ -1253,7 +1267,7 @@ local coach = NS.Tutorial.coach
 assert(NS.Tutorial.step == 1 and coach.title._text == "The home tab" and coach.next._text == "Next" and coach.skip._text == "Skip", coach.title._text)
 for _, s in ipairs(NS.TutorialSteps) do
   for _, c in ipairs({ "é", "è", "ê", "à", "ù", "ç", "«", "»", " :", " ;", " ?" }) do
-    assert(not (s.title .. s.text):find(c, 1, true), "etape en francais : " .. s.title)
+    assert(not (s.title .. (type(s.text) == "function" and s.text() or s.text)):find(c, 1, true), "etape en francais : " .. s.title)
   end
 end
 fire(coach.skip, "OnClick")
@@ -1307,7 +1321,8 @@ for i, s in ipairs(steps) do
   assert(getmetatable(anchor) == WIDGET and inside(anchor, BlockForgeFrame), "repere de l'etape " .. i)
   assert(tabs[s.tab].line:IsShown() and anchor:IsVisible(), "onglet de l'etape " .. i)
   assert(coach._point[2] == anchor and tour.frame._point[2] == anchor, "panneau non pose sur le repere " .. i)
-  assert(coach.title._text == s.title and coach.text._text == s.text and #s.title > 3 and #s.text > 40 and #s.text < 330, "texte de l'etape " .. i)
+  local text = type(s.text) == "function" and s.text() or s.text -- etape des kits, profils et macros vivantes : texte selon les fonctions actives
+  assert(coach.title._text == s.title and coach.text._text == text and #s.title > 3 and #text > 40 and #text < 330, "texte de l'etape " .. i)
   assert(coach.count._text == i .. " / " .. #steps, coach.count._text)
   assert(coach.prev._enabled == (i > 1), "bouton precedent a l'etape " .. i)
   assert(coach.next._text == (i == #steps and "Terminer" or "Suivant"))
@@ -2000,11 +2015,11 @@ local function ids()
   return table.concat(out, " ")
 end
 -- seulement les recettes d'un sort offensif, sans celle du familier (aucun familier sorti)
-assert(ids() == "mouseover_harm focus_mod interrupt_focus nearest trinkets stopcasting sequence", ids())
+assert(ids() == "mouseover_harm focus_mod interrupt_focus nearest trinkets stopcasting sequence living_trinkets", ids())
 local body = "#showtooltip\n/cast [@mouseover,harm,nodead][] Corruption"
 assert(cards[1].recipe.id == "mouseover_harm" and cards[1].body == body and plain(cards[1].code._text) == body, cards[1].body)
 assert(cards[1].code._text:find("|cff") and cards[1].title._text == "Survol, sinon cible" and #cards[1].desc._text > 20)
-assert(cards[1].count._text == #body .. " / 255" and cards[4]:IsShown() and panel.range._text == "1-4 / 7  (molette)", panel.range._text)
+assert(cards[1].count._text == #body .. " / 255" and cards[4]:IsShown() and panel.range._text == "1-4 / 8  (molette)", panel.range._text)
 for i, card in ipairs(cards) do -- cartes dans le panneau : 248 + 628 <= 881, derniere finie avant -563
   assert(card._w == 628 and card._h == 119 and -70 + card._point[3] - card._h >= -563 and card.code._h == 68, "carte " .. i)
 end
@@ -2021,10 +2036,10 @@ fire(attackChip, "OnClick")
 fire(tooltipChip, "OnClick")
 fire(deadChip, "OnClick")
 assert(cards[1].body == body)
--- molette : les 7 recettes dans 4 cartes ; la sequence ne se cree pas telle quelle
+-- molette : les 8 recettes dans 4 cartes ; la sequence ne se cree pas telle quelle
 for _ = 1, 9 do fire(panel.deck, "OnMouseWheel", -1) end
-assert(cards[1].recipe.id == "nearest" and cards[4].recipe.id == "sequence" and panel.range._text == "4-7 / 7  (molette)", panel.range._text)
-assert(cards[4].create._enabled == false and cards[3].create._enabled == true)
+assert(cards[1].recipe.id == "trinkets" and cards[3].recipe.id == "sequence" and cards[4].recipe.id == "living_trinkets" and panel.range._text == "5-8 / 8  (molette)", panel.range._text)
+assert(cards[3].create._enabled == false and cards[4].create._enabled == true and plain(cards[4].code._text):find("/use <Bijou du haut>", 1, true), cards[4].code._text)
 for _ = 1, 9 do fire(panel.deck, "OnMouseWheel", 1) end
 assert(cards[1].recipe.id == "mouseover_harm" and cards[1].create._enabled == true)
 -- autre sort dans la grille de l'Assistant : aide, donc d'autres recettes et pas de /stopattack
@@ -2034,10 +2049,10 @@ assert(ids() == "mouseover_help focus_mod self_alt stopcasting sequence" and not
 assert(cards[2].body == "#showtooltip\n/cast [mod:shift,@focus][@mouseover,help,nodead][] Soins rapides", cards[2].body)
 -- type inconnu du jeu : toutes les recettes de sort ; familier sorti : sa recette en plus
 fire(panel.grid.cells[3], "OnClick")
-assert(state.kind == "either" and #state.recipes == 9 and attackChip:IsShown(), ids())
+assert(state.kind == "either" and #state.recipes == 10 and attackChip:IsShown(), ids())
 HAS_PET = true
 fire(panel.grid.cells[1], "OnClick")
-assert(ids() == "mouseover_harm focus_mod interrupt_focus nearest with_pet trinkets stopcasting sequence", ids())
+assert(ids() == "mouseover_harm focus_mod interrupt_focus nearest with_pet trinkets stopcasting sequence living_trinkets", ids())
 fire(panel.grid.chips[2], "OnClick")
 fire(panel.grid.cells[1], "OnClick")
 assert(state.kind == "pet" and panel.kind._text == "Technique du familier" and ids():find("with_pet", 1, true), ids())
@@ -2045,7 +2060,7 @@ HAS_PET = false
 -- objet : /use, et seulement ses recettes
 fire(panel.grid.chips[3], "OnClick")
 fire(panel.grid.cells[2], "OnClick")
-assert(state.kind == "item" and ids() == "stopcasting item_fallback" and not cards[3]:IsShown() and panel.range._text == "", ids())
+assert(state.kind == "item" and ids() == "stopcasting item_fallback survival" and cards[3]:IsShown() and not cards[4]:IsShown() and panel.range._text == "", ids())
 assert(cards[1].body == "#showtooltip\n/stopcasting\n/use Pierre de soins" and cards[2].create._enabled == false)
 
 -- C. « Ouvrir dans l'editeur » : les blocs de la recette, le nom du sort, l'Assistant se ferme ; Ctrl+Z rend l'ancien contenu
@@ -2142,7 +2157,7 @@ local panel = ns.assistant
 assert(panel:IsShown() and not ns.grimoire:IsShown() and panel.intro:IsShown() and panel.name._text == "Pick a spell on the left." and not panel.cards[1]:IsShown())
 -- un sort tape a la main dans l'editeur n'a pas besoin de la grille : l'Assistant accepte une entree directe
 ns.OpenAssistant({ name = "Fireball", kind = "spell" })
-assert(#panel.state.recipes == 9 and panel.cards[1].title._text == "Mouseover, else target" and panel.kind._text == "Harmful or helpful spell")
+assert(#panel.state.recipes == 10 and panel.cards[1].title._text == "Mouseover, else target" and panel.kind._text == "Harmful or helpful spell")
 for _, r in ipairs(ns.Recipes) do
   for _, c in ipairs({ "é", "è", "ê", "à", "ù", "ç", "«", "»", " :", " ;" }) do
     assert(not (r.title .. r.desc .. r.build("X", {})):find(c, 1, true), "recette en francais : " .. r.id)
@@ -2305,11 +2320,12 @@ assert(home.gauge.text._textColor[2] == 0.7, "jauge proche de la limite non oran
 GetNumMacros = real
 ns.RefreshHome()
 assert(home.gauge.text._textColor[1] == 0.8)
-assert(#ns.HomeActions == 4 and #home.tiles == 4)
+-- six entrees sur deux lignes de quatre : les kits et les profils (lot B) passent a la deuxieme, de -86 a -138 dans un panneau de 150
+assert(#ns.HomeActions == 6 and #home.tiles == 6 and ns.HomeActions[5].id == "kits" and ns.HomeActions[6].id == "profiles")
 for i, tile in ipairs(home.tiles) do
-  assert(tile._w == 212 and tile._h == 52 and tile._point[2] == 8 + (i - 1) * 218 and tile._point[3] == -28 and tile.text._text == ns.HomeActions[i].title)
+  assert(tile._w == 212 and tile._h == 52 and tile._point[2] == 8 + ((i - 1) % 4) * 218 and tile._point[3] == -28 - math.floor((i - 1) / 4) * 58 and tile.text._text == ns.HomeActions[i].title)
 end
-assert(home.tiles[4]._point[2] + 212 <= 884 - 8, "tuiles hors du panneau")
+assert(home.tiles[4]._point[2] + 212 <= 884 - 8 and home.tiles[6]._point[3] - 52 >= -147, "tuiles hors du panneau")
 -- bilan en bref : Vieille cassee, Double2 en double, orphelines : Vieille, Orph, Risque ; a risque : Risque
 local function chip(i) return home.healthChips[i].text._text end
 assert(chip(1) == "Cassées : 1" and chip(2) == "Doublons : 1" and chip(3) == "Orphelines : 3" and chip(4) == "À risque : 1", chip(1) .. chip(2) .. chip(3) .. chip(4))
@@ -2622,10 +2638,15 @@ assert(text:find("INFO probe actions: PlaceAction present, PickupAction present,
 assert(text:find("INFO probe P6 spec: C_SpecializationInfo absent", 1, true) and text:find("INFO probe P10 C_EncodingUtil: absent", 1, true), text)
 assert(text:find("INFO probe P13 secure button: SecureActionButtonTemplate created", 1, true) and text:find("INFO probe P11 compartment:", 1, true), text)
 assert(text:find("INFO probe P7 conditions: SecureCmdOptionParse absent", 1, true), text)
-assert(text:find("OK home tab: 4 entries", 1, true) and text:find("INFO health: 5 macros, 1 broken, 1 duplicates, 3 orphans (bars fully read: true), 1 at risk", 1, true), text)
+assert(text:find("OK home tab: 6 entries", 1, true) and text:find("INFO health: 5 macros, 1 broken, 1 duplicates, 3 orphans (bars fully read: true), 1 at risk", 1, true), text)
 assert(text:find("INFO features: home=on, bars=on, health=on, suggestions=on, gauge=on, assistant=on, grimoire=on, share=on, tutorial=on, colorize=on", 1, true), text)
 assert(text:find("INFO optional api present: GetActionInfo", 1, true) and text:find("INFO optional api absent: C_ActionBar.PutActionInSlot", 1, true))
 assert(not text:find("FAIL v1", 1, true), text)
+-- lot B : jetons, ID embarques, kits, profils, export « BF2: » ; toujours sans rien toucher
+assert(text:find("INFO living tokens (level 60, 0 bag items): potion_soin=none", 1, true) and text:find("INFO living item ids without a name (not cached yet, or wrong id): 0 / 69", 1, true), text)
+assert(text:find("OK kits: 27, dangling references or bad counts: 0", 1, true) and text:find("INFO kit of this class (leveling, mouseover, pet): 16 macros", 1, true), text)
+assert(text:find("INFO profiles: 0 (0 automatic backups, 0 from other characters)", 1, true) and text:find("spec API active group nil", 1, true), text)
+assert(text:find("OK BF2 profile round trip: 20 macros", 1, true) and text:find("plain (C_EncodingUtil absent)", 1, true) and text:find("INFO optional api absent: C_Timer.After", 1, true), text)
 assert(#CALLS == calls and PLACES == places and BINDINGS.F5 == keysBefore and CURSOR[1] == nil, "l'autotest a touche aux barres ou aux macros")
 for slot, a in pairs(SLOTS) do assert(slotsBefore[slot] == a[1] .. a[2], "emplacement change par l'autotest") end
 -- la sonde ne cree le bouton securise qu'une fois
@@ -2699,13 +2720,13 @@ SLOTS[1] = { "spell", 172 }
 SlashCmdList.BLOCKFORGE("")
 local w, home = ns.ed.w, ns.home
 local tabHome, tabEditor = byText("Accueil", BlockForgeFrame), byText("Éditeur", BlockForgeFrame)
--- dix fonctions, toutes actives par defaut, une case chacune dans l'onglet Parametres (colonne de droite, sans chevauchement)
+-- quatorze fonctions, toutes actives par defaut, une case chacune dans l'onglet Parametres (colonne de droite, sans chevauchement)
 local ids = {}
 for i, def in ipairs(ns.Features) do
   ids[i] = def.id
   assert(type(def.label) == "string" and type(def.desc) == "string" and ns.Enabled(def.id) == true, def.id)
 end
-assert(table.concat(ids, ",") == "home,bars,health,suggestions,gauge,assistant,grimoire,share,tutorial,colorize", table.concat(ids, ","))
+assert(table.concat(ids, ",") == "home,bars,health,suggestions,gauge,assistant,grimoire,share,tutorial,colorize,living,kits,profiles,specProfiles", table.concat(ids, ","))
 assert(ns.Enabled("inconnue") == true)
 fire(byText("Paramètres", BlockForgeFrame), "OnClick")
 local boxes = {}
@@ -2718,7 +2739,7 @@ for i, def in ipairs(ns.Features) do
   local box = boxes[def.id]
   assert(box and box._checked == true and box._point[3] == -54 - (i - 1) * 26, "case de la fonction " .. def.id)
 end
-assert(-54 - 11 * 26 - 26 > -432, "douze fonctions ne tiennent pas au-dessus de la ligne des commandes")
+assert(#ns.Features == 14 and -54 - 13 * 26 - 26 > -432, "quatorze fonctions ne tiennent pas au-dessus de la ligne des commandes")
 
 -- tout est construit et ouvert une fois, pour verifier ensuite que les evenements sont retires
 ns.OpenWand()
@@ -2868,9 +2889,9 @@ ns.SetFeature("grimoire", false)
 ns.SetFeature("home", false)
 SlashCmdList.BLOCKFORGE("tuto")
 local tour = ns.Tutorial
-assert(#ns.TutorialSteps == 12 and #tour.steps == 10 and tour.step == 1 and tour.coach.count._text == "1 / 10" and tabEditor.line:IsShown())
+assert(#ns.TutorialSteps == 12 and #tour.steps == 9 and tour.step == 1 and tour.coach.count._text == "1 / 9" and tabEditor.line:IsShown())
 for _, s in ipairs(tour.steps) do assert(s.feature ~= "grimoire" and s.feature ~= "home") end
-for _ = 1, 10 do fire(tour.coach.next, "OnClick") end
+for _ = 1, 9 do fire(tour.coach.next, "OnClick") end
 assert(tour.step == nil)
 
 -- /bf test liste l'etat des fonctions ; la reinitialisation les reactive toutes
@@ -2893,7 +2914,999 @@ assert(byText("Éditeur", BlockForgeFrame).line:IsShown() and not byText("Accuei
 assert(ns.Tutorial.step == nil and db.tutorialSeen == false, "visite lancee alors qu'elle est coupee")
 assert(ns.home.gauge:IsShown() and ns.home.gauge.text._text == "0 / 120 · 0 / 30", "la jauge ne depend pas de l'accueil")
 SlashCmdList.BLOCKFORGE("tuto")
-assert(ns.Tutorial.step == 1 and #ns.Tutorial.steps == 11)
+assert(ns.Tutorial.step == 1 and #ns.Tutorial.steps == 10) -- sans les deux etapes de l'accueil
 `, "=fonctions au chargement");
 
-console.log("test_ui.js : OK (11 scenarios)");
+// ---------------------------------------------------------------- 12. V1 lot B : macros vivantes
+// Sacs, equipement, niveau, familier, horloge differee (C_Timer) et double specialisation du faux client.
+const LOTB = BARS + String.raw`
+TIMERS = {}
+C_Timer = { After = function(delay, fn) assert(delay == 1) TIMERS[#TIMERS + 1] = fn end }
+function tick() local list = TIMERS TIMERS = {} for _, fn in ipairs(list) do fn() end end
+LEVEL, PETNAME, SPEC = 60, nil, 1
+function UnitLevel(unit) assert(unit == "player") return LEVEL end
+BAGS = { [0] = {} }
+ITEMS = { [118] = "Potion de soins mineure", [929] = "Potion de soins", [13446] = "Potion de soins majeure", [5512] = "Pierre de soins mineure",
+  [9421] = "Pierre de soins majeure", [1251] = "Bandage en lin", [14530] = "Bandage runique épais", [9000] = "Bijou de test", [9001] = "Autre bijou",
+  [159] = "Eau de source", [5000] = "Fromage inconnu", [6000] = "Cheval", [16896] = "Pierre d'âme majeure" }
+CLASS = { [5000] = { 0, 5 }, [6000] = { 15, 5 }, [159] = { 0, 5 } } -- classe et sous-classe d'objet
+EFFECT = { [5000] = "Sort433", [159] = "Sort430" }                   -- nom de l'effet « Utiliser »
+MINLEVEL = { [5000] = 25 }
+EQUIP = { [13] = 9000 }
+C_Container = {
+  GetContainerNumSlots = function(bag) return BAGS[bag] and #BAGS[bag] or 0 end,
+  GetContainerItemID = function(bag, slot) return BAGS[bag][slot] end,
+}
+C_Item.GetItemInfo = function(id) assert(not COMBAT, "objet lu en combat") return ITEMS[id], "lien", 1, 1, MINLEVEL[id] or 0 end
+C_Item.GetItemNameByID = function(id) return ITEMS[id] end
+C_Item.GetItemInfoInstant = function(id) local c = CLASS[id] or { 7, 0 } return id, "", "", "", 1, c[1], c[2] end
+C_Item.GetItemSpell = function(id) return EFFECT[id] end
+function GetInventoryItemID(unit, slot) assert(unit == "player") return EQUIP[slot] end
+function UnitExists(unit) return unit == "pet" and PETNAME ~= nil end
+function UnitName(unit) if unit == "pet" then return PETNAME end assert(unit == "player") return "Moi" end
+function SetBinding(key, action) assert(not COMBAT, "SetBinding en combat") BINDINGS[key] = action return true end
+C_SpecializationInfo = { GetActiveSpecGroup = function() return SPEC end }
+function count(kind) local n = 0 for _, c in ipairs(CALLS) do if c[1] == kind then n = n + 1 end end return n end
+function printed(fragment) for _, line in ipairs(PRINTS) do if line:find(fragment, 1, true) then return true end end return false end
+`;
+boot("{ tutorialSeen = true }", LOTB);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+local function said(fragment) return lastLine():find(fragment, 1, true) ~= nil end
+local function text() return ns.Compile(ns.ed.Blocks()) end
+SlashCmdList.BLOCKFORGE("")
+ns.Open("editor")
+local w, view, Living = ns.ed.w, ns.ed, ns.Living
+local rows = {}
+for _, c in ipairs(w.canvas._children) do if c.pills then rows[#rows + 1] = c end end
+
+-- 1. editeur : « Vivant… » sur la ligne de l'argument (de 206 a 286, de -68 a -84), au-dessus du champ (-86), dans un panneau de 296
+local chip, menu = w.livingChip, w.livingMenu
+assert(chip and chip._parent == w.insp and chip._w == 80 and chip._h == 16 and chip._point[2] == 206 and chip._point[3] == -68 and chip.text._text == "Vivant…")
+assert(206 + 80 <= 296 - 3 and -68 - 16 >= -86 and -68 <= -44 - 22, "puce hors du panneau, sur le champ ou sur les alternatives")
+assert(not chip:IsShown() and not menu:IsShown(), "puce visible sans bloc choisi")
+view.Load("Essai", "#showtooltip\n/use Potion\n/castsequence A, B\n/stopcasting\n/run x()")
+fire(rows[2], "OnClick")
+assert(chip:IsShown() and not menu:IsShown())
+fire(chip, "OnClick")
+-- liste de 13 jetons : 190 de large sous la puce (de 96 a 286), finie avant le bas du panneau (430)
+assert(menu:IsShown() and menu._w == 190 and menu._h == 12 + 13 * 20 and menu._point[1] == "TOPRIGHT" and menu._point[2] == chip and -86 - menu._h >= -427, "liste hors du panneau")
+local items, n = {}, 0
+for _, c in ipairs(menu._children) do
+  if c.text then
+    n = n + 1
+    items[c.text._text] = c
+    assert(c._w == 174 and c._point[2] == 8 and c._point[3] == -6 - (n - 1) * 20 and c._point[3] - c._h >= -menu._h + 3, "jeton " .. n)
+  end
+end
+assert(n == 13 and items["Potion de soin"] and items["Bijou du haut"] and items["Plus haut rang du sort"] and not items["Focus"])
+fire(items["Potion de soin"], "OnClick")
+assert(not menu:IsShown() and text() == "#showtooltip\n/use {bf:potion_soin}\n/castsequence A, B\n/stopcasting\n/run x()", text())
+-- pastille « vivant » sur la ligne du bloc, pas sur les autres
+local function pill(row)
+  for _, p in ipairs(row.pills) do if p:IsShown() and p.text._text == "vivant" then return true end end
+  return false
+end
+assert(pill(rows[2]) and not pill(rows[1]) and not pill(rows[3]), "pastille vivant")
+-- pas de jeton pour une sequence, une commande sans argument ou une ligne libre
+for i = 3, 5 do
+  fire(rows[i], "OnClick")
+  assert(not chip:IsShown(), "puce sur la ligne " .. i)
+end
+-- « plus haut rang » : enveloppe le nom tape, sans son rang ; refuse un argument vide
+view.Load("Essai", "/cast Peur(Rang 2)\n/cast")
+fire(rows[1], "OnClick")
+fire(items["Plus haut rang du sort"], "OnClick")
+assert(text() == "/cast {bf:sort:Peur}\n/cast", text())
+fire(items["Plus haut rang du sort"], "OnClick") -- deux fois : le jeton n'est pas enveloppe dans lui-meme
+assert(text() == "/cast {bf:sort:Peur}\n/cast", text())
+fire(rows[2], "OnClick")
+fire(items["Plus haut rang du sort"], "OnClick")
+assert(said("Écris d'abord le nom du sort") and text() == "/cast {bf:sort:Peur}\n/cast")
+-- un jeton n'est pas un « sort inconnu »
+assert(#ns.UnknownSpells(ns.Parse("/cast {bf:sort:Peur}\n/cast Inconnu")) == 1)
+COMBAT = true
+fire(rows[1], "OnClick")
+fire(items["Potion de soin"], "OnClick")
+assert(said("combat") and text() == "/cast {bf:sort:Peur}\n/cast")
+COMBAT = false
+
+-- 2. enregistrement : la macro du jeu recoit de vrais noms, jamais un jeton ; le modele reste dans BlockForgeDB
+local template = "#showtooltip\n/use {bf:potion_soin}\n/use {bf:bijou13}"
+view.Load("Survie", template)
+view.SaveMacro("Survie", text(), false, nil, false)
+local m = MACROS.Survie
+-- sacs vides : le nom de la plus petite potion de la liste, et la macro est marquee
+assert(m and m.body == "#showtooltip\n/use Potion de soins mineure\n/use Bijou de test", m and m.body)
+local rec = db.living.account.Survie
+assert(rec and rec.template == template and rec.body == m.body and rec.flag == "missing" and next(db.living.chars) == nil)
+assert(ns.LivingLabel("Survie", false) == "vivante, rien dans les sacs" and ns.LivingLabel("Survie", true) == nil and ns.LivingLabel("Autre", false) == nil)
+-- un jeton sans aucun nom possible : rien n'est cree
+local created = count("CreateMacro")
+view.SaveMacro("Vide", "/use {bf:bijou14}", false, nil, false)
+assert(count("CreateMacro") == created and not MACROS.Vide and said("Bijou du bas") and said("n'a pas été enregistrée") and db.living.account.Vide == nil)
+-- trop longue une fois les noms ecrits
+ITEMS[9000] = string.rep("x", 250)
+view.SaveMacro("Longue", "/use {bf:bijou13}\n/stopcasting", false, nil, false)
+assert(not MACROS.Longue and said("trop longue une fois les jetons remplacés"))
+ITEMS[9000] = "Bijou de test"
+
+-- 3. reecriture : une passe par seconde au plus, seulement si le texte change, meme index, meme nom, meme icone
+local index, icon, edits = m.index, m.icon, count("EditMacro")
+BAGS[0] = { 929, 13446, 118 }
+LEVEL = 30
+fireEvent("BAG_UPDATE_DELAYED")
+assert(#TIMERS == 1 and m.body:find("mineure") and count("EditMacro") == edits, "reecriture sans attendre")
+fireEvent("BAG_UPDATE_DELAYED")
+fireEvent("PLAYER_EQUIPMENT_CHANGED")
+assert(#TIMERS == 1, "plus d'une passe par seconde")
+tick()
+-- niveau 30 : la potion majeure (niveau 45) n'est pas retenue
+assert(m.body == "#showtooltip\n/use Potion de soins\n/use Bijou de test", m.body)
+assert(MACROS.Survie == m and m.index == index and m.icon == icon and count("EditMacro") == edits + 1, "index, nom ou icone changes")
+local call = CALLS[#CALLS]
+assert(call[1] == "EditMacro" and call[2] == "Survie" and call[4] == nil, "EditMacro doit garder l'icone")
+assert(rec.flag == nil and rec.body == m.body and rec.last["{bf:potion_soin}"] == "Potion de soins")
+local journal = db.living.journal
+assert(#journal == 1 and journal[1].macro == "Survie" and journal[1].text == "Potion de soin : Potion de soins mineure -> Potion de soins", journal[1] and journal[1].text)
+-- rien n'a change : aucune ecriture
+fireEvent("SPELLS_CHANGED")
+tick()
+assert(count("EditMacro") == edits + 1 and #journal == 1, "reecriture inutile")
+-- en combat : rien ne part ; la passe attend la sortie du combat
+LEVEL = 60
+COMBAT = true
+fireEvent("BAG_UPDATE_DELAYED")
+assert(#TIMERS == 0 and Living.Pass() == 0 and count("EditMacro") == edits + 1, "reecriture en combat")
+COMBAT = false
+fireEvent("PLAYER_REGEN_ENABLED")
+assert(#TIMERS == 1)
+tick()
+assert(m.body == "#showtooltip\n/use Potion de soins majeure\n/use Bijou de test" and count("EditMacro") == edits + 2, m.body)
+-- le combat commence pendant l'attente : la passe ne fait rien
+BAGS[0] = { 118 }
+fireEvent("BAG_UPDATE_DELAYED")
+COMBAT = true
+tick()
+assert(m.body:find("majeure") and count("EditMacro") == edits + 2)
+COMBAT = false
+BAGS[0] = {}
+fireEvent("PLAYER_REGEN_ENABLED")
+tick()
+-- sacs vides : le dernier nom est garde, la macro est marquee « rien dans les sacs »
+assert(m.body:find("majeure") and rec.flag == "missing" and count("EditMacro") == edits + 2 and ns.LivingLabel("Survie", false) == "vivante, rien dans les sacs")
+EQUIP[13] = 9001
+fireEvent("PLAYER_EQUIPMENT_CHANGED")
+tick()
+assert(m.body == "#showtooltip\n/use Potion de soins majeure\n/use Autre bijou" and journal[#journal].text == "Bijou du haut : Bijou de test -> Autre bijou")
+-- familier d'un autre joueur : ignore ; connexion : une passe (macros generales resolues pour ce personnage)
+fireEvent("UNIT_PET", "party1")
+assert(#TIMERS == 0)
+fireEvent("UNIT_PET", "player")
+fireEvent("PLAYER_ENTERING_WORLD")
+assert(#TIMERS == 1)
+tick()
+-- ce que le faux client donne a lire : objets classes par le jeu, equipement, familier
+BAGS[0] = { 5000, 6000, 159, 2589 }
+PETNAME = "Rex"
+local env = Living.Env()
+assert(env.level == 60 and #env.bags == 4 and env.bags[1].kind == "food" and env.bags[1].level == 25 and env.bags[2].kind == "mount" and env.bags[3].kind == "drink")
+assert(env.bags[4].kind == nil and env.bags[4].name == nil and env.slots[13] == "Autre bijou" and env.slots[14] == nil and env.pet == "Rex")
+assert(ns.ResolveToken("nourriture", "", env) == "Fromage inconnu" and ns.ResolveToken("monture", "", env) == "Cheval" and ns.ResolveToken("familier", "", env) == "Rex")
+BAGS[0], PETNAME = {}, nil
+
+-- 4. modifiee hors de BlockForge : plus jamais reecrite sans confirmation
+m.body = "/use Autre chose"
+BAGS[0] = { 118 }
+fireEvent("BAG_UPDATE_DELAYED")
+tick()
+assert(m.body == "/use Autre chose" and rec.flag == "diverged" and ns.LivingLabel("Survie", false) == "vivante, modifiée ailleurs")
+assert(journal[#journal].text:find("Modifiée hors de BlockForge", 1, true))
+local lines = #journal
+fireEvent("BAG_UPDATE_DELAYED")
+tick()
+assert(#journal == lines and m.body == "/use Autre chose" and count("EditMacro") == edits + 3, "ecrasement silencieux")
+view.Load("Survie", m.body) -- l'editeur ouvre le texte du jeu, pas le modele
+assert(text() == "/use Autre chose")
+-- panneau : liste, journal (20 lignes de 12 px de -314 a -554, panneau de 566), confirmation
+SlashCmdList.BLOCKFORGE("vivant")
+local panel = ns.livingPanel
+assert(panel and panel:IsShown() and panel._w == 884 and panel._h == 566 and panel._parent == w.home and #panel.rows == 18 and #panel.lines == 20)
+for i, row in ipairs(panel.rows) do assert(row._w == 420 and row._point[3] == -54 - (i - 1) * 24 and row._point[3] - row._h >= -484, "ligne " .. i) end
+for i, line in ipairs(panel.lines) do assert(line._point[2] == 440 and line._w == 436 and line._point[3] == -314 - (i - 1) * 12 and line._point[3] - 12 >= -563, "journal " .. i) end
+assert(panel.resume._point[2] == 440 and panel.resume._w == 215 and panel.forget._point[2] == 661 and 661 + 215 == 876)
+assert(panel.rows[1]:IsShown() and panel.rows[1].text._text == "Survie" and panel.rows[1].state._text == "vivante, modifiée ailleurs" and not panel.rows[2]:IsShown())
+assert(not panel.empty:IsShown() and panel.resume._enabled == false and panel.lines[1]._text:find("Modifiée hors de BlockForge", 1, true) and panel.lines[#journal + 1]._text == "")
+fire(panel.rows[1], "OnClick")
+assert(panel.resume._enabled == true and panel.forget._enabled == true and plain(panel.body._text) == template and panel.name._text == "Survie")
+COMBAT = true
+fire(panel.resume, "OnClick")
+assert(said("combat") and rec.flag == "diverged" and m.body == "/use Autre chose")
+COMBAT = false
+fire(panel.resume, "OnClick")
+assert(rec.flag == nil and m.body == "#showtooltip\n/use Potion de soins mineure\n/use Autre bijou" and panel.resume._enabled == false, m.body)
+assert(panel.rows[1].state._text == "vivante" and panel.lines[1]._text:find("Potion de soins majeure -> Potion de soins mineure", 1, true), panel.lines[1]._text)
+-- l'editeur rouvre le modele a jetons de la macro vivante
+view.Load("Survie", m.body)
+assert(text() == template, text())
+-- « ne plus suivre » : le modele est oublie, la macro du jeu garde son texte
+fire(panel.rows[1], "OnClick")
+fire(panel.forget, "OnClick")
+assert(db.living.account.Survie == nil and not panel.rows[1]:IsShown() and panel.empty:IsShown() and m.body:find("mineure") and ns.LivingLabel("Survie", false) == nil)
+BAGS[0] = { 13446 }
+fireEvent("BAG_UPDATE_DELAYED")
+assert(#TIMERS == 0, "du travail alors qu'aucune macro n'est vivante")
+fireEvent("PLAYER_REGEN_DISABLED")
+assert(not panel:IsShown(), "panneau ouvert en combat")
+
+-- 5. macro du personnage ; reecrite sans jeton, elle n'est plus vivante (apres la confirmation seulement)
+view.SaveMacro("Perso", "/use {bf:bijou13}", true, nil, false)
+local me = db.living.chars["Moi-Royaume"]
+assert(MACROS.Perso.char == true and MACROS.Perso.body == "/use Autre bijou" and me and me.Perso and db.living.account.Perso == nil)
+assert(ns.LivingLabel("Perso", true) == "vivante" and ns.LivingLabel("Perso", false) == nil)
+view.SaveMacro("Perso", "/use 13", true, nil, false)
+assert(me.Perso and MACROS.Perso.body == "/use Autre bijou", "modele oublie avant la confirmation")
+accept("BLOCKFORGE_OVERWRITE")
+assert(me.Perso == nil and MACROS.Perso.body == "/use 13")
+-- la macro supprimee dans le jeu : le modele est retire a la passe suivante
+view.SaveMacro("Ephemere", "/use {bf:bijou13}", false, nil, false)
+DeleteMacro(MACROS.Ephemere.index)
+fireEvent("BAG_UPDATE_DELAYED")
+tick()
+assert(db.living.account.Ephemere == nil and journal[#journal].text:find("n'existe plus", 1, true))
+
+-- 6. plusieurs macros reecrites d'un coup : sauvegarde automatique d'abord, et une annulation
+view.SaveMacro("V1", "/use {bf:bijou13}", false, nil, false)
+view.SaveMacro("V2", "/use {bf:bijou13}\n/stopcasting", false, nil, false)
+db.undo = false
+EQUIP[13] = 9000
+fireEvent("PLAYER_EQUIPMENT_CHANGED")
+tick()
+assert(MACROS.V1.body == "/use Bijou de test" and MACROS.V2.body == "/use Bijou de test\n/stopcasting")
+local backup = db.profiles["Auto 2026-11-20 12:00:00 macros vivantes"]
+assert(backup and backup.auto == true and ns.UndoLabel() == "réécriture de 2 macros vivantes" and #db.undo.ops == 2)
+local saved
+for _, s in ipairs(backup.macros) do if s.name == "V1" then saved = s end end
+assert(saved and saved.body == "/use Autre bijou", "la sauvegarde doit dater d'avant la reecriture")
+-- une annulation deja en attente (operation du joueur) n'est pas remplacee
+db.undo = { label = "operation du joueur", ops = {} }
+EQUIP[13] = 9001
+fireEvent("PLAYER_EQUIPMENT_CHANGED")
+tick()
+assert(MACROS.V1.body == "/use Autre bijou" and ns.UndoLabel() == "operation du joueur")
+db.undo = false
+
+-- 7. accueil : ligne des macros vivantes dans le bandeau (de 640 a 876, de -72 a -90), sans toucher au compte des macros
+ns.Open("home")
+local line = find(function(x) return x.text and x.text._text == "Macros vivantes : 2 · journal" end)
+assert(line and line._parent == w.homeTop and line._w == 236 and line._h == 18 and line._point[2] == 640 and line._point[3] == -72 and line:IsShown())
+assert(640 + 236 <= 884 - 8 and -72 - 18 >= -93 and ns.home.counts._w == 620 and 10 + 620 <= 640, "ligne hors du bandeau")
+fire(line, "OnClick")
+assert(panel:IsShown() and panel.rows[2].text._text == "V2")
+panel:Hide()
+-- « Mes macros » : la macro vivante est marquee dans la liste et dans le detail
+ns.Open("macros")
+fireEvent("UPDATE_MACROS")
+local mrow = find(function(x) return x.scope and x.text._text == "V1" end)
+assert(mrow and mrow.scope._text == "Vivante")
+fire(mrow, "OnClick")
+assert(find(function(x) return x._type == "FontString" and x._text and x._text:find("Macro générale", 1, true) and x._text:find("·  vivante", 1, true) end), "detail sans la mention vivante")
+
+-- 8. Assistant : « Bouton de survie » pour un objet, cree en un clic, vivant
+BAGS[0] = { 9421, 929, 14530 }
+DeleteMacro(MACROS.Survie.index)
+ns.OpenAssistant({ name = "Pierre de soins majeure", kind = "item" })
+local assistant = ns.assistant
+local card = assistant.cards[3]
+assert(card.recipe.id == "survival" and card.title._text == "Bouton de survie" and plain(card.code._text):find("/use [nomod] <Pierre de soins>", 1, true), card.code._text)
+fire(card.create, "OnClick")
+assert(MACROS.Survie and MACROS.Survie.body == "#showtooltip\n/use [nomod] Pierre de soins majeure\n/use [nomod] Potion de soins\n/use [mod] Bandage runique épais", MACROS.Survie and MACROS.Survie.body)
+assert(db.living.account.Survie and db.living.account.Survie.flag == nil, "macro de survie non vivante")
+-- « Bijoux vivants » sur un emplacement de barre : la macro posee porte les vrais noms
+SLOTS[1] = { "spell", 172 }
+ns.OpenAssistant({ name = "Corruption", base = "Corruption", kind = "spell" }, 1)
+local trinkets
+for i = 1, 12 do
+  local c = assistant.cards[4]
+  if c.recipe.id == "living_trinkets" then trinkets = c break end
+  fire(assistant.deck, "OnMouseWheel", -1)
+end
+assert(trinkets, "recette des bijoux vivants absente")
+fire(trinkets.create, "OnClick")
+assert(said("Bijou du bas") and not MACROS.Corruption and slotIs(1, "spell", 172), "macro posee avec un jeton sans nom")
+EQUIP[14] = 9000
+fire(trinkets.create, "OnClick")
+assert(MACROS.Corruption and MACROS.Corruption.body == "#showtooltip Corruption\n/use Autre bijou\n/use Bijou de test\n/cast Corruption", MACROS.Corruption and MACROS.Corruption.body)
+assert(slotIs(1, "macro", MACROS.Corruption.index) and db.living.account.Corruption and db.living.account.Corruption.template:find("{bf:bijou13}", 1, true), "macro vivante non posee")
+`, "=macros vivantes");
+
+// ---------------------------------------------------------------- 13. V1 lot B : kits de personnage
+boot("{ tutorialSeen = true }", LOTB);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+local function said(fragment) return lastLine():find(fragment, 1, true) ~= nil end
+SLOTS[1] = { "spell", 172 }
+SlashCmdList.BLOCKFORGE("")
+local w, home = ns.ed.w, ns.home
+-- entree de l'accueil ; /bf kit ouvre le meme panneau
+assert(home.tiles[5].text._text == "Équiper mon personnage" and home.tiles[5]:IsShown())
+assert(ns.kitsPanel == nil, "panneau construit avant d'etre demande")
+fire(home.tiles[5], "OnClick")
+local panel = ns.kitsPanel
+local state = panel.state
+assert(panel:IsShown() and panel._w == 884 and panel._h == 566 and panel._parent == w.home and #panel.rows == 20)
+panel:Hide()
+SlashCmdList.BLOCKFORGE("kit")
+assert(panel:IsShown())
+-- trois roles, deux visees, familier (le demoniste en a un) ; au depart : montee de niveau, survol, sans familier (aucun sorti)
+assert(#panel.chips == 7 and state.choice.role == "leveling" and state.choice.hover == true and state.choice.pet == false)
+local function chip(label) for _, c in ipairs(panel.chips) do if c.text._text == label then return c end end error("puce absente : " .. label) end
+for i, a in ipairs(panel.chips) do -- puces sans chevauchement, dans le panneau
+  assert(a._point[2] >= 8 and a._point[2] + a._w <= 876 and (a._point[3] == -28 or a._point[3] == -52) and a._h == 18, "puce " .. i)
+  for j, b in ipairs(panel.chips) do
+    if i < j and a._point[3] == b._point[3] then assert(a._point[2] + a._w <= b._point[2] or b._point[2] + b._w <= a._point[2], "puces qui se chevauchent : " .. i .. ", " .. j) end
+  end
+end
+assert(chip("Montée de niveau")._border[1] == 0.53 and chip("JcJ")._border[1] ~= 0.53 and chip("Au survol")._border[1] == 0.53 and chip("Sans")._border[1] == 0.53)
+-- 20 lignes de 20 px tous les 22 de -80 a -518, comptes a -522, boutons en bas sans chevauchement
+for i, row in ipairs(panel.rows) do
+  assert(row._w == 868 and row._h == 20 and row._point[2] == 8 and row._point[3] == -80 - (i - 1) * 22 and row._point[3] - 20 >= -518, "ligne " .. i)
+  assert(row.text._point[2] == 26 and 26 + row.text._w <= row.desc._point[2] and row.desc._point[2] + row.desc._w <= row.state._point[2] and row.state._point[2] + row.state._w <= 868)
+end
+assert(panel.status._point[3] == -522 and panel.undo._w == 300 and panel.toBars._point[2] == 450 and 8 + 300 <= 450 and 450 + panel.toBars._w <= 884 - 8 - panel.install._w)
+local function item(name)
+  for i, it in ipairs(state.items) do if it.name == name then return it, panel.rows[i] end end
+end
+local function usable()
+  local n = 0
+  for _, it in ipairs(state.items) do if #it.unknown == 0 and not it.exists then n = n + 1 end end
+  return n
+end
+
+-- 1. la liste : macros traduites, description, utilisable ou « sort pas encore appris » (decochee), kit de 8 a 20 macros
+assert(#state.items >= 8 and #state.items <= 20 and panel.rows[#state.items]:IsShown() and not panel.rows[#state.items + 1]:IsShown())
+local fear, fearRow = item("Fear MO")
+assert(fear.body == "#showtooltip Peur\n/dismount\n/cast [@mouseover,exists,harm][] Peur" and #fear.unknown == 0, fear.body)
+assert(fearRow.text._text == "Fear MO" and #fearRow.desc._text > 20 and fearRow.state._text == "utilisable maintenant" and state.checked["Fear MO"] == true and fearRow.check._color[1] == 0.53)
+local drain, drainRow = item("Drain Soul MO")
+assert(#drain.unknown == 1 and drainRow.state._text == "sort pas encore appris : " .. drain.unknown[1] and state.checked["Drain Soul MO"] == false and drainRow.text._textColor[1] == 0.6)
+local survie = item("Survie")
+assert(survie and survie.living == true and survie.body:find("{bf:pierre_soin}", 1, true) and #survie.unknown == 0 and state.checked.Survie == true)
+assert(item("Pet Attack") == nil and item("Soulstone").body:find("Pierre d'âme majeure", 1, true), "familier ou objet")
+local n = usable()
+assert(n >= 4 and panel.install._text == "Tout installer (" .. n .. ")" and panel.install._enabled == true, panel.install._text)
+assert(panel.status._text == "Macros à créer : " .. n .. " · places libres : 120 générales, 30 du personnage", panel.status._text)
+assert(panel.toBars:IsShown() and panel.toBars._enabled == false, "pose proposee avant l'installation")
+-- une case se decoche et se recoche ; une macro au sort inconnu peut etre cochee a la main
+fire(fearRow, "OnClick")
+assert(state.checked["Fear MO"] == false and panel.install._text == "Tout installer (" .. n - 1 .. ")")
+fire(fearRow, "OnClick")
+fire(drainRow, "OnClick")
+assert(state.checked["Drain Soul MO"] == true and panel.install._text == "Tout installer (" .. n + 1 .. ")")
+fire(drainRow, "OnClick")
+-- visee « cible » : plus de survol ; la macro qui ne ferait plus que lancer le sort quitte le kit
+fire(chip("Sur la cible"), "OnClick")
+assert(state.choice.hover == false and item("Fear MO").body == "#showtooltip Peur\n/dismount\n/cast Peur" and item("Drain Soul MO") == nil, item("Fear MO").body)
+for _, it in ipairs(state.items) do assert(not it.body:find("@mouseover", 1, true), it.name) end
+assert(#state.items >= 8)
+fire(chip("Au survol"), "OnClick")
+-- familier, autre role
+fire(chip("Avec"), "OnClick")
+assert(item("Pet Attack") and item("Pet Follow") and #state.items <= 20)
+fire(chip("JcJ"), "OnClick")
+assert(state.choice.role == "pvp" and item("Spell Lock Focus") and item("Target player") and not item("Drain Soul MO"))
+fire(chip("Sans"), "OnClick")
+fire(chip("Montée de niveau"), "OnClick")
+
+-- 2. macros deja la : meme texte sous un autre nom = « tu l'as deja » ; meme nom, autre texte = laissee, jamais ecrasee
+CreateMacro("Fear MO", 1, "/cast Autre")
+CreateMacro("Suivante", 1, "/cleartarget [dead]\n/targetenemy [noharm]\n/startattack")
+fireEvent("UPDATE_MACROS")
+fear, fearRow = item("Fear MO")
+local nextTarget, nextRow = item("Next target")
+assert(fear.exists == "name" and fearRow.state._text == "laissée : une autre macro porte ce nom" and nextTarget.exists == "same" and nextRow.state._text == "tu l'as déjà")
+fire(fearRow, "OnClick") -- ne se coche pas
+assert(fearRow.check._color[1] ~= 0.53 and usable() == n - 2 and panel.install._text == "Tout installer (" .. n - 2 .. ")")
+
+-- 3. pas assez de place : refus chiffre, rien n'est cree, aucune sauvegarde
+local real, calls = GetNumMacros, #CALLS
+GetNumMacros = function() return 120, 29 end
+fire(panel.install, "OnClick")
+assert(said("Pas assez de place : " .. n - 2 .. " macros à créer, 1 places libres (0 générales, 1 du personnage). Rien n'a été créé."), lastLine())
+assert(#CALLS == calls and next(db.profiles) == nil and ns.UndoLabel() == nil and db.kits["Moi-Royaume"] == nil)
+-- en combat : rien
+GetNumMacros = real
+COMBAT = true
+fire(panel.install, "OnClick")
+assert(said("combat") and #CALLS == calls)
+COMBAT = false
+-- l'onglet general est plein : les macros vont dans celui du personnage, et c'est dit
+GetNumMacros = function() local _, c = real() return 120, c end
+local before = #ns.ReadMacros()
+fire(panel.install, "OnClick")
+GetNumMacros = real
+assert(MACROS.Soulstone and MACROS.Soulstone.char == true and MACROS.Survie and MACROS.Survie.char == true and MACROS["Fear MO"].body == "/cast Autre", "installation")
+assert(printed(n - 2 .. " macro(s) sont allées dans l'autre onglet") and printed("Kit : " .. n - 2 .. " macro(s) créée(s), 0 non créée(s)"))
+assert(said("Sauvegarde automatique « Auto 2026-11-20 12:00:00 kit »"), lastLine())
+local backup = db.profiles["Auto 2026-11-20 12:00:00 kit"]
+assert(backup and backup.auto == true and #backup.macros == 2 and ns.UndoLabel() == "kit de " .. n - 2 .. " macros" and #db.undo.ops == n - 2)
+-- la macro de survie est vivante : de vrais noms dans le jeu (sacs vides : les plus petits objets), le modele dans BlockForgeDB
+assert(MACROS.Survie.body == "#showtooltip\n/use [nomod] Pierre de soins mineure\n/use [nomod] Potion de soins mineure\n/use [mod] Bandage en lin", MACROS.Survie.body)
+assert(db.living.chars["Moi-Royaume"].Survie.template:find("{bf:bandage}", 1, true))
+-- le kit est retenu pour ce personnage, avec les macros qui attendent un sort
+local mem = db.kits["Moi-Royaume"]
+assert(mem and mem.class == "WARLOCK" and mem.role == "leveling" and mem.hover == true and mem.pet == false and mem.waiting["Drain Soul MO"] and not mem.waiting.Survie and not mem.waiting["Fear MO"])
+assert(item("Soulstone").exists == "same" and item("Survie").exists == "name" and panel.install._text == "Tout installer (0)" and panel.install._enabled == false)
+
+-- 4. pose sur une barre : etape a part, avec son apercu ; emplacements vides seulement, sauf « remplacer »
+assert(panel.toBars._enabled == true and #state.installed == n - 2 and state.installed[1] == "Soulstone")
+fire(panel.toBars, "OnClick")
+assert(panel.barView:IsShown() and not panel.listView:IsShown() and #panel.barRows == 10 and #panel.barLines == 12)
+for i, r in ipairs(panel.barRows) do
+  assert(r.first == (i - 1) * 12 + 1 and r._w == 300 and r._point[2] == 8 and r._point[3] == -100 - (i - 1) * 22 and r._point[3] - 20 >= -518, "rangee " .. i)
+end
+for i, l in ipairs(panel.barLines) do assert(l._point[2] == 320 and 320 + l._w <= 876 and l._point[3] == -120 - (i - 1) * 16 and l._point[3] - 16 <= -120 and l._point[3] - 16 >= -322, "apercu " .. i) end
+assert(panel.replace._point[3] == -322 and panel.place._point[3] == -370 and panel.place._enabled == false and panel.barRows[1].text._text == "Emplacements 1 à 12 : 11 vides")
+local places = PLACES
+fire(panel.barRows[1], "OnClick")
+assert(panel.barLines[1]._text == "Emplacement 2 : macro « Soulstone »" and panel.barLines[2]._text == "Emplacement 3 : macro « Survie »" and panel.place._text == "Poser (" .. n - 2 .. ")", panel.barLines[1]._text)
+fire(panel.replace, "OnClick")
+assert(panel.barLines[1]._text == "Emplacement 1 : macro « Soulstone », à la place de « Corruption »", panel.barLines[1]._text)
+fire(panel.replace, "OnClick")
+assert(PLACES == places and slotIs(2, nil), "l'apercu a pose quelque chose")
+local record = db.undo
+fire(panel.place, "OnClick")
+assert(slotIs(1, "spell", 172) and slotIs(2, "macro", MACROS.Soulstone.index) and slotIs(3, "macro", MACROS.Survie.index), "pose")
+assert(db.undo == record and #record.ops == (n - 2) * 2 and next(BINDINGS) == nil and SAVED_BINDINGS == nil, "une seule annulation, aucune touche liee")
+assert(not panel.barView:IsShown() and panel.listView:IsShown() and panel.toBars._enabled == false)
+-- une seule annulation defait la pose et les creations
+fire(panel.undo, "OnClick")
+assert(slotIs(2, nil) and slotIs(3, nil) and not MACROS.Soulstone and not MACROS.Survie and MACROS["Fear MO"] and ns.UndoLabel() == nil, "annulation du kit")
+assert(panel.undo._text == "Rien à annuler" and item("Soulstone").exists == nil)
+
+-- 5. sans la fonction « Ameliorer ma barre » : l'etape de pose disparait, et rien ne se pose
+ns.SetFeature("bars", false)
+assert(not panel.toBars:IsShown())
+assert(ns.KitsUI.Place({ { slot = 2, macro = "Fear MO", before = { kind = "empty" } } }) == nil and slotIs(2, nil) and said("fonction désactivée"))
+ns.SetFeature("bars", true)
+assert(panel.toBars:IsShown())
+
+-- 6. nouveau sort appris : une ligne sur l'accueil, une seule ligne de discussion par session, installation en un clic
+for name, on in pairs(state.checked) do if on then fire(select(2, item(name)), "OnClick") end end
+fire(select(2, item("Soulstone")), "OnClick")
+fire(panel.install, "OnClick")
+assert(MACROS.Soulstone and ns.UndoLabel() == "kit de 1 macros")
+panel:Hide()
+local line = find(function(x) return x.text and x._parent == w.homeTop and x._point and x._point[2] == 640 and x._point[3] == -50 end)
+assert(line and line._w == 236 and line._h == 18 and not line:IsShown() and -50 - 18 <= -68 and -68 > -72, "ligne du kit")
+local unknown = drain.unknown[1]
+local prints = #PRINTS
+fireEvent("SPELLS_CHANGED")
+assert(#PRINTS == prints and not line:IsShown(), "annonce sans nouveau sort")
+BEST[unknown] = 1120
+COMBAT = true
+fireEvent("SPELLS_CHANGED")
+assert(#PRINTS == prints and not line:IsShown(), "annonce en combat")
+COMBAT = false
+fireEvent("PLAYER_REGEN_ENABLED")
+assert(#PRINTS == prints + 1 and said("1 macro(s) de ton kit sont maintenant disponibles") and line:IsShown() and line.text._text == "Kit : 1 macro(s) disponibles — installer", lastLine())
+fireEvent("SPELLS_CHANGED")
+assert(#PRINTS == prints + 1, "une seule annonce par session")
+fire(line, "OnClick")
+assert(MACROS["Drain Soul MO"] and MACROS["Drain Soul MO"].body:find(unknown, 1, true) and not line:IsShown() and db.kits["Moi-Royaume"].waiting["Drain Soul MO"] == nil)
+assert(ns.UndoLabel() == "kit de 1 macros" and db.profiles["Auto 2026-11-20 12:00:00 kit 3"], "sauvegarde avant l'installation depuis l'accueil")
+-- une macro creee entre l'affichage et le clic : l'installation ne l'ecrase pas, et le dit
+local kept = MACROS["Fear MO"].body
+ns.KitsUI.Install({ { name = "Fear MO", body = "/cast Peur", unknown = {} } })
+assert(MACROS["Fear MO"].body == kept and printed("Kit : 0 macro(s) créée(s), 1 non créée(s)") and ns.UndoLabel() == "kit de 1 macros", "macro du meme nom ecrasee")
+`, "=kits");
+
+// kit retenu par le personnage : repris a l'ouverture ; cinq sauvegardes automatiques au plus
+boot(`{ tutorialSeen = true, kits = { ["Moi-Royaume"] = { class = "WARLOCK", role = "group", hover = false, pet = true, waiting = {} } } }`, LOTB);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+SlashCmdList.BLOCKFORGE("kit")
+local state = ns.kitsPanel.state
+assert(state.choice.role == "group" and state.choice.hover == false and state.choice.pet == true and #state.items >= 8 and #state.items <= 20)
+local names = {}
+for i = 1, 7 do
+  local real = date
+  date = function(fmt) return fmt == "%Y-%m-%d %H:%M:%S" and ("2026-11-20 12:00:0" .. i) or real(fmt) end
+  names[i] = ns.Backup("essai")
+  date = real
+end
+local autos = 0
+for name, p in pairs(db.profiles) do if p.auto then autos = autos + 1 end end
+assert(autos == 5 and not db.profiles[names[1]] and not db.profiles[names[2]] and db.profiles[names[3]] and db.profiles[names[7]], "cinq sauvegardes automatiques au plus")
+COMBAT = true
+assert(ns.Backup("essai") == nil)
+`, "=kit retenu");
+
+// ---------------------------------------------------------------- 14. V1 lot B : profils
+// Anciennes sauvegardes (sets), un profil illisible, un profil d'un autre personnage en anglais.
+boot(`{ tutorialSeen = true,
+  sets = { ["Vieux"] = { { name = "A", body = "/cast Peur", icon = 5, index = 3 }, { name = "B", body = "/sit", char = true }, 7, { name = "Sans corps" } },
+           ["Double"] = { { name = "C", body = "/dance" } }, [3] = { { name = "D", body = "/x" } } },
+  profiles = { ["Double"] = { macros = {} }, ["Abime"] = 5, ["Sans macros"] = { owner = "x" },
+    ["Reroll"] = { owner = "Reroll-Royaume", class = "MAGE", macros = { { name = "Sheep", body = "#showtooltip Polymorph\\n/cast [@mouseover,harm][] Polymorph" }, { name = "Peur", body = "/cast Fear", char = true } } } } }`, LOTB);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+local function said(fragment) return lastLine():find(fragment, 1, true) ~= nil end
+local P = ns.Profiles
+
+-- 1. migration des anciennes sauvegardes : copiees une fois, sans perte, l'ancienne cle reste lisible
+local old = db.profiles.Vieux
+assert(old and #old.macros == 2 and old.macros[1].name == "A" and old.macros[1].icon == 5 and old.macros[1].index == nil and old.macros[1].char == false and old.macros[2].char == true)
+assert(db.sets.Vieux and #db.sets.Vieux == 4 and db.sets.Vieux.migrated == true and db.sets.Vieux[1].body == "/cast Peur", "ancienne cle perdue")
+assert(#db.profiles.Double.macros == 0 and db.profiles["Double (2)"] and db.profiles["Double (2)"].macros[1].name == "C", "nom deja pris : la sauvegarde ecrasee")
+assert(db.profiles.Abime == nil and db.profiles["Sans macros"] == nil and db.profiles.Reroll, "profils illisibles")
+ns.InitDB() -- un second chargement ne recopie rien ; un profil supprime ne revient pas
+local n = 0
+for _ in pairs(db.profiles) do n = n + 1 end
+assert(n == 4 and not db.profiles["Vieux (2)"])
+P.Delete("Vieux")
+ns.InitDB()
+assert(db.profiles.Vieux == nil and db.sets.Vieux)
+ns.ResetDB()
+assert(db.profiles.Reroll and db.sets.Vieux, "profils perdus a la reinitialisation")
+
+-- 2. enregistrer : macros, et au choix touches et barres
+CreateMacro("Kick", 7, "/cast Peur")
+CreateMacro("Soin", 8, "/cast Soins rapides", true)
+BINDINGS.F, BINDINGS.G = "MACRO Kick", "ACTIONBUTTON2"
+SLOTS[5], SLOTS[6] = { "macro", MACROS.Kick.index }, { "spell", 172 }
+SlashCmdList.BLOCKFORGE("")
+local w, home = ns.ed.w, ns.home
+assert(home.tiles[6].text._text == "Profils")
+-- la colonne de « Mes macros » : liste des profils, et « Profils… » au-dessus de « Restaurer » (de -510 a -532)
+ns.Open("macros")
+fireEvent("UPDATE_MACROS")
+local more = byText("Profils…", w.macros)
+assert(more._w == 160 and more._point[1] == "BOTTOMLEFT" and more._point[2] == 8 and more._point[3] == 34 and more._parent:IsShown() and more._parent._w == 176)
+assert(-84 - 17 * 22 - 20 >= -(566 - 34 - 22), "« Profils… » sur la liste")
+assert(ns.profilesPanel == nil, "panneau construit avant d'etre demande")
+fire(more, "OnClick")
+local panel = ns.profilesPanel
+local state = panel.state
+assert(panel:IsShown() and panel._w == 884 and panel._h == 566 and panel._parent == w.macros and #panel.rows == 18 and #panel.lines == 22)
+panel:Hide()
+SlashCmdList.BLOCKFORGE("profil")
+assert(panel:IsShown())
+panel:Hide()
+SlashCmdList.BLOCKFORGE("profile")
+assert(panel:IsShown() and byText("Mes macros", BlockForgeFrame).line:IsShown())
+-- disposition : liste a gauche (8 a 300), detail a droite (312 a 876), rien ne se chevauche
+for i, row in ipairs(panel.rows) do assert(row._w == 292 and row._point[2] == 8 and row._point[3] == -52 - (i - 1) * 22 and row._point[3] - 20 >= -446, "ligne " .. i) end
+for i, line in ipairs(panel.lines) do assert(line._w == 564 and 312 + 564 <= 876 and line._point[3] == -(i - 1) * 16 and -118 + line._point[3] - 16 >= -470, "apercu " .. i) end
+assert(panel.saveName._point[3] == -456 and panel.saveChips[1]._point[3] == -480 and panel.saveChips[1]._point[2] + panel.saveChips[1]._w <= panel.saveChips[2]._point[2])
+assert(panel.saveChips[2]._point[2] + panel.saveChips[2]._w <= 300 and panel.delete._w == 140 and panel.summary._point[3] == -476 and panel.share._point[3] == -512)
+local xs = {}
+for i, c in ipairs(panel.options) do
+  assert(c._point[2] >= 312 and c._point[2] + c._w <= 876 and (c._point[3] == -70 or c._point[3] == -92), "option " .. i)
+  xs[#xs + 1] = c
+end
+for _, c in ipairs(panel.specs) do xs[#xs + 1] = c end
+for i, a in ipairs(xs) do
+  for j, b in ipairs(xs) do
+    if i < j and a._point[3] == b._point[3] then assert(a._point[2] + a._w <= b._point[2] or b._point[2] + b._w <= a._point[2], "puces qui se chevauchent : " .. i .. ", " .. j) end
+  end
+end
+assert(panel.share._point[2] + panel.share._w <= panel.export._point[2] and panel.export._point[2] + panel.export._w <= 804 and 804 + 72 == 876)
+assert(panel.undo._point[2] == 312 and 312 + panel.undo._w <= 884 - 8 - panel.activate._w, "boutons du bas")
+-- mes profils : Double, Double (2) ; ceux des autres personnages a part
+local function names() local out = {} for i, name in ipairs(state.names) do out[i] = name end return table.concat(out, ",") end
+assert(names() == "Double (2),Double" and panel.rows[1].text._text:find("Double (2)", 1, true) and not panel.rows[3]:IsShown(), names())
+panel.saveName._text = "PvP"
+fire(byText("Enregistrer mon profil", panel), "OnClick")
+local pvp = db.profiles.PvP
+assert(pvp and #pvp.macros == 2 and pvp.owner == "Moi-Royaume" and pvp.class == "WARLOCK" and pvp.macros[1].icon == 7 and pvp.macros[2].char == true)
+assert(pvp.bindings and #pvp.bindings.Kick == 1 and pvp.bindings.Kick[1] == "F" and pvp.bindings.Soin == nil and pvp.bars and pvp.bars[5] == "Kick" and pvp.bars[6] == nil)
+assert(state.chosen == "PvP" and panel.saveName._text == "" and said("Sauvegarde « PvP » enregistrée (2 macros)"))
+-- sans les touches ni les barres ; un nom deja pris demande confirmation
+fire(panel.saveChips[1], "OnClick")
+fire(panel.saveChips[2], "OnClick")
+panel.saveName._text = "Simple"
+fire(byText("Enregistrer mon profil", panel), "OnClick")
+assert(db.profiles.Simple and db.profiles.Simple.bindings == nil and db.profiles.Simple.bars == nil)
+panel.saveName._text = "Simple"
+local popups = #POPUPS
+fire(byText("Enregistrer mon profil", panel), "OnClick")
+assert(#POPUPS == popups + 1 and POPUPS[#POPUPS].which == "BLOCKFORGE_REPLACE_SET")
+fire(panel.saveChips[1], "OnClick")
+fire(panel.saveChips[2], "OnClick")
+-- profil identique a l'etat du jeu : rien a faire
+state.chosen = "PvP"
+P.Render()
+assert(panel.activate._text == "Activer (0)" and panel.activate._enabled == false and panel.summary._text:find("déjà identiques : 2", 1, true))
+assert(panel.info._text == "2 macros · touches : oui · barres : oui · Moi-Royaume", panel.info._text)
+
+-- 3. activer : apercu de tout ce qui change, avec ce que chaque touche et chaque emplacement perd
+MACROS.Kick.body = "/cast Autre"
+BINDINGS.F = "ACTIONBUTTON3"
+SLOTS[5] = { "spell", 172 }
+DeleteMacro(MACROS.Soin.index)
+CreateMacro("Extra", 9, "/dance")
+SLOTS[7] = { "macro", MACROS.Extra.index }
+fireEvent("UPDATE_MACROS")
+local function lines() local out = {} for i, line in ipairs(state.lines) do out[i] = line end return table.concat(out, "\n") end
+assert(lines() == "Créée : Soin\nRéécrite : Kick\nTouche F : macro « Kick », à la place de « Nom de ACTIONBUTTON3 »\nEmplacement 5 : macro « Kick », à la place de « Corruption »", lines())
+assert(panel.lines[1]._text == "Créée : Soin" and panel.lines[5]._text == "" and panel.activate._text == "Activer (4)" and panel.activate._enabled == true)
+assert(panel.summary._text == "À créer : 1 · à réécrire : 1 · laissées : 0 · déjà identiques : 0 · à retirer : 0 · touches : 1 · emplacements : 1", panel.summary._text)
+local function option(key) for _, c in ipairs(panel.options) do if c.key == key then return c end end end
+-- « reecrire » decoche : la macro de meme nom est laissee, et c'est ecrit
+fire(option("update"), "OnClick")
+assert(lines():find("Laissée (même nom, autre texte) : Kick", 1, true) and not lines():find("Réécrite", 1, true) and panel.activate._text == "Activer (3)")
+fire(option("update"), "OnClick")
+-- touches et barres decochees : rien de ce cote
+fire(option("keys"), "OnClick")
+fire(option("bars"), "OnClick")
+assert(lines() == "Créée : Soin\nRéécrite : Kick" and panel.activate._text == "Activer (2)")
+fire(option("keys"), "OnClick")
+fire(option("bars"), "OnClick")
+-- « retirer les absentes » : decoche au depart ; coche, la macro absente du profil est annoncee
+assert(state.opts.remove == false and state.opts.update == true)
+fire(option("remove"), "OnClick")
+assert(lines():find("Archivée puis retirée : Extra", 1, true) and panel.activate._text == "Activer (5)")
+-- rien n'a encore bouge
+assert(MACROS.Kick.body == "/cast Autre" and BINDINGS.F == "ACTIONBUTTON3" and slotIs(5, "spell", 172) and MACROS.Extra and not MACROS.Soin and #db.personal == 0)
+COMBAT = true
+assert(P.Apply("PvP", state.opts) == nil and said("combat") and MACROS.Kick.body == "/cast Autre")
+COMBAT = false
+SAVED_BINDINGS = nil
+fire(panel.activate, "OnClick")
+assert(MACROS.Kick.body == "/cast Peur" and MACROS.Kick.icon == 7 and MACROS.Soin and MACROS.Soin.char == true and MACROS.Soin.body == "/cast Soins rapides", "macros du profil")
+assert(not MACROS.Extra and #db.personal == 1 and db.personal[1].name == "Extra" and db.personal[1].body == "/dance" and db.personal[1].note == "Archivée à l'activation d'un profil.", "macro retiree sans archive")
+assert(BINDINGS.F == "MACRO Kick" and BINDINGS.G == "ACTIONBUTTON2" and SAVED_BINDINGS == 2, "touches")
+assert(slotIs(5, "macro", MACROS.Kick.index) and slotIs(6, "spell", 172) and slotIs(7, nil), "barres")
+assert(printed("Profil « PvP » : 1 macro(s) créée(s), 1 mise(s) à jour, 1 archivée(s) puis retirée(s), 1 touche(s), 1 emplacement(s) ; 0 étape(s) refusée(s)"))
+local backup = db.profiles["Auto 2026-11-20 12:00:00 profil"]
+assert(backup and backup.auto and #backup.macros == 2 and backup.macros[1].body ~= nil and said("Sauvegarde automatique « Auto 2026-11-20 12:00:00 profil »"))
+local kept
+for _, s in ipairs(backup.macros) do if s.name == "Kick" then kept = s end end
+assert(kept.body == "/cast Autre" and ns.UndoLabel() == "profil « PvP »" and #db.undo.ops == 5 and panel.status._text:find("Profil activé", 1, true))
+assert(panel.activate._text == "Activer (0)" and panel.undo._text == "Annuler : profil « PvP »")
+-- une seule annulation : emplacement, touche, creation, reecriture, suppression
+SAVED_BINDINGS = nil
+fire(panel.undo, "OnClick")
+assert(said("5 étape(s) rétablie(s), 0 laissée(s)"), lastLine())
+assert(MACROS.Kick.body == "/cast Autre" and not MACROS.Soin and MACROS.Extra and MACROS.Extra.body == "/dance" and MACROS.Extra.icon == 9, "macros apres annulation")
+assert(BINDINGS.F == "ACTIONBUTTON3" and SAVED_BINDINGS == 2 and slotIs(5, "spell", 172) and slotIs(7, "macro", MACROS.Extra.index), "touches et barres apres annulation")
+assert(#db.personal == 1 and ns.UndoLabel() == nil, "l'archive reste dans Mes modeles")
+fire(option("remove"), "OnClick")
+-- une touche liee ailleurs entre-temps n'est pas reprise par l'annulation
+fire(panel.activate, "OnClick")
+BINDINGS.F = "ACTIONBUTTON9"
+fire(panel.undo, "OnClick")
+assert(BINDINGS.F == "ACTIONBUTTON9" and said("1 laissée(s)"), lastLine())
+-- pas assez de place : refus chiffre, rien ne bouge
+local real, calls = GetNumMacros, #CALLS
+GetNumMacros = function() local a = real() return a, 30 end
+fire(panel.activate, "OnClick")
+GetNumMacros = real
+assert(said("il manque 0 place(s) dans les macros générales et 1 dans celles du personnage. Rien n'a été changé.") and #CALLS == calls and ns.UndoLabel() == nil, lastLine())
+-- sans « Ameliorer ma barre » : la partie barres disparait de l'apercu
+ns.SetFeature("bars", false)
+assert(not option("bars"):IsShown() and not lines():find("Emplacement", 1, true))
+ns.SetFeature("bars", true)
+assert(option("bars"):IsShown() and lines():find("Emplacement 5", 1, true))
+
+-- 4. copier depuis un autre personnage : noms de sorts dans la langue du jeu, sorts inconnus signales
+fire(panel.foreign, "OnClick")
+assert(names() == "Reroll" and panel.rows[1].text._text:find("Reroll-Royaume", 1, true) and state.chosen == "PvP")
+fire(panel.rows[1], "OnClick")
+assert(state.chosen == "Reroll" and lines() == "Créée : Sheep\nCréée : Peur" and not option("keys"):IsShown() and not option("bars"):IsShown(), lines())
+assert(panel.warn._text == "1 macro(s) de ce profil utilisent un sort que ce personnage ne connaît pas.", panel.warn._text)
+fire(panel.activate, "OnClick")
+assert(MACROS.Peur and MACROS.Peur.char == true and MACROS.Peur.body == "/cast Peur" and MACROS.Sheep.body == "#showtooltip Sort118\n/cast [@mouseover,harm][] Sort118", MACROS.Sheep and MACROS.Sheep.body)
+assert(db.profiles.Reroll.macros[2].body == "/cast Fear", "le profil enregistre ne doit pas etre traduit sur place")
+fire(panel.undo, "OnClick")
+assert(not MACROS.Peur and not MACROS.Sheep)
+fire(panel.mine, "OnClick")
+
+-- 5. export et import « BF2: » : macros seules ; l'import ajoute un profil et montre son apercu, sans rien creer
+state.chosen = "PvP"
+P.Render()
+fire(panel.export, "OnClick")
+local exported = panel.share._text
+assert(exported == "BF2:PvP:2:a:Kick:/cast Peur:c:Soin:/cast Soins rapides" and FOCUS == panel.share, exported)
+calls = #CALLS
+fire(byText("Importer", panel), "OnClick")
+local imported = db.profiles["PvP (2)"]
+assert(imported and imported.imported == true and imported.bindings == nil and imported.bars == nil and #imported.macros == 2 and imported.macros[2].char == true)
+assert(#CALLS == calls and state.chosen == "PvP (2)" and panel.share._text == "" and panel.status._text:find("Rien n'est créé", 1, true) and lines() == "Créée : Soin\nRéécrite : Kick", lines())
+for _, bad in ipairs({ "BF1:Kick:%2Fsit", "BF2:x:2:a:A:%2Fsit", "n'importe quoi", "BF2z:AAAA" }) do
+  n = 0
+  for _ in pairs(db.profiles) do n = n + 1 end
+  panel.share._text = bad
+  fire(byText("Importer", panel), "OnClick")
+  local after = 0
+  for _ in pairs(db.profiles) do after = after + 1 end
+  assert(after == n and #CALLS == calls and (said("BF2") or said("Profil abîmé") or said("compressé")), bad .. " : " .. lastLine())
+end
+assert(P.Codec() == nil, "compression sans C_EncodingUtil")
+-- supprimer un profil : confirmation ; son association a une specialisation part avec lui
+db.specProfiles["Moi-Royaume"] = { [1] = "PvP (2)" }
+fire(panel.delete, "OnClick")
+assert(POPUPS[#POPUPS].which == "BLOCKFORGE_DELETE_SET" and db.profiles["PvP (2)"])
+accept("BLOCKFORGE_DELETE_SET")
+assert(db.profiles["PvP (2)"] == nil and db.specProfiles["Moi-Royaume"][1] == nil and state.chosen == nil and panel.activate._enabled == false)
+
+-- 6. double specialisation : un profil propose, hors combat seulement, jamais applique tout seul
+state.chosen = "PvP"
+P.Render()
+assert(panel.specs[1]:IsShown() and panel.specs[2]:IsShown() and panel.specs[2].text._text == "Spé 2")
+fire(panel.specs[2], "OnClick")
+assert(db.specProfiles["Moi-Royaume"][2] == "PvP" and panel.specs[2]._border[1] == 0.53 and panel.specs[1]._border[1] ~= 0.53)
+panel:Hide()
+popups, calls = #POPUPS, #CALLS
+fireEvent("PLAYER_TALENT_UPDATE") -- meme groupe : rien
+assert(#POPUPS == popups)
+SPEC = 2
+COMBAT = true
+fireEvent("ACTIVE_TALENT_GROUP_CHANGED")
+assert(#POPUPS == popups, "proposition en combat")
+COMBAT = false
+fireEvent("PLAYER_REGEN_ENABLED")
+local pop = POPUPS[#POPUPS]
+assert(#POPUPS == popups + 1 and pop.which == "BLOCKFORGE_SPEC_PROFILE" and pop.text:find("spécialisation 2", 1, true) and pop.text:find("« PvP »", 1, true), pop.text)
+assert(#CALLS == calls and MACROS.Kick.body == "/cast Autre" and not panel:IsShown(), "profil applique sans accord")
+fireEvent("PLAYER_REGEN_ENABLED")
+fireEvent("PLAYER_TALENT_UPDATE")
+assert(#POPUPS == popups + 1, "proposition repetee")
+accept("BLOCKFORGE_SPEC_PROFILE") -- « Oui » ouvre l'apercu : c'est « Activer » qui applique
+assert(panel:IsShown() and state.chosen == "PvP" and #CALLS == calls and MACROS.Kick.body == "/cast Autre")
+-- retour a la specialisation 1, sans profil associe : rien
+SPEC = 1
+fireEvent("ACTIVE_TALENT_GROUP_CHANGED")
+assert(#POPUPS == popups + 1)
+-- la fonction coupee : plus d'ecoute, plus de proposition, plus de puces
+ns.SetFeature("specProfiles", false)
+assert(find(function(x) return x._events.ACTIVE_TALENT_GROUP_CHANGED or x._events.PLAYER_TALENT_UPDATE end) == nil and not panel.specs[1]:IsShown())
+SPEC = 2
+fireEvent("ACTIVE_TALENT_GROUP_CHANGED")
+fireEvent("PLAYER_REGEN_ENABLED")
+assert(#POPUPS == popups + 1)
+ns.SetFeature("specProfiles", true)
+assert(find(function(x) return x._events.ACTIVE_TALENT_GROUP_CHANGED end) and panel.specs[1]:IsShown())
+
+-- 7. « Restaurer » de la colonne ouvre l'apercu du profil choisi ; le combat ferme le panneau
+panel:Hide()
+fireEvent("UPDATE_MACROS")
+local setRow = find(function(x) return x.text and x._parent == more._parent and x.text._text and x.text._text:find("Simple", 1, true) end)
+assert(setRow, "profil absent de la colonne")
+fire(setRow, "OnClick")
+fire(byText("Restaurer", w.macros), "OnClick")
+assert(panel:IsShown() and state.chosen == "Simple")
+fireEvent("PLAYER_REGEN_DISABLED")
+assert(not panel:IsShown())
+`, "=profils");
+
+// client sans double specialisation, avec la compression du client : puces cachees, aucune ecoute ; export compresse seulement s'il se relit
+boot("{ tutorialSeen = true }", LOTB + String.raw`
+C_SpecializationInfo = nil
+function GetLocale() return "frFR" end
+Enum.CompressionMethod = { Deflate = 0 }
+PACK_OK = true
+STORE = {} -- faux compresseur : le texte est range, et rendu par son numero
+C_EncodingUtil = {
+  CompressString = function(s, method) assert(method == 0) STORE[#STORE + 1] = s return "\1" .. #STORE end,
+  DecompressString = function(s, method) assert(method == 0) return PACK_OK and STORE[tonumber(s:sub(2))] or "?" end,
+  EncodeBase64 = function(s) return "Z" .. s:sub(2) end,
+  DecodeBase64 = function(s) return "\1" .. s:sub(2) end,
+}
+`);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+assert(ns.Profiles.ActiveSpec() == nil and find(function(x) return x._events.ACTIVE_TALENT_GROUP_CHANGED or x._events.PLAYER_TALENT_UPDATE end) == nil)
+for i = 1, 12 do CreateMacro("Macro" .. i, 1, "/cast Sort numero " .. i) end
+SlashCmdList.BLOCKFORGE("profil")
+local panel = ns.profilesPanel
+panel.saveName._text = "Tout"
+fire(byText("Enregistrer mon profil", panel), "OnClick")
+assert(not panel.specs[1]:IsShown() and not panel.specs[2]:IsShown(), "puces de specialisation sans l'API")
+local codec = ns.Profiles.Codec()
+assert(codec and codec.unpack(codec.pack("BF2:a:/cast X")) == "BF2:a:/cast X")
+local plain = ns.ExportProfile("Tout", db.profiles.Tout.macros)
+fire(panel.export, "OnClick")
+local packed = panel.share._text
+assert(packed:sub(1, 5) == "BF2z:" and #packed < #plain and not packed:find("[^%w_:]"), packed)
+fire(byText("Importer", panel), "OnClick")
+local back = db.profiles["Tout (2)"]
+assert(back and #back.macros == 12 and back.macros[12].body == "/cast Sort numero 12", "import compresse")
+-- la compression du client ne se relit pas : export en clair
+PACK_OK = false
+fire(panel.export, "OnClick")
+assert(panel.share._text:sub(1, 4) == "BF2:" and panel.share._text:sub(1, 5) ~= "BF2z:")
+-- et un texte compresse illisible est refuse sans rien ajouter
+panel.share._text = packed
+fire(byText("Importer", panel), "OnClick")
+assert(db.profiles["Tout (3)"] == nil and lastLine():find("BF2", 1, true), lastLine())
+SlashCmdList.BLOCKFORGE("test")
+local report = table.concat(db.selftest.lines, "\n")
+assert(report:find("plain (compression did not round-trip, or was not shorter)", 1, true) and report:find("spec API active group nil", 1, true), report)
+PACK_OK = true
+SlashCmdList.BLOCKFORGE("test")
+report = table.concat(db.selftest.lines, "\n")
+assert(report:find("OK BF2 profile round trip: 20 macros", 1, true) and report:find("compressed with C_EncodingUtil", 1, true) and not report:find("FAIL v1 lot B", 1, true), report)
+`, "=profils sans double specialisation");
+
+// ---------------------------------------------------------------- 15. V1 lot B : chaque fonction coupee cache ses entrees et n'ecoute plus rien
+boot("{ tutorialSeen = true }", LOTB);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+local function said(fragment) return lastLine():find(fragment, 1, true) ~= nil end
+local function refused(label) return said("« " .. label .. " » : fonction désactivée dans les Paramètres") end
+local function listening(event) return find(function(x) return x._events[event] end) ~= nil end
+SLOTS[1] = { "spell", 172 }
+BAGS[0] = { 929 }
+SlashCmdList.BLOCKFORGE("")
+local w, home, view = ns.ed.w, ns.home, ns.ed
+-- tout est construit et ouvert une fois
+ns.OpenKits()
+ns.OpenLiving()
+ns.OpenProfiles()
+ns.Open("editor")
+view.Load("Potion", "/use {bf:potion_soin}")
+view.SaveMacro("Potion", "/use {bf:potion_soin}", false, nil, false)
+assert(MACROS.Potion.body == "/use Potion de soins" and ns.LivingLabel("Potion", false) == "vivante")
+local kits, living, profiles = ns.kitsPanel, ns.livingPanel, ns.profilesPanel
+local kitTile, profileTile = home.tiles[5], home.tiles[6]
+local livingLine = find(function(x) return x.text and x._parent == w.homeTop and x._point and x._point[2] == 640 and x._point[3] == -72 end)
+local kitLine = find(function(x) return x.text and x._parent == w.homeTop and x._point and x._point[2] == 640 and x._point[3] == -50 end)
+local column = byText("Profils…", w.macros)._parent
+assert(kitTile:IsShown() and profileTile:IsShown() and livingLine:IsShown() and column:IsShown() and w.livingChip:IsShown())
+assert(listening("PLAYER_EQUIPMENT_CHANGED") and listening("ACTIVE_TALENT_GROUP_CHANGED"))
+-- un seul grand panneau a la fois sur une page
+ns.OpenKits()
+assert(kits:IsShown() and not living:IsShown())
+ns.OpenLiving()
+assert(living:IsShown() and not kits:IsShown())
+ns.OpenWand()
+assert(ns.wand:IsShown() and not living:IsShown())
+ns.OpenKits()
+assert(kits:IsShown() and not ns.wand:IsShown())
+ns.OpenHealth()
+assert(ns.health:IsShown() and not kits:IsShown())
+ns.OpenLiving()
+
+-- macros vivantes coupees : plus d'ecoute, plus de reecriture, plus de jeton, plus d'entree
+ns.SetFeature("living", false)
+assert(db.features.living == false and not listening("PLAYER_EQUIPMENT_CHANGED") and not living:IsShown() and not livingLine:IsShown())
+assert(not w.livingChip:IsShown() and not w.livingMenu:IsShown() and ns.LivingLabel("Potion", false) == nil)
+BAGS[0] = { 13446 }
+local edits = count("EditMacro")
+fireEvent("BAG_UPDATE_DELAYED")
+assert(#TIMERS == 0 and ns.Living.Pass() == 0 and count("EditMacro") == edits and MACROS.Potion.body == "/use Potion de soins", "reecriture malgre la coupure")
+SlashCmdList.BLOCKFORGE("vivant")
+assert(refused("Macros vivantes") and not living:IsShown())
+-- un jeton ne peut plus etre enregistre : il n'arrive jamais dans une macro du jeu
+local created = count("CreateMacro")
+view.SaveMacro("Jeton", "/use {bf:potion_soin}", false, nil, false)
+assert(refused("Macros vivantes") and count("CreateMacro") == created and not MACROS.Jeton)
+assert(ns.Living.Resume("Potion", false) == nil and refused("Macros vivantes"))
+-- l'editeur ouvre le texte du jeu ; l'Assistant et les kits n'ont plus de recette vivante
+view.Load("Potion", MACROS.Potion.body)
+assert(ns.Compile(view.Blocks()) == "/use Potion de soins")
+ns.OpenAssistant({ name = "Potion de soins", kind = "item" })
+for _, r in ipairs(ns.assistant.state.recipes) do assert(r.feature ~= "living", r.id) end
+assert(#ns.assistant.state.recipes == 2)
+ns.assistant:Hide()
+ns.OpenKits()
+for _, item in ipairs(kits.state.items) do assert(not item.living and item.name ~= "Survie", item.name) end
+assert(#kits.state.items >= 8)
+-- reactivee : la macro suit de nouveau
+ns.SetFeature("living", true)
+assert(listening("PLAYER_EQUIPMENT_CHANGED") and livingLine:IsShown() and ns.LivingLabel("Potion", false) == "vivante")
+fireEvent("BAG_UPDATE_DELAYED")
+tick()
+assert(MACROS.Potion.body == "/use Potion de soins majeure")
+
+-- kits coupes
+ns.OpenKits()
+local item
+for _, it in ipairs(kits.state.items) do if it.name == "Soulstone" then item = it end end
+ns.SetFeature("kits", false)
+assert(not kits:IsShown() and not kitTile:IsShown() and profileTile:IsShown() and profileTile._point[2] == 8 and profileTile._point[3] == -86, "tuile des kits encore la")
+SlashCmdList.BLOCKFORGE("kit")
+assert(refused("Kits de personnage") and not kits:IsShown())
+created = count("CreateMacro")
+assert(ns.KitsUI.Install({ item }, { role = "leveling", hover = true, pet = false }) == nil and refused("Kits de personnage") and count("CreateMacro") == created)
+assert(next(db.profiles) == nil and db.kits["Moi-Royaume"] == nil, "sauvegarde ou kit retenu malgre la coupure")
+ns.SetFeature("kits", true)
+assert(kitTile:IsShown() and profileTile._point[2] == 226)
+-- un kit en attente de sorts ecoute le grimoire ; coupe, il n'ecoute plus et sa ligne disparait
+ns.OpenKits()
+local before, watcher = {}, nil
+for _, x in ipairs(ALL) do if x._events.SPELLS_CHANGED then before[x] = true end end
+ns.KitsUI.Install({ item }, { role = "leveling", hover = true, pet = false })
+local waiting = next(db.kits["Moi-Royaume"].waiting)
+for _, x in ipairs(ALL) do if x._events.SPELLS_CHANGED and not before[x] then watcher = x end end
+assert(waiting and watcher and watcher._events.PLAYER_REGEN_ENABLED, "le kit n'ecoute pas les sorts appris")
+for _, it in ipairs(kits.state.items) do
+  if it.name == waiting then
+    for _, spell in ipairs(it.unknown) do BEST[spell] = 1 end
+  end
+end
+fireEvent("SPELLS_CHANGED")
+assert(kitLine:IsShown())
+ns.SetFeature("kits", false)
+assert(not kitLine:IsShown() and not watcher._events.SPELLS_CHANGED and not watcher._events.PLAYER_REGEN_ENABLED and #ns.KitsUI.Ready() == 0)
+ns.SetFeature("kits", true)
+assert(kitLine:IsShown() and watcher._events.SPELLS_CHANGED)
+
+-- profils coupes : la colonne de « Mes macros », la tuile et le panneau disparaissent ; la sauvegarde automatique reste
+ns.OpenProfiles()
+ns.SetFeature("profiles", false)
+assert(not profiles:IsShown() and not profileTile:IsShown() and not column:IsShown() and not listening("ACTIVE_TALENT_GROUP_CHANGED"))
+SlashCmdList.BLOCKFORGE("profil")
+assert(refused("Profils") and not profiles:IsShown())
+local name = ns.Backup("essai")
+assert(name and db.profiles[name].auto == true, "le filet de securite ne depend pas de la fonction")
+local calls = #CALLS
+assert(ns.Profiles.Apply(name, { update = true }) == nil and refused("Profils") and #CALLS == calls)
+SPEC = 2
+fireEvent("ACTIVE_TALENT_GROUP_CHANGED")
+fireEvent("PLAYER_REGEN_ENABLED")
+for _, p in ipairs(POPUPS) do assert(p.which ~= "BLOCKFORGE_SPEC_PROFILE") end
+-- les trois fonctions coupees : l'etape de la visite qui en parle est sautee ; une seule active : elle ne parle que de celle-la
+ns.SetFeature("living", false)
+ns.SetFeature("kits", false)
+SlashCmdList.BLOCKFORGE("tuto")
+local tour = ns.Tutorial
+assert(#ns.TutorialSteps == 12 and #tour.steps == 11, #tour.steps)
+for _, s in ipairs(tour.steps) do assert(s.any == nil, "etape des fonctions coupees") end
+tour.Stop()
+ns.SetFeature("living", true)
+SlashCmdList.BLOCKFORGE("tuto")
+assert(#tour.steps == 12 and tour.steps[2].any)
+fire(tour.coach.next, "OnClick")
+assert(tour.coach.text._text == "Une macro « vivante » suit tes sacs et ton équipement : BlockForge la réécrit hors combat.", tour.coach.text._text)
+tour.Stop()
+-- cases des Parametres : quatorze, les quatre nouvelles a la suite, dans la colonne de droite
+fire(byText("Paramètres", BlockForgeFrame), "OnClick")
+local seen = {}
+for _, c in ipairs(checkboxes(w.settings)) do
+  for i, def in ipairs(ns.Features) do
+    if c.label == def.label and c.box._point[2] == 470 then
+      seen[def.id] = c.box
+      assert(c.box._point[3] == -54 - (i - 1) * 26 and c.box._point[3] - 26 >= -432, "case " .. def.id)
+    end
+  end
+end
+assert(seen.living._checked == true and seen.kits._checked == false and seen.profiles._checked == false and seen.specProfiles._checked == true)
+click(seen.kits, true)
+click(seen.profiles, true)
+assert(kitTile:IsShown() and profileTile:IsShown() and column:IsShown() and listening("ACTIVE_TALENT_GROUP_CHANGED"))
+ns.ResetDB()
+for _, def in ipairs(ns.Features) do assert(ns.Enabled(def.id), def.id) end
+assert(db.living.account.Potion and db.kits["Moi-Royaume"] and db.profiles[name], "la reinitialisation des reglages garde les modeles, le kit et les profils")
+`, "=fonctions du lot B");
+
+// coupees des le chargement : rien n'ecoute, aucune entree ; donnees abimees remises d'aplomb
+boot(`{ tutorialSeen = true, features = { living = false, kits = false, profiles = false }, living = { chars = 5, account = { Bidon = 7, Vraie = { template = "/use {bf:bijou13}", body = "/use X" } }, journal = "non" },
+  kits = { ["Moi-Royaume"] = { class = "WARLOCK", role = "leveling", hover = true, pet = false, waiting = { ["Drain Soul MO"] = true } } }, profiles = 5, specProfiles = "non" }`, LOTB);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+local function listening(event) return find(function(x) return x._events[event] end) ~= nil end
+assert(type(db.living.chars) == "table" and type(db.living.journal) == "table" and type(db.profiles) == "table" and type(db.specProfiles) == "table")
+-- seul UI.lua ecoute SPELLS_CHANGED (cache du grimoire) : ni les macros vivantes, ni le kit retenu qui attend pourtant un sort
+local spellListeners = 0
+for _, x in ipairs(ALL) do if x._events.SPELLS_CHANGED then spellListeners = spellListeners + 1 end end
+assert(not listening("PLAYER_EQUIPMENT_CHANGED") and not listening("BAG_UPDATE_DELAYED") and not listening("ACTIVE_TALENT_GROUP_CHANGED") and spellListeners == 1, spellListeners)
+SlashCmdList.BLOCKFORGE("")
+local home, w = ns.home, ns.ed.w
+assert(#home.tiles == 6 and not home.tiles[5]:IsShown() and not home.tiles[6]:IsShown() and home.tiles[4]:IsShown())
+assert(not find(function(x) return x.text and x._parent == w.homeTop and x._point and x._point[2] == 640 and x:IsShown() end), "lignes du bandeau malgre la coupure")
+assert(not byText("Profils…", w.macros)._parent:IsShown())
+ns.Open("editor")
+assert(not w.livingChip:IsShown())
+-- reactivees : les entrees reviennent, l'entree illisible des macros vivantes est retiree, l'autre gardee
+ns.SetFeature("living", true)
+ns.SetFeature("kits", true)
+ns.SetFeature("profiles", true)
+assert(listening("PLAYER_EQUIPMENT_CHANGED") and listening("ACTIVE_TALENT_GROUP_CHANGED") and home.tiles[5]:IsShown() and home.tiles[6]:IsShown())
+local list = ns.Living.List()
+assert(#list == 1 and list[1].name == "Vraie" and db.living.account.Bidon == nil and type(list[1].rec.last) == "table")
+`, "=fonctions du lot B au chargement");
+
+console.log("test_ui.js : OK (15 scenarios)");
