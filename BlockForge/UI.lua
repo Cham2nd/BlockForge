@@ -592,6 +592,91 @@ function Refresh()
   warnText:SetText(table.concat(warnings, "\n"))
 end
 
+-- Bas de l'editeur, hors de BuildEditor : Lua 5.1 (le jeu) refuse plus de 60 upvalues par fonction
+local function BuildBottom(parent, palette)
+  -- Bas : apercu (gauche) | nom et enregistrement (droite)
+  local bottom = Panel(parent, 884, 130, L["Aperçu"])
+  bottom:SetPoint("TOPLEFT", palette, "BOTTOMLEFT", 0, -6)
+  counter = bottom:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  counter:SetPoint("RIGHT", bottom.band, "LEFT", 430, 0)
+  local barBg = bottom:CreateTexture(nil, "ARTWORK")
+  barBg:SetColorTexture(1, 1, 1, 0.08)
+  barBg:SetPoint("TOPLEFT", 10, -29)
+  barBg:SetSize(420, 4)
+  counterBar = bottom:CreateTexture(nil, "OVERLAY")
+  counterBar:SetPoint("TOPLEFT", barBg)
+  counterBar:SetHeight(4)
+  counterBar.max = 420
+  preview = Label(bottom, "", 10, -38, "BlockForgeCodeFont")
+  preview:SetSize(420, 86) -- hauteur fixe : une macro tres longue est coupee au lieu de deborder du panneau
+  preview:SetJustifyV("TOP")
+
+  -- Simulateur dans le bandeau : bouton entre le titre et le compteur (fini a 430), etats de 446 a 863
+  local simChips = {}
+  local simToggle = Chip(bottom, 80, 16)
+  simToggle:SetPoint("TOPLEFT", 74, -5)
+  simToggle.text:SetText(L["Simuler"])
+  local function SimSync()
+    Tint(simToggle, simOn and GOLD or GREY, simOn and 0.95 or 0.7)
+    for _, chip in ipairs(simChips) do
+      chip:SetShown(simOn)
+      chip.text:SetText(chip.spec[1]:format(chip.spec[3][chip.at][1]))
+    end
+  end
+  simToggle:SetScript("OnClick", function() simOn = not simOn SimSync() Refresh() end)
+  Tip(simToggle, function()
+    return L["Simuler : quelle ligne part"],
+      L["Choisis l'état du jeu à droite. Dans l'aperçu : vert = l'alternative qui part (-> unité visée), gris = ne part pas, orange = condition que le simulateur ne sait pas évaluer."],
+      L["Il ne connaît ni les temps de recharge, ni la portée, ni l'étape en cours d'une /castsequence."]
+  end)
+  local sx = 446
+  for i, spec in ipairs(SIM_CHIPS) do
+    local chip = Chip(bottom, spec[2], 16)
+    chip:SetPoint("TOPLEFT", sx, -5)
+    sx = sx + spec[2] + 3
+    chip.spec, chip.at = spec, 1
+    Tint(chip, MUTED, 0.6)
+    chip:SetScript("OnClick", function()
+      chip.at = chip.at % #spec[3] + 1
+      for k, v in pairs(spec[3][chip.at][2]) do simState[k] = v end
+      SimSync()
+      Refresh()
+    end)
+    Tip(chip, function() return chip.text:GetText(), L["Clic : valeur suivante."] end)
+    simChips[i] = chip
+  end
+  SimSync()
+
+  local split = bottom:CreateTexture(nil, "ARTWORK")
+  split:SetColorTexture(1, 1, 1, 0.12)
+  split:SetPoint("TOPLEFT", 440, -30)
+  split:SetSize(1, 92)
+
+  Label(bottom, L["Nom"], 452, -36, "GameFontNormal")
+  nameBox = Edit(bottom, 140, function() end)
+  nameBox:SetPoint("TOPLEFT", 490, -32)
+  nameBox:SetMaxLetters(16)
+  Tip(nameBox, function() return L["Nom de la macro"], L["16 caractères max. Un nom existant est mis à jour au lieu d'être recréé."] end)
+  perChar = CreateFrame("CheckButton", nil, bottom, "UICheckButtonTemplate")
+  perChar:SetSize(24, 24)
+  perChar:SetPoint("LEFT", nameBox, "RIGHT", 8, 0)
+  perChar:SetChecked(ns.db.perCharDefault)
+  local perCharText = Label(bottom, L["Ce personnage seulement"], 0, 0, "GameFontHighlightSmall")
+  perCharText:ClearAllPoints()
+  perCharText:SetPoint("LEFT", perChar, "RIGHT", 2, 0)
+
+  local save = Button(bottom, L["Créer / mettre à jour"], 150, Save)
+  save:SetPoint("TOPLEFT", 450, -58)
+  Tip(save, function() return L["Créer / mettre à jour"], L["Hors combat seulement."] end)
+  local load = Button(bottom, L["Charger ce nom"], 120, LoadExisting)
+  load:SetPoint("LEFT", save, "RIGHT", 6, 0)
+  Tip(load, function() return L["Charger ce nom"], L["Ouvre dans l'éditeur la macro du jeu qui porte ce nom."] end)
+  local reset = Button(bottom, L["Tout effacer"], 110, function() LoadText("", "") ns.ApplyPerCharDefault() end)
+  reset:SetPoint("LEFT", load, "RIGHT", 6, 0)
+  warnText = Label(bottom, "", 452, -86, "GameFontRedSmall")
+  warnText:SetWidth(420)
+end
+
 ---------------------------------------------------------------------------
 -- Construction de l'editeur
 ---------------------------------------------------------------------------
@@ -821,87 +906,7 @@ local function BuildEditor(parent)
   Tip(clear, function() return L["Vider"], L["Retire toutes les conditions de l'alternative affichée."] end)
   TabOrder({ argBox, resetBox, custom })
 
-  -- Bas : apercu (gauche) | nom et enregistrement (droite)
-  local bottom = Panel(parent, 884, 130, L["Aperçu"])
-  bottom:SetPoint("TOPLEFT", palette, "BOTTOMLEFT", 0, -6)
-  counter = bottom:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-  counter:SetPoint("RIGHT", bottom.band, "LEFT", 430, 0)
-  local barBg = bottom:CreateTexture(nil, "ARTWORK")
-  barBg:SetColorTexture(1, 1, 1, 0.08)
-  barBg:SetPoint("TOPLEFT", 10, -29)
-  barBg:SetSize(420, 4)
-  counterBar = bottom:CreateTexture(nil, "OVERLAY")
-  counterBar:SetPoint("TOPLEFT", barBg)
-  counterBar:SetHeight(4)
-  counterBar.max = 420
-  preview = Label(bottom, "", 10, -38, "BlockForgeCodeFont")
-  preview:SetSize(420, 86) -- hauteur fixe : une macro tres longue est coupee au lieu de deborder du panneau
-  preview:SetJustifyV("TOP")
-
-  -- Simulateur dans le bandeau : bouton entre le titre et le compteur (fini a 430), etats de 446 a 863
-  local simChips = {}
-  local simToggle = Chip(bottom, 80, 16)
-  simToggle:SetPoint("TOPLEFT", 74, -5)
-  simToggle.text:SetText(L["Simuler"])
-  local function SimSync()
-    Tint(simToggle, simOn and GOLD or GREY, simOn and 0.95 or 0.7)
-    for _, chip in ipairs(simChips) do
-      chip:SetShown(simOn)
-      chip.text:SetText(chip.spec[1]:format(chip.spec[3][chip.at][1]))
-    end
-  end
-  simToggle:SetScript("OnClick", function() simOn = not simOn SimSync() Refresh() end)
-  Tip(simToggle, function()
-    return L["Simuler : quelle ligne part"],
-      L["Choisis l'état du jeu à droite. Dans l'aperçu : vert = l'alternative qui part (-> unité visée), gris = ne part pas, orange = condition que le simulateur ne sait pas évaluer."],
-      L["Il ne connaît ni les temps de recharge, ni la portée, ni l'étape en cours d'une /castsequence."]
-  end)
-  local sx = 446
-  for i, spec in ipairs(SIM_CHIPS) do
-    local chip = Chip(bottom, spec[2], 16)
-    chip:SetPoint("TOPLEFT", sx, -5)
-    sx = sx + spec[2] + 3
-    chip.spec, chip.at = spec, 1
-    Tint(chip, MUTED, 0.6)
-    chip:SetScript("OnClick", function()
-      chip.at = chip.at % #spec[3] + 1
-      for k, v in pairs(spec[3][chip.at][2]) do simState[k] = v end
-      SimSync()
-      Refresh()
-    end)
-    Tip(chip, function() return chip.text:GetText(), L["Clic : valeur suivante."] end)
-    simChips[i] = chip
-  end
-  SimSync()
-
-  local split = bottom:CreateTexture(nil, "ARTWORK")
-  split:SetColorTexture(1, 1, 1, 0.12)
-  split:SetPoint("TOPLEFT", 440, -30)
-  split:SetSize(1, 92)
-
-  Label(bottom, L["Nom"], 452, -36, "GameFontNormal")
-  nameBox = Edit(bottom, 140, function() end)
-  nameBox:SetPoint("TOPLEFT", 490, -32)
-  nameBox:SetMaxLetters(16)
-  Tip(nameBox, function() return L["Nom de la macro"], L["16 caractères max. Un nom existant est mis à jour au lieu d'être recréé."] end)
-  perChar = CreateFrame("CheckButton", nil, bottom, "UICheckButtonTemplate")
-  perChar:SetSize(24, 24)
-  perChar:SetPoint("LEFT", nameBox, "RIGHT", 8, 0)
-  perChar:SetChecked(ns.db.perCharDefault)
-  local perCharText = Label(bottom, L["Ce personnage seulement"], 0, 0, "GameFontHighlightSmall")
-  perCharText:ClearAllPoints()
-  perCharText:SetPoint("LEFT", perChar, "RIGHT", 2, 0)
-
-  local save = Button(bottom, L["Créer / mettre à jour"], 150, Save)
-  save:SetPoint("TOPLEFT", 450, -58)
-  Tip(save, function() return L["Créer / mettre à jour"], L["Hors combat seulement."] end)
-  local load = Button(bottom, L["Charger ce nom"], 120, LoadExisting)
-  load:SetPoint("LEFT", save, "RIGHT", 6, 0)
-  Tip(load, function() return L["Charger ce nom"], L["Ouvre dans l'éditeur la macro du jeu qui porte ce nom."] end)
-  local reset = Button(bottom, L["Tout effacer"], 110, function() LoadText("", "") ns.ApplyPerCharDefault() end)
-  reset:SetPoint("LEFT", load, "RIGHT", 6, 0)
-  warnText = Label(bottom, "", 452, -86, "GameFontRedSmall")
-  warnText:SetWidth(420)
+  BuildBottom(parent, palette)
 end
 
 ---------------------------------------------------------------------------
