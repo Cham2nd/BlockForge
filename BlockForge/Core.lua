@@ -302,6 +302,52 @@ function ns.Parse(text)
 end
 
 ---------------------------------------------------------------------------
+-- Coloration syntaxique pour l'affichage (codes |cffRRGGBB...|r du jeu)
+--   palette : couleurs RRGGBB { command, meta, cond, target, arg } ; commands[commande] (facultatif) passe avant command
+--   Sans perte : retirer les codes de couleur et lire "||" comme "|" redonne le texte exact.
+---------------------------------------------------------------------------
+function ns.Colorize(text, palette)
+  local function paint(s, color)
+    s = s:gsub("|", "||") -- un | seul serait lu par le jeu comme un code d'echappement
+    if not color or not s:find("%S") then return s end
+    return "|cff" .. color .. s .. "|r"
+  end
+  local function group(g) -- "[a,@unite,c]" : la cible ressort des autres conditions
+    return paint("[", palette.cond) .. g:sub(2, -2):gsub("[^,]+", function(c)
+      local unit = c:find("^%s*@") or c:lower():find("^%s*target=")
+      return paint(c, unit and palette.target or palette.cond)
+    end) .. paint("]", palette.cond)
+  end
+  local function args(s) return (s:gsub("[^;]+", function(a) return paint(a, palette.arg) end)) end
+  return (text:gsub("[^\n]+", function(line)
+    local lead, rest = line:match("^(%s*)(.*)$")
+    local first = rest:sub(1, 1)
+    if first == "#" then
+      local word, tail = rest:match("^(#%S*)(.*)$")
+      return lead .. paint(word, palette.meta) .. paint(tail, palette.arg)
+    elseif first ~= "/" then
+      return paint(line)
+    end
+    local cmd, tail = rest:match("^(/[^%s%[]*)(.*)$")
+    local key = cmd:lower()
+    local out = { lead, paint(cmd, palette.commands and palette.commands[key] or palette.command) }
+    if key == "/run" or key == "/script" then -- du Lua : ses crochets ne sont pas des conditions
+      out[#out + 1] = paint(tail, palette.arg)
+      return table.concat(out)
+    end
+    local pos = 1
+    while pos <= #tail do
+      local s, e = tail:find("%b[]", pos)
+      out[#out + 1] = args(tail:sub(pos, (s or #tail + 1) - 1))
+      if not s then break end
+      out[#out + 1] = group(tail:sub(s, e))
+      pos = e + 1
+    end
+    return table.concat(out)
+  end))
+end
+
+---------------------------------------------------------------------------
 -- Traduction : remplace les noms de sorts et d'objets anglais par ceux de la langue du client
 --   getName(id)     -> nom de sort localise ou nil (C_Spell.GetSpellName en jeu)
 --   rankWord        -> mot "Rank" localise (global RANK en jeu)

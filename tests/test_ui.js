@@ -48,6 +48,7 @@ REGISTERED = {}
 TOOLTIP_LINES = 0
 
 local W = {}
+WIDGET = W
 local function noop() end
 W.__index = function(t, k)
   local m = rawget(W, k)
@@ -60,10 +61,7 @@ local function new(kind, parent, template)
                            _events = {}, _w = 0, _h = 0 }, W)
   if parent then table.insert(parent._children, w) end
   ALL[#ALL + 1] = w
-  if template == "BasicFrameTemplateWithInset" then
-    w.TitleText = new("FontString", w)
-    w.CloseButton = new("Button", w, "UIPanelCloseButton")
-  elseif template == "UICheckButtonTemplate" then
+  if template == "UICheckButtonTemplate" then
     w.Text = new("FontString", w)
   end
   return w
@@ -111,7 +109,12 @@ function W:GetHeight() return self._h end
 function W:GetCenter() return 1000, 600 end
 function W:SetScale(s) assert(type(s) == "number" and s > 0, "SetScale invalide") self._scale = s end
 function W:SetTexture(t) self._tex = t end
-function W:SetColorTexture(...) self._tex = "color" end
+function W:SetColorTexture(...) self._tex = "color" self._color = { ... } end
+function W:SetTextColor(...) self._textColor = { ... } end
+function W:SetBackdropBorderColor(...) self._border = { ... } end
+function W:CreateAnimationGroup() return new("AnimationGroup", self) end
+function W:CreateAnimation(kind) assert(kind == "Alpha") return new("Animation", self) end
+function W:Play() self._plays = (self._plays or 0) + 1 end
 function W:Enable() self._enabled = true end
 function W:Disable() self._enabled = false end
 function W:RegisterEvent(e) self._events[e] = true end
@@ -146,6 +149,7 @@ Constants = { MacroConsts = { MAX_ACCOUNT_MACROS = 120, MAX_CHARACTER_MACROS = 3
 LOCALIZED_CLASS_NAMES_MALE = { WARLOCK = "Démoniste", HUNTER = "Chasseur", ROGUE = "Voleur", MAGE = "Mage",
   PRIEST = "Prêtre", DRUID = "Druide", WARRIOR = "Guerrier", PALADIN = "Paladin", SHAMAN = "Chaman" }
 RANK = "Rang"
+RAID_CLASS_COLORS = { WARLOCK = { r = 0.53, g = 0.53, b = 0.93 } }
 YES, NO = "Oui", "Non"
 SlashCmdList = {}
 StaticPopupDialogs = {}
@@ -195,7 +199,7 @@ function CreateMacro(name, icon, body, perChar)
   if (perChar and c >= 30) or (not perChar and a >= 120) then return nil end
   local index = perChar and 121 + c or 1 + a -- shortcut: pas de tri alphabetique comme en jeu
   MACROS[name] = { index = index, body = body, char = perChar, icon = icon }
-  CALLS[#CALLS + 1] = { "CreateMacro", name, body, perChar }
+  CALLS[#CALLS + 1] = { "CreateMacro", name, body, perChar, icon }
   return index
 end
 function EditMacro(index, name, icon, body)
@@ -205,7 +209,7 @@ function EditMacro(index, name, icon, body)
   assert(m and m.index == index, "EditMacro : index ne correspond pas au nom")
   m.body = body
   if icon then m.icon = icon end
-  CALLS[#CALLS + 1] = { "EditMacro", name, body }
+  CALLS[#CALLS + 1] = { "EditMacro", name, body, icon }
   return index
 end
 BINDINGS = {}       -- touche -> action
@@ -247,7 +251,7 @@ function inside(w, root) -- w descend de root ?
   while w do if w == root then return true end w = w._parent end
   return false
 end
-function byText(text, root) -- bouton UIPanelButtonTemplate ou puce (texte dans .text), sous root si donne
+function byText(text, root) -- bouton ou puce (texte dans .text), sous root si donne
   local w = find(function(w)
     return ((w._text == text and w._type == "Button") or (w.text and w.text._text == text)) and (not root or inside(w, root))
   end)
@@ -255,6 +259,16 @@ function byText(text, root) -- bouton UIPanelButtonTemplate ou puce (texte dans 
   return w
 end
 function lastLine() return PRINTS[#PRINTS] or "" end
+function plain(s) -- texte affiche sans ses codes de couleur, || relu comme |
+  local out, i = {}, 1
+  while i <= #s do
+    if s:sub(i, i + 1) == "||" then out[#out + 1] = "|" i = i + 2
+    elseif s:find("^|c%x%x%x%x%x%x%x%x", i) then i = i + 10
+    elseif s:sub(i, i + 1) == "|r" then i = i + 2
+    else out[#out + 1] = s:sub(i, i) i = i + 1 end
+  end
+  return table.concat(out)
+end
 function libraryList() -- liste de la bibliotheque : lignes marquees, sans colonne d'onglet (Mes macros)
   for _, w in ipairs(ALL) do
     if w._scripts.OnMouseWheel then
@@ -307,6 +321,17 @@ assert(BlockForgeFrame, "BlockForgeFrame absent")
 assert(BlockForgeFrame.TitleText._text:find("BlockForge"), "titre non pose")
 assert(UISpecialFrames[1] == "BlockForgeFrame")
 assert(BlockForgeFrame._scale == 1)
+-- barre de titre : version du TOC ; fondu joue a la creation puis a chaque ouverture
+assert(find(function(w) return w._type == "FontString" and w._text == "v0.6.2" and w._parent == BlockForgeFrame end), "version absente du titre")
+assert(ns.fade and ns.fade._plays == 1, "fondu non joue a l'ouverture")
+fire(BlockForgeFrame, "OnShow")
+assert(ns.fade._plays == 2)
+-- couleur d'accent par defaut : celle de la classe (faux RAID_CLASS_COLORS), sur le titre et l'onglet actif
+local T = ns.Theme
+assert(db.accent == "class" and T.accent[1] == 0.53 and T.accent[3] == 0.93, "accent de classe : " .. T.accent[1])
+assert(BlockForgeFrame.TitleText._textColor[1] == 0.53, "titre sans la couleur d'accent")
+local tabEditor, tabLibrary = byText("Éditeur"), byText("Bibliothèque")
+assert(tabEditor.line:IsShown() and not tabLibrary.line:IsShown() and tabEditor._border[1] == 0.53 and tabLibrary._border[1] ~= 0.53, "onglet actif non marque")
 
 -- reperes
 local palette = {}
@@ -317,7 +342,7 @@ local rows = {}
 for _, c in ipairs(canvas._children) do if c.pills then rows[#rows + 1] = c end end
 assert(#rows == 12, "lignes : " .. #rows)
 local function delButton(row)
-  for _, c in ipairs(row._children) do if c._template == "UIPanelButtonTemplate" then return c end end
+  for _, c in ipairs(row._children) do if c._type == "Button" then return c end end
 end
 local edits = {}
 for _, w in ipairs(ALL) do if w._type == "EditBox" then edits[#edits + 1] = w end end
@@ -441,7 +466,7 @@ nameBox._text = "Longue"
 fire(byText("Charger ce nom"), "OnClick")
 MACROS["Longue"] = nil
 local function compiled() -- texte de l'apercu (simulateur coupe) = ns.Compile des blocs
-  return find(function(w) return w._type == "FontString" and w._text and w._text:find("^/cast A") and not inside(w, ghost) end)._text
+  return plain(find(function(w) return w._type == "FontString" and w._text and plain(w._text):find("^/cast A") and not inside(w, ghost) end)._text)
 end
 assert(compiled() == table.concat(long, "\n"), "macro coupee : " .. compiled())
 assert(rows[1].full == "/cast A1" and editRange._text == "1-12 / 15  (molette)", editRange._text)
@@ -499,6 +524,80 @@ fire(byText("Charger ce nom"), "OnClick")
 assert(lastLine():find("Aucune"))
 nameBox._text = ""
 fire(saveBtn, "OnClick")
+-- "Automatique" : comme avant, point d'interrogation a la creation, icone gardee a la mise a jour
+assert(CALLS[1][5] == "INV_Misc_QuestionMark" and CALLS[3][4] == nil, "icone automatique : " .. tostring(CALLS[1][5]))
+
+-- 6b. bouton d'action (icone et nom comme sur une barre) et grille d'icones
+local QUESTION = "Interface\\Icons\\INV_Misc_QuestionMark"
+local accent = ns.Theme.accent
+local action = find(function(w) return w.icon and w._type == "Button" and w._parent == nameBox._parent end)
+assert(action, "bouton d'action introuvable")
+fire(clear, "OnClick")
+assert(action.icon._tex == QUESTION and action._border[1] ~= accent[1], "macro vide : point d'interrogation")
+fire(palette.use, "OnClick")
+argBox._text = "13"
+fire(argBox, "OnTextChanged", true)
+assert(action.icon._tex == 135000, "premier /use : " .. tostring(action.icon._tex))
+nameBox._text = "Abc"
+fire(nameBox, "OnTextChanged", true)
+assert(find(function(w) return w._type == "FontString" and w._text == "Abc" and w._point and w._point[2] == action end), "nom sous le bouton")
+-- macro du jeu avec sa propre icone : restauree ; #showtooltip passe avant le premier /use
+MACROS["Ico"] = { index = 7, body = "#showtooltip Corruption\n/use 13", icon = 132000 }
+nameBox._text = "Ico"
+fire(byText("Charger ce nom"), "OnClick")
+assert(action.icon._tex == 132000 and action._border[1] == accent[1], "icone de la macro chargee : " .. tostring(action.icon._tex))
+C_SpellBook = {
+  GetNumSpellBookSkillLines = function() return 1 end,
+  GetSpellBookSkillLineInfo = function() return { itemIndexOffset = 0, numSpellBookItems = 3 } end,
+  GetSpellBookItemName = function(i) return ({ "Peur", "Corruption", "Corruption" })[i] end,
+}
+Enum = { SpellBookSpellBank = { Player = 0 } }
+fireEvent("SPELLS_CHANGED")
+GetMacroIcons = function(t) t[1] = 134400 for i = 1, 200 do t[i + 1] = 200000 + i end end
+COMBAT = true
+fire(action, "OnClick")
+local picker = find(function(w) return rawget(w, "Toggle") end)
+assert(not picker:IsShown() and lastLine():find("combat"), "grille ouverte en combat")
+COMBAT = false
+fire(action, "OnClick")
+assert(picker:IsShown(), "grille non ouverte")
+local cells = {}
+for _, c in ipairs(picker._children) do if c.icon then cells[#cells + 1] = c end end
+assert(#cells == 48, "boutons de la grille : " .. #cells) -- reutilises : pas un par icone
+-- Automatique, puis le grimoire (sans doublon, sans sort sans icone), puis les icones de macro du jeu (sans le ?)
+assert(cells[1].icon._tex == QUESTION and cells[2].icon._tex == 136118 and cells[3].icon._tex == 200001 and cells[48].icon._tex == 200046,
+  "contenu de la grille : " .. tostring(cells[3].icon._tex))
+assert(cells[1]._border[1] ~= accent[1], "Automatique marque alors que la macro a une icone")
+for _ = 1, 50 do fire(picker, "OnMouseWheel", -1) end -- 202 icones : la derniere page commence a la 161e
+assert(cells[1].icon._tex == 200159 and cells[42].icon._tex == 200200 and not cells[43]:IsShown(), "derniere page : " .. tostring(cells[1].icon._tex))
+for _ = 1, 50 do fire(picker, "OnMouseWheel", 1) end
+fire(cells[1], "OnClick") -- Automatique : l'icone suit #showtooltip
+assert(not picker:IsShown() and action.icon._tex == 136118 and action._border[1] ~= accent[1], "Automatique : " .. tostring(action.icon._tex))
+fire(saveBtn, "OnClick") -- choix explicite sur une macro existante : le point d'interrogation remplace son icone
+local icoPop = POPUPS[#POPUPS]
+assert(icoPop.which == "BLOCKFORGE_OVERWRITE" and icoPop.data.icon == "INV_Misc_QuestionMark", "icone automatique non transmise")
+StaticPopupDialogs.BLOCKFORGE_OVERWRITE.OnAccept({}, icoPop.data)
+assert(CALLS[#CALLS][1] == "EditMacro" and CALLS[#CALLS][4] == "INV_Misc_QuestionMark" and MACROS["Ico"].icon == "INV_Misc_QuestionMark")
+fire(byText("Charger ce nom"), "OnClick") -- rechargee sans toucher a l'icone : la mise a jour la garde
+assert(action.icon._tex == 136118)
+fire(saveBtn, "OnClick")
+assert(POPUPS[#POPUPS].data.icon == nil, "icone envoyee sans choix du joueur")
+fire(action, "OnClick")
+assert(cells[1]._border[1] == accent[1], "Automatique non marque")
+fire(cells[5], "OnClick") -- une icone du jeu, pour une nouvelle macro
+assert(action.icon._tex == 200003 and action._border[1] == accent[1])
+fire(action, "OnClick")
+assert(cells[5]._border[1] == accent[1] and cells[1]._border[1] ~= accent[1], "icone choisie non marquee")
+fire(nameBox._parent, "OnHide") -- onglet change ou fenetre fermee : la grille se ferme
+assert(not picker:IsShown(), "grille restee ouverte")
+nameBox._text = "Ico2"
+perChar._checked = false
+fire(saveBtn, "OnClick")
+assert(CALLS[#CALLS - 1][1] == "CreateMacro" and CALLS[#CALLS - 1][2] == "Ico2" and CALLS[#CALLS - 1][5] == 200003, "icone choisie non enregistree")
+fire(clear, "OnClick")
+assert(action.icon._tex == QUESTION and action._border[1] ~= accent[1], "Tout effacer doit revenir a Automatique")
+MACROS["Ico"], MACROS["Ico2"], C_SpellBook, GetMacroIcons = nil, nil, nil, nil
+fireEvent("SPELLS_CHANGED")
 
 -- 7. bibliotheque : chaque classe, molette, chaque ligne, ouverture
 fire(byText("Bibliothèque"), "OnClick")
@@ -671,7 +770,7 @@ fire(byText("Paramètres", BlockForgeFrame), "OnClick")
 local settingsPanel = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, BlockForgeFrame) and w ~= perChar and w:IsVisible() end)._parent
 assert(settingsPanel:IsVisible(), "onglet Parametres non affiche")
 local checks = checkboxes(settingsPanel)
-assert(#checks == 9, "cases : " .. #checks) -- 7 reglages + 2 choix de classe
+assert(#checks == 11, "cases : " .. #checks) -- 7 reglages + 2 choix de classe + 2 couleurs d'accent
 for _, c in ipairs(checks) do assert(c.label, "case sans libelle") end
 local function cb(fragment)
   for _, c in ipairs(checks) do if c.label:find(fragment, 1, true) then return c.box end end
@@ -729,14 +828,14 @@ for _ = 1, 30 do fire(listPanel, "OnMouseWheel", -1) end
 local tradRow
 for _, r in ipairs(libRows) do if r:IsShown() and r.text._text:find("ZZ Trad") then tradRow = r end end
 fire(tradRow, "OnClick")
-local bodyLabel = find(function(w) return w._type == "FontString" and w._text == "/cast " .. C_Spell.GetSpellName(id) end)
+local bodyLabel = find(function(w) return w._type == "FontString" and plain(w._text or "") == "/cast " .. C_Spell.GetSpellName(id) end)
 assert(bodyLabel, "bibliotheque non traduite")
 click(cb("Traduire"), false)
-assert(bodyLabel._text == "/cast " .. spell, "bibliotheque toujours traduite : " .. bodyLabel._text)
+assert(plain(bodyLabel._text) == "/cast " .. spell, "bibliotheque toujours traduite : " .. plain(bodyLabel._text))
 fire(byText("Ouvrir dans l'éditeur"), "OnClick")
 assert(rows[1].full == "/cast " .. spell, "l'editeur doit recevoir le texte anglais")
 click(cb("Traduire"), true)
-assert(bodyLabel._text == "/cast " .. C_Spell.GetSpellName(id))
+assert(plain(bodyLabel._text) == "/cast " .. C_Spell.GetSpellName(id))
 
 -- objet hors cache : nom anglais et demande, puis GET_ITEM_INFO_RECEIVED retraduit le detail
 local nItems = 0
@@ -750,13 +849,13 @@ for _ = 1, 30 do fire(listPanel, "OnMouseWheel", -1) end
 local itemRow
 for _, r in ipairs(libRows) do if r:IsShown() and r.text._text:find("ZZ Objet") then itemRow = r end end
 fire(itemRow, "OnClick")
-assert(bodyLabel._text == "/use [@player] Major Soulstone", "objet hors cache : " .. bodyLabel._text)
+assert(plain(bodyLabel._text) == "/use [@player] Major Soulstone", "objet hors cache : " .. plain(bodyLabel._text))
 assert(#ITEM_REQUESTS == nItems, "demande repetee a l'affichage")
 ITEM_NAMES[stone] = "Pierre d'âme majeure"
 fireEvent("GET_ITEM_INFO_RECEIVED", 999999, true) -- autre objet : rien
-assert(bodyLabel._text == "/use [@player] Major Soulstone")
+assert(plain(bodyLabel._text) == "/use [@player] Major Soulstone")
 fireEvent("GET_ITEM_INFO_RECEIVED", stone, true)
-assert(bodyLabel._text == "/use [@player] Pierre d'âme majeure", "objet non retraduit : " .. bodyLabel._text)
+assert(plain(bodyLabel._text) == "/use [@player] Pierre d'âme majeure", "objet non retraduit : " .. plain(bodyLabel._text))
 
 click(cb("Infobulles"), false)
 TOOLTIP_LINES = 0
@@ -790,12 +889,28 @@ click(cb("Ma classe"), true)
 assert(db.libraryClass == "player" and cb("Dernière")._checked == false)
 click(cb("Dernière"), true)
 
+-- couleur d'accent : appliquee tout de suite au titre, a l'onglet actif, aux bandeaux et aux selections
+local function exact(label) for _, c in ipairs(checks) do if c.label == label then return c.box end end error(label) end
+local band = find(function(w) return w._type == "Texture" and w._parent == settingsPanel and w._color and w._color[1] == 0.53 end)
+assert(band, "bandeau de panneau sans la couleur d'accent")
+fire(byText("Paramètres", BlockForgeFrame), "OnClick")
+click(exact("Or"), true)
+assert(db.accent == "gold" and T.accent[1] == 1 and T.accent[2] == 0.82 and exact("Couleur de ma classe")._checked == false, "accent or")
+assert(BlockForgeFrame.TitleText._textColor[2] == 0.82 and band._color[2] == 0.82 and tabEditor.line._color[2] == 0.82, "accent non repeint")
+assert(byText("Paramètres", BlockForgeFrame)._border[2] == 0.82 and tabEditor._border[2] ~= 0.82, "onglets non repeints")
+fire(byText("Bibliothèque"), "OnClick")
+assert(byText("Toutes classes")._border[2] == 0.82 and byText("Démoniste")._border[2] ~= 0.82, "classe choisie non repeinte")
+fire(byText("Paramètres", BlockForgeFrame), "OnClick")
+click(exact("Couleur de ma classe"), true)
+assert(db.accent == "class" and T.accent[1] == 0.53 and BlockForgeFrame.TitleText._textColor[1] == 0.53 and exact("Or")._checked == false)
+click(exact("Or"), true)
+
 -- reinitialisation
 click(cb("minicarte"), false)
 db.minimap.angle = 10
 fire(byText("Réinitialiser les paramètres", settingsPanel), "OnClick")
 assert(db.scale == 1 and db.minimap.show == true and db.minimap.angle == 225 and db.libraryClass == "player"
-  and db.pos == false and db.lastClass == false, "reinitialisation incomplete")
+  and db.pos == false and db.lastClass == false and db.accent == "class" and T.accent[1] == 0.53, "reinitialisation incomplete")
 assert(BlockForgeFrame._scale == 1 and BlockForgeMinimapButton:IsShown())
 assert(cb("minicarte")._checked == true and cb("Ma classe")._checked == true, "cases non resynchronisees")
 assert(NS.db == BlockForgeDB, "reference de la base perdue")
@@ -805,7 +920,7 @@ local gamePanel
 for _, w in ipairs(ALL) do if w.name == "BlockForge" and not w._parent then gamePanel = w end end
 assert(gamePanel, "panneau des options du jeu absent")
 local gameChecks = checkboxes(gamePanel)
-assert(#gameChecks == 9)
+assert(#gameChecks == 11)
 click(gameChecks[1].box, false)
 fire(settingsPanel, "OnShow")
 assert(cb("minicarte")._checked == false, "les deux pages ne sont pas synchronisees")
@@ -861,12 +976,12 @@ MACROS["Ajout"] = nil
 fireEvent("UPDATE_MACROS")
 fire(mRow("Soin"), "OnClick")
 local soinBody = MACROS["Soin"].body
-assert(find(function(w) return w._type == "FontString" and w._text == soinBody and inside(w, mPage) end), "corps non affiche")
+assert(find(function(w) return w._type == "FontString" and plain(w._text or "") == soinBody and inside(w, mPage) end), "corps non affiche")
 fire(byText("Ouvrir dans l'éditeur", mPage), "OnClick")
 assert(rows[1]:IsVisible() and rows[1].full == soinBody and nameBox._text == "Soin", "macro non ouverte dans l'editeur")
 
 -- simulateur : l'apercu change selon l'etat, et redevient normal une fois coupe
-local previewLabel = find(function(w) return w._type == "FontString" and w._text == soinBody and not inside(w, mPage) end)
+local previewLabel = find(function(w) return w._type == "FontString" and plain(w._text or "") == soinBody and not inside(w, mPage) end)
 assert(previewLabel, "apercu introuvable")
 local simToggle = byText("Simuler")
 local survol = byText("Survol : —")
@@ -878,7 +993,7 @@ assert(survol.text._text == "Survol : Hostile" and previewLabel._text:find("-> @
 fire(survol, "OnClick") -- amie
 assert(previewLabel._text:find("-> @mouseover", 1, true), previewLabel._text)
 fire(simToggle, "OnClick")
-assert(previewLabel._text == soinBody and not survol:IsShown(), "apercu toujours simule")
+assert(plain(previewLabel._text) == soinBody and previewLabel._text ~= soinBody and not survol:IsShown(), "apercu toujours simule")
 
 -- export puis import : ouvert dans l'editeur, rien d'enregistre
 fire(byText("Mes macros"), "OnClick")
@@ -1012,6 +1127,8 @@ assert(text:find("OK api C_Spell.GetSpellName", 1, true) and text:find("FAIL api
 assert(text:find("OK round trip Parse/Compile: 0 / ", 1, true) and text:find("OK spell ids without name: 0 / ", 1, true), text)
 assert(text:find("INFO items not cached yet:", 1, true) and text:find("INFO class WARLOCK:", 1, true) and text:find("INFO macros: ", 1, true), text)
 for _, tab in ipairs({ "editor", "library", "macros", "settings" }) do assert(text:find("OK tab " .. tab, 1, true), tab) end
+assert(text:find("INFO optional api present: RAID_CLASS_COLORS", 1, true) and text:find("INFO optional api absent: GetMacroIcons", 1, true), text)
+assert(text:find("INFO look: accent class = 0.53 0.53 0.93, opening fade on, icon choices ", 1, true), text)
 assert(lastLine():find(("%d OK, %d en échec"):format(byStart.OK, byStart.FAIL or 0), 1, true), lastLine())
 assert(#CALLS == callsBeforeTest and BINDINGS.G == bindingsBefore, "l'autotest a touche aux macros")
 GetLocale = nil
@@ -1070,12 +1187,12 @@ assert(first and first.text._text:find(mage.name, 1, true), "bibliotheque non ou
 `, "=partiel");
 
 // ---------------------------------------------------------------- 3. BlockForgeDB corrompue
-boot(`{ minimap = "oui", pos = 5, lastClass = 12, libraryClass = "autre", scale = 9, helpTooltips = "non" }`);
+boot(`{ minimap = "oui", pos = 5, lastClass = 12, libraryClass = "autre", scale = 9, helpTooltips = "non", accent = 7 }`);
 run(String.raw`
 local db = BlockForgeDB
 assert(type(db.minimap) == "table" and db.minimap.show == true and db.minimap.angle == 225)
 assert(db.pos == false and db.lastClass == false and db.libraryClass == "player")
-assert(db.scale == 1.5 and db.helpTooltips == true, "valeurs corrompues gardees")
+assert(db.scale == 1.5 and db.helpTooltips == true and db.accent == "class", "valeurs corrompues gardees")
 SlashCmdList.BLOCKFORGE("")
 assert(BlockForgeFrame._point[1] == "CENTER")
 fire(BlockForgeMinimapButton, "OnClick", "RightButton")
@@ -1086,13 +1203,15 @@ L = null;
 L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
 run(MOCK, "=mock");
-run(`Settings = nil  Minimap = nil  CATEGORIES = {}  C_Item = {}
+run(`Settings = nil  Minimap = nil  CATEGORIES = {}  C_Item = {}  RAID_CLASS_COLORS = nil  WIDGET.CreateAnimationGroup = nil
      function InterfaceOptions_AddCategory(p) assert(p.name == "BlockForge") CATEGORIES[#CATEGORIES + 1] = p end
      BlockForgeDB = nil`, "=classic");
 for (const f of tocFiles) loadAddonFile(f);
 run(`fireEvent("ADDON_LOADED", "BlockForge")
      assert(#CATEGORIES == 1, "repli InterfaceOptions_AddCategory absent")
-     SlashCmdList.BLOCKFORGE("options")`, "=classic2");
+     SlashCmdList.BLOCKFORGE("options")
+     -- sans couleurs de classe ni animations : accent or, pas de fondu, aucune erreur
+     assert(NS.db.accent == "class" and NS.Theme.accent[2] == 0.82 and NS.fade == nil, "replis du theme")`, "=classic2");
 
 // ---------------------------------------------------------------- 5. client anglais : textes et descEN
 boot("nil", `function GetLocale() return "enUS" end`);

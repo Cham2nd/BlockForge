@@ -11,6 +11,7 @@ local function Version()
   local get = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
   return tostring(get and get(ADDON, "Version") or "?")
 end
+ns.Version = Version -- affichee dans la barre de titre
 
 local function Store(entry)
   local list = ns.db and ns.db.errors or pending
@@ -66,6 +67,9 @@ local APIS = {
   "UnitClass", "GetLocale", "StaticPopup_Show", "geterrorhandler", "seterrorhandler", "debugstack", "GetBuildInfo",
 }
 
+-- facultatives : l'add-on a un repli pour chacune, leur absence n'est pas un echec
+local OPTIONAL = { "RAID_CLASS_COLORS", "GetMacroIcons", "GetPetActionInfo", "C_SpellBook.GetNumSpellBookSkillLines" }
+
 local function Lookup(path)
   local v = _G
   for key in path:gmatch("[^.]+") do v = type(v) == "table" and v[key] or nil end
@@ -78,6 +82,9 @@ local CHECKS = {
   { "api", function(out)
     for _, path in ipairs(APIS) do
       out[#out + 1] = (type(Lookup(path)) == "function" and "OK api " or "FAIL api absent: ") .. path
+    end
+    for _, path in ipairs(OPTIONAL) do
+      out[#out + 1] = "INFO optional api " .. (Lookup(path) ~= nil and "present: " or "absent: ") .. path
     end
   end },
   { "round trip", function(out)
@@ -139,6 +146,9 @@ local CHECKS = {
     for _, key in ipairs({ "editor", "library", "macros", "settings" }) do
       out[#out + 1] = errors[key] and ("FAIL tab " .. key .. ": " .. errors[key]) or ("OK tab " .. key)
     end
+    local a = ns.Theme.accent
+    out[#out + 1] = ("INFO look: accent %s = %.2f %.2f %.2f, opening fade %s, icon choices %d"):format(
+      tostring(ns.db.accent), a[1], a[2], a[3], ns.fade and "on" or "absent", #ns.IconChoices())
   end },
 }
 

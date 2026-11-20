@@ -15,6 +15,7 @@ ns.DEFAULTS = {
   libraryClass = "player", -- "player" (ma classe) ou "last" (derniere consultee)
   lastClass = false,
   helpTooltips = true,
+  accent = "class",        -- couleur d'accent : "class" (classe du joueur) ou "gold"
   favorites = {},          -- [classe .. "/" .. nom] = true (bibliotheque)
   sets = {},               -- [nom] = { { name, icon, body, char }, ... } (sauvegardes de "Mes macros")
   errors = {},             -- diagnostics (Debug.lua) : 20 dernieres erreurs Lua de l'add-on
@@ -46,6 +47,7 @@ local function Sanitize(db)
   end
   if db.lastClass and type(db.lastClass) ~= "string" then db.lastClass = false end
   if db.libraryClass ~= "player" and db.libraryClass ~= "last" then db.libraryClass = "player" end
+  if db.accent ~= "class" and db.accent ~= "gold" then db.accent = "class" end
   db.scale = math.min(ns.SCALE_MAX, math.max(ns.SCALE_MIN, db.scale))
   db.minimap.angle = db.minimap.angle % 360
 end
@@ -55,6 +57,7 @@ function ns.InitDB()
   Merge(BlockForgeDB, ns.DEFAULTS)
   Sanitize(BlockForgeDB)
   ns.db = BlockForgeDB
+  ns.ApplyTheme()
   if ns.FlushErrors then ns.FlushErrors() end
 end
 
@@ -62,6 +65,7 @@ local pages = {}
 
 -- Applique tous les reglages a ce qui existe deja (fenetre, bouton, bibliotheque, pages)
 function ns.ApplySettings()
+  ns.ApplyTheme()
   if ns.ApplyWindow then ns.ApplyWindow() end
   if ns.ApplyPerCharDefault then ns.ApplyPerCharDefault() end
   if ns.UpdateMinimapButton then ns.UpdateMinimapButton() end
@@ -115,6 +119,24 @@ local function CheckBox(parent, x, y, text)
   return cb
 end
 
+-- Titre a y, puis une case par choix dessous ; db[key] prend la valeur de la case cochee
+local function Radios(parent, y, syncs, title, key, choices, apply)
+  ns.ui.Label(parent, title, 20, y, "GameFontNormal")
+  local boxes = {}
+  for i, choice in ipairs(choices) do
+    local cb = CheckBox(parent, 30 + (i - 1) * 180, y - 18, choice[2])
+    cb:SetScript("OnClick", function()
+      ns.db[key] = choice[1]
+      if apply then apply() end
+      for _, page in ipairs(pages) do page.Sync() end
+    end)
+    boxes[choice[1]] = cb
+  end
+  syncs[#syncs + 1] = function()
+    for value, cb in pairs(boxes) do cb:SetChecked(ns.db[key] == value) end
+  end
+end
+
 function ns.BuildSettingsPage(parent, title)
   local ui = ns.ui
   local syncs = {}
@@ -159,22 +181,14 @@ function ns.BuildSettingsPage(parent, title)
     scaleText:SetText(L["Échelle de la fenêtre : %d %%"]:format(math.floor(ns.db.scale * 100 + 0.5)))
   end
 
-  -- Classe affichee au depart dans la bibliotheque (deux cases exclusives)
+  -- Deux choix exclusifs : classe affichee au depart dans la bibliotheque, couleur d'accent (appliquee tout de suite)
   y = y - 40
-  ui.Label(parent, L["Classe affichée à l'ouverture de la bibliothèque :"], 20, y, "GameFontNormal")
+  Radios(parent, y, syncs, L["Classe affichée à l'ouverture de la bibliothèque :"], "libraryClass",
+    { { "player", L["Ma classe"] }, { "last", L["Dernière consultée"] } })
+  y = y - 52
+  Radios(parent, y, syncs, L["Couleur d'accent de l'interface :"], "accent",
+    { { "class", L["Couleur de ma classe"] }, { "gold", L["Or"] } }, ns.ApplyTheme)
   y = y - 18
-  local radios = {}
-  for i, choice in ipairs({ { "player", L["Ma classe"] }, { "last", L["Dernière consultée"] } }) do
-    local cb = CheckBox(parent, 30 + (i - 1) * 180, y, choice[2])
-    cb:SetScript("OnClick", function()
-      ns.db.libraryClass = choice[1]
-      for _, page in ipairs(pages) do page.Sync() end
-    end)
-    radios[choice[1]] = cb
-  end
-  syncs[#syncs + 1] = function()
-    for key, cb in pairs(radios) do cb:SetChecked(ns.db.libraryClass == key) end
-  end
 
   y = y - 46
   local reset = ui.Button(parent, L["Réinitialiser les paramètres"], 210, function() ns.ResetDB() end)

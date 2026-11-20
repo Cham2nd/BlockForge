@@ -1,5 +1,12 @@
-# BlockForge 0.7.0
+# BlockForge 0.8.0
 
+- Nouveau look : barre de titre épurée avec le numéro de version, onglet actif bien visible, boutons plats, surbrillance au survol de tout ce qui se clique.
+- Couleur d'accent : celle de votre classe par défaut, ou l'or d'origine (onglet Paramètres), appliquée tout de suite.
+- Éditeur : blocs plus lisibles (icône plus grande, bloc choisi et repère de dépôt plus nets), et une zone vide qui explique par où commencer.
+- Aperçu coloré : commandes, conditions, cibles (@unité) et arguments ont chacun leur couleur, dans l'éditeur, la bibliothèque et « Mes macros ».
+- Bouton d'action : à côté de l'aperçu, l'icône et le nom de la macro tels qu'ils apparaîtront sur une barre.
+- Icône de la macro : un clic sur ce bouton ouvre une grille (Automatique, icônes de votre grimoire, icônes de macro du jeu) ; l'icône choisie est enregistrée avec la macro, et retrouvée quand vous rouvrez la macro.
+- Fondu à l'ouverture de la fenêtre.
 - Sort mal écrit : l'éditeur propose le nom le plus proche de votre grimoire et le corrige d'un clic.
 - Modèles : un modèle par technique du familier sorti (lancée sur l'unité survolée, sinon sur la cible).
 - Éditeur : plus de limite à 12 lignes, la liste de blocs défile à la molette.

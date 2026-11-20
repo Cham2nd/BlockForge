@@ -8,6 +8,7 @@ const run = (code, name) => { if (lauxlib.luaL_loadbuffer(L, code, code.length, 
 run(to_luastring("NS = {}"), "init");
 const src = fs.readFileSync(dir + "/Core.lua", "utf8");
 run(to_luastring("local chunk = function(...) " + src + "\nend chunk('BlockForge', NS)"), "@Core.lua");
+run(to_luastring("local chunk = function(...) " + fs.readFileSync(dir + "/Library.lua", "utf8") + "\nend chunk('BlockForge', NS)"), "@Library.lua");
 run(to_luastring(String.raw`
 local ns = NS
 local function rt(s) return ns.Compile(ns.Parse(s)) end
@@ -160,6 +161,43 @@ r = sim("/cast [stance:1/2] A; B", with({ form = 2 }))
 assert(r[1].clause == 1)
 r = sim("/stopcasting\n/cast [harm] A", with({ target = "help" }))
 assert(r[1].clause == 1 and next(r[2]) == nil)
+
+-- Colorize : sans perte (codes de couleur retires, || relu comme |), une couleur par role
+local P = { command = "111111", meta = "222222", cond = "333333", target = "444444", arg = "555555", commands = { ["/use"] = "666666" } }
+local function strip(s)
+  local out, i = {}, 1
+  while i <= #s do
+    if s:sub(i, i + 1) == "||" then out[#out + 1] = "|" i = i + 2
+    elseif s:find("^|c%x%x%x%x%x%x%x%x", i) then i = i + 10
+    elseif s:sub(i, i + 1) == "|r" then i = i + 2
+    else
+      assert(s:sub(i, i) ~= "|", "| non echappe : " .. s)
+      out[#out + 1] = s:sub(i, i)
+      i = i + 1
+    end
+  end
+  return table.concat(out)
+end
+local function col(s)
+  local c = ns.Colorize(s, P)
+  assert(strip(c) == s, "Colorize avec perte : " .. s .. " => " .. c)
+  return c
+end
+assert(#ns.Library >= 274, "bibliotheque non chargee")
+for _, e in ipairs(ns.Library) do
+  assert(col(e.body) ~= e.body, "rien de colore : " .. e.name)
+end
+for _, s in ipairs({ "", "\n", "  /cast  [ @focus , harm ] [] Fear ; Peur  \r\n\n#show\n texte libre | ici", "/cast [mod", "/cast ]x[",
+                     "/run print(\"|cffff0000rouge|r ||\") t[1]=2", "/script x={[1]=2}", "#showtooltip", "/castsequence reset=5 A, B",
+                     "/cast [target=focus,exists][@mouseover] X", "/", "#", "|", "/use||13" }) do col(s) end
+local c = col("#showtooltip Fear\n/cast [@focus,harm] Fear; Peur\n/use 13\n/petattack [target=pet]")
+assert(c:find("|cff222222#showtooltip|r|cff555555 Fear|r", 1, true), c)
+assert(c:find("|cff111111/cast|r", 1, true) and c:find("|cff666666/use|r", 1, true), c) -- commands passe avant command
+assert(c:find("|cff333333[|r|cff444444@focus|r,|cff333333harm|r|cff333333]|r", 1, true), c)
+assert(c:find("|cff555555 Fear|r;|cff555555 Peur|r", 1, true) and c:find("|cff444444target=pet|r", 1, true), c)
+assert(col("/run a[1]=2"):find("|cff555555 a[1]=2|r", 1, true), "crochets de /run pris pour des conditions")
+assert(col("/say a | b") == "|cff111111/say|r|cff555555 a || b|r")
+assert(col("bonjour | tous") == "bonjour || tous")
 print("test_core OK")
 `), "test");
 

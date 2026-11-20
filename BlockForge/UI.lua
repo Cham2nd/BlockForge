@@ -5,7 +5,8 @@ local L = ns.L
 local MAX_ROWS = 12    -- lignes visibles ; la molette fait defiler au-dela (la vraie limite : 255 caracteres)
 local MAX_CLAUSES = 4
 local MAX_LIB_ROWS = 18 -- lignes visibles ; la molette fait defiler au-dela
-local ROW_W, ROW_H, ROW_STEP = 360, 24, 27
+local ROW_W, ROW_H, ROW_STEP = 360, 28, 30
+local T = ns.Theme -- palette (Theme.lua)
 local BACKDROP = BackdropTemplateMixin and "BackdropTemplate" or nil
 local WHITE = "Interface\\Buttons\\WHITE8x8"
 local QUESTION = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -14,12 +15,6 @@ local MACRO_CONSTS = (Constants and Constants.MacroConsts) or {}
 local MAX_ACCOUNT = MACRO_CONSTS.MAX_ACCOUNT_MACROS or MAX_ACCOUNT_MACROS or 120
 local MAX_CHARACTER = MACRO_CONSTS.MAX_CHARACTER_MACROS or MAX_CHARACTER_MACROS or 18
 
--- Palette de l'interface
-local GOLD = { 1, 0.82, 0.1 }
-local GREY = { 0.3, 0.3, 0.34 }
-local MUTED = { 0.62, 0.62, 0.66 }
--- une couleur par groupe de conditions (meme ordre que ns.ConditionGroups)
-local GROUP_COLORS = { { 0.35, 0.75, 0.95 }, { 0.95, 0.45, 0.45 }, { 0.72, 0.52, 0.98 }, { 0.98, 0.66, 0.25 }, { 0.45, 0.85, 0.55 } }
 local GROUP_COLS = { 3, 3, 4, 3, 3 } -- boutons par ligne : les touches (libelles courts) tiennent sur une seule
 local PILL_LABEL = { nomod = L["Sans touche"] } -- libelles trop vagues hors de leur groupe
 
@@ -30,6 +25,9 @@ local Refresh
 local main, editor, library, settingsTab, canvas, dropLine
 local nameBox, perChar, argBox, argLabel, resetBox, resetLabel, inspTitle, inspBody, inspHint
 local preview, counter, counterBar, warnText, fixButton
+-- icone de la macro : icon = choix du joueur (nil = automatique), touched = choisie depuis le chargement,
+-- Sync() repeint le bouton d'action, picker = grille de choix. Une table : un seul upvalue pour les grosses fonctions.
+local view = {}
 
 local function Msg(text) print(L["|cff66ccffBlockForge|r : %s"]:format(text)) end
 
@@ -41,26 +39,33 @@ local function Panel(parent, w, h, title)
   f:SetSize(w, h)
   f:SetBackdrop({ bgFile = WHITE, edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
                   edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-  f:SetBackdropColor(0.04, 0.04, 0.06, 0.9)
-  f:SetBackdropBorderColor(0.45, 0.45, 0.5)
+  f:SetBackdropColor(T.panel[1], T.panel[2], T.panel[3], 0.92)
+  f:SetBackdropBorderColor(T.border[1], T.border[2], T.border[3])
   if title then
     -- bandeau de titre : la meme hierarchie dans tous les panneaux
     local band = f:CreateTexture(nil, "BORDER")
-    band:SetColorTexture(0.13, 0.13, 0.17, 1)
+    band:SetColorTexture(T.band[1], T.band[2], T.band[3], 1)
     band:SetPoint("TOPLEFT", 3, -3)
     band:SetPoint("TOPRIGHT", -3, -3)
     band:SetHeight(20)
-    local line = f:CreateTexture(nil, "ARTWORK")
-    line:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 0.35)
+    local line = T.Accent(f:CreateTexture(nil, "ARTWORK"), 0.6)
     line:SetPoint("TOPLEFT", band, "BOTTOMLEFT")
     line:SetPoint("TOPRIGHT", band, "BOTTOMRIGHT")
     line:SetHeight(1)
-    local t = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local t = T.AccentText(f:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
     t:SetPoint("LEFT", band, "LEFT", 7, 0)
     t:SetText(title)
     f.band = band
   end
   return f
+end
+
+-- Surbrillance au survol : la meme pour tout ce qui se clique
+local function Highlight(frame, alpha)
+  local hl = frame:CreateTexture(nil, "HIGHLIGHT")
+  hl:SetPoint("TOPLEFT", 1, -1)
+  hl:SetPoint("BOTTOMRIGHT", -1, 1)
+  hl:SetColorTexture(1, 1, 1, alpha or 0.12)
 end
 
 local function Label(parent, text, x, y, font)
@@ -88,10 +93,21 @@ local function Chip(parent, w, h)
   b.text:SetPoint("RIGHT", -6, 0)
   b.text:SetJustifyH("LEFT")
   b.text:SetWordWrap(false)
-  local hl = b:CreateTexture(nil, "HIGHLIGHT")
-  hl:SetPoint("TOPLEFT", 1, -1)
-  hl:SetPoint("BOTTOMRIGHT", -1, 1)
-  hl:SetColorTexture(1, 1, 1, 0.12)
+  Highlight(b)
+  return b
+end
+
+-- Bouton carre de 36 px, comme sur une barre d'action : bordure de 1 px, icone rognee
+local function IconButton(parent)
+  local b = CreateFrame("Button", nil, parent, BACKDROP)
+  b:SetSize(36, 36)
+  b:SetBackdrop(PILL_BACKDROP)
+  b:SetBackdropColor(0, 0, 0, 1)
+  b.icon = b:CreateTexture(nil, "ARTWORK")
+  b.icon:SetPoint("TOPLEFT", 2, -2)
+  b.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+  b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  Highlight(b, 0.25)
   return b
 end
 
@@ -101,14 +117,20 @@ local function SideBar(frame, color)
   bar:SetPoint("TOPLEFT", 1, -1)
   bar:SetPoint("BOTTOMLEFT", 1, 1)
   bar:SetWidth(4)
-  bar:SetColorTexture(color[1], color[2], color[3], 1)
+  if color == T.accent then T.Accent(bar) else bar:SetColorTexture(color[1], color[2], color[3], 1) end
   return bar
 end
 
 local function Button(parent, text, w, onClick)
-  local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+  -- bouton plat, du meme dessin que les puces ; les polices du jeu grisent le texte quand il est desactive
+  local b = CreateFrame("Button", nil, parent, BACKDROP)
   b:SetSize(w, 22)
+  b:SetBackdrop(PILL_BACKDROP)
+  Tint(b, T.button, 0.9)
+  b:SetNormalFontObject(GameFontHighlightSmall)
+  b:SetDisabledFontObject(GameFontDisableSmall)
   b:SetText(text)
+  Highlight(b)
   b:SetScript("OnClick", onClick)
   return b
 end
@@ -156,7 +178,7 @@ local function TabOrder(boxes)
 end
 
 -- partages avec Settings.lua
-ns.ui = { Panel = Panel, Label = Label, Button = Button, Tip = Tip }
+ns.ui = { Panel = Panel, Label = Label, Button = Button, Tip = Tip, IconButton = IconButton }
 
 -- police du code : le client n'a pas de police a chasse fixe, ARIALN (etroite) est la plus lisible
 local codeFont = CreateFont("BlockForgeCodeFont")
@@ -213,11 +235,11 @@ local condInfo = {} -- cond -> { label, color }
 for gi, group in ipairs(ns.ConditionGroups) do
   for _, item in ipairs(group.items) do
     local label = PILL_LABEL[item[1]] or item[2]
-    condInfo[item[1]] = { gi == 1 and ("@ " .. label) or label, GROUP_COLORS[gi] or GREY }
+    condInfo[item[1]] = { gi == 1 and ("@ " .. label) or label, T.groups[gi] or T.grey }
   end
 end
 
-local function Light(c) return math.min(1, c[1] + 0.25), math.min(1, c[2] + 0.25), math.min(1, c[3] + 0.25) end
+local Light = T.Light
 
 local function ArgIcon(block)
   if InCombatLockdown() then return nil end -- pas de recherche de sort en combat (valeurs secretes)
@@ -241,6 +263,25 @@ local function ArgIcon(block)
   return getSpellIcon(name) or getSpellIcon((name:gsub("%s*%(.-%)$", "")))
 end
 
+-- Icone qu'aurait la macro sur une barre avec le point d'interrogation : #showtooltip, sinon le premier sort ou objet
+-- shortcut: prend la premiere alternative remplie, sans evaluer les conditions comme le fait le jeu
+local function MacroIcon()
+  local first = blocks[1]
+  if first and first.type == "showtooltip" and ns.trim(first.arg or "") ~= "" then
+    return ArgIcon(first) or ArgIcon({ type = "use", arg = first.arg }) or QUESTION
+  end
+  for _, block in ipairs(blocks) do
+    if block.type == "cast" or block.type == "use" or block.type == "castsequence" then return ArgIcon(block) or QUESTION end
+  end
+  return QUESTION
+end
+
+-- icone choisie d'une macro du jeu ; le point d'interrogation (134400) veut dire "automatique"
+local function CustomIcon(icon)
+  if not icon or icon == 134400 or (type(icon) == "string" and icon:lower():find("inv_misc_questionmark", 1, true)) then return nil end
+  return icon
+end
+
 -- sorts que le personnage ne connait pas : la recherche par nom ne repond que pour les sorts connus
 -- shortcut: techniques de familier ignorees (inconnues tant que le familier n'est pas sorti)
 local function UnknownSpells(blockList)
@@ -259,7 +300,7 @@ local function RowPart(row, kind, n)
   if not pool[n] then
     if kind == "pills" then
       local p = CreateFrame("Frame", nil, row, BACKDROP)
-      p:SetHeight(16)
+      p:SetHeight(18)
       p:SetBackdrop(PILL_BACKDROP)
       p.text = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
       p.text:SetPoint("CENTER")
@@ -285,7 +326,8 @@ local function LayoutRow(row, block, def)
   row.cmd:SetText(def.cmd ~= "" and def.cmd or L["ligne libre"])
   row.cmd:SetTextColor(Light(def.color))
 
-  local x, limit = 31 + (row.cmd:GetStringWidth() or 0) + 7, ROW_W - 16
+  -- la commande commence a 38 (barre 5, icone de 10 a 32, ecart 6) ; a droite, 20 px pour "…" et la marque de selection
+  local x, limit = 38 + (row.cmd:GetStringWidth() or 0) + 7, ROW_W - 20
   local used, overflow = { pills = 0, texts = 0 }, false
   local function put(w, width)
     if overflow or x + width > limit then overflow = true w:Hide() return end
@@ -317,14 +359,14 @@ local function LayoutRow(row, block, def)
     if arg ~= "" then text(arg, 1, 1, 1)
     elseif needsArg then text(L["(vide)"], 0.6, 0.6, 0.6) end
   else
-    if def.reset and (block.reset or "") ~= "" then pill("reset=" .. block.reset, MUTED) end
+    if def.reset and (block.reset or "") ~= "" then pill("reset=" .. block.reset, T.muted) end
     for ci, clause in ipairs(block.clauses) do
-      if ci > 1 then text(L["sinon"], MUTED[1], MUTED[2], MUTED[3]) end
+      if ci > 1 then text(L["sinon"], T.muted[1], T.muted[2], T.muted[3]) end
       for _, cond in ipairs(clause.conds) do
         local info = condInfo[cond]
-        pill(info and info[1] or cond, info and info[2] or GREY)
+        pill(info and info[1] or cond, info and info[2] or T.grey)
       end
-      if (clause.alt or "") ~= "" then text(clause.alt, MUTED[1], MUTED[2], MUTED[3]) end
+      if (clause.alt or "") ~= "" then text(clause.alt, T.muted[1], T.muted[2], T.muted[3]) end
       local arg = ns.trim(clause.arg or "")
       if arg ~= "" then text(arg, 1, 1, 1)
       elseif needsArg then text(L["(argument ?)"], 1, 0.4, 0.4) end
@@ -406,11 +448,12 @@ end
 ---------------------------------------------------------------------------
 -- Enregistrement dans les macros du jeu
 ---------------------------------------------------------------------------
-local function Overwrite(name, body)
+-- icon nil : la macro garde son icone
+local function Overwrite(name, body, icon)
   if InCombatLockdown() then return Msg(L["Impossible de modifier une macro en combat."]) end
   local index = GetMacroIndexByName(name) -- relu : l'index a pu changer pendant la confirmation
   if not index or index == 0 then return Msg(L["La macro « %s » n'existe plus."]:format(name)) end
-  EditMacro(index, name, nil, body)
+  EditMacro(index, name, icon, body)
   Msg(L["Macro « %s » mise à jour."]:format(name))
 end
 
@@ -418,7 +461,7 @@ if StaticPopupDialogs then
   StaticPopupDialogs.BLOCKFORGE_OVERWRITE = {
     text = L["La macro « %s » existe déjà. La remplacer ?"],
     button1 = YES or L["Oui"], button2 = NO or L["Non"],
-    OnAccept = function(_, data) Overwrite(data.name, data.body) end,
+    OnAccept = function(_, data) Overwrite(data.name, data.body, data.icon) end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
 end
@@ -432,10 +475,12 @@ local function Save()
   if #body > ns.MAX_CHARS then return Msg(L["Macro trop longue : %d / %d."]:format(#body, ns.MAX_CHARS)) end
   local index = GetMacroIndexByName(name)
   if index and index > 0 then
+    -- l'icone de la macro du jeu n'est remplacee que si le joueur en a choisi une dans la grille
+    local icon = view.touched and (view.icon or "INV_Misc_QuestionMark") or nil
     if ns.db.confirmOverwrite and StaticPopup_Show then
-      StaticPopup_Show("BLOCKFORGE_OVERWRITE", name, nil, { name = name, body = body })
+      StaticPopup_Show("BLOCKFORGE_OVERWRITE", name, nil, { name = name, body = body, icon = icon })
     else
-      Overwrite(name, body)
+      Overwrite(name, body, icon)
     end
     return
   end
@@ -443,7 +488,7 @@ local function Save()
   local numAccount, numChar = GetNumMacros()
   if forChar and numChar >= MAX_CHARACTER then return Msg(L["Plus de place dans les macros du personnage."]) end
   if not forChar and numAccount >= MAX_ACCOUNT then return Msg(L["Plus de place dans les macros générales."]) end
-  local created = CreateMacro(name, "INV_Misc_QuestionMark", body, forChar)
+  local created = CreateMacro(name, view.icon or "INV_Misc_QuestionMark", body, forChar)
   if not created or created == 0 then return Msg(L["Le jeu a refusé de créer la macro."]) end
   if ns.db.pickupAfterCreate then
     PickupMacro(created) -- la macro vient sous le curseur : il reste a la poser sur une barre
@@ -457,8 +502,10 @@ function ns.ApplyPerCharDefault()
   if perChar then perChar:SetChecked(ns.db.perCharDefault) end
 end
 
-local function LoadText(name, body)
+-- icon : celle d'une macro du jeu (nil pour un modele, la bibliotheque, un import)
+local function LoadText(name, body, icon)
   blocks = ns.Parse(body or "")
+  view.icon, view.touched = CustomIcon(icon), false
   nameBox:SetText(name or "")
   selected, activeClause, editOffset = blocks[1], 1, 0
   Refresh()
@@ -487,9 +534,9 @@ end
 
 local function LoadExisting()
   local name = ns.trim(nameBox:GetText())
-  local macroName, _, body = GetMacroInfo(name)
+  local macroName, icon, body = GetMacroInfo(name)
   if not macroName then return Msg(L["Aucune macro nommée « %s »."]:format(name)) end
-  LoadText(macroName, body)
+  LoadText(macroName, body, icon)
 end
 
 ---------------------------------------------------------------------------
@@ -505,7 +552,6 @@ local SIM_CHIPS = {
   { L["Survol : %s"], 116, { { "—", { mouseover = "none" } }, { L["Hostile"], { mouseover = "harm" } }, { L["Amie"], { mouseover = "help" } } } },
   { L["Focus : %s"], 96, { { "—", { focus = "none" } }, { L["Hostile"], { focus = "harm" } }, { L["Amie"], { focus = "help" } } } },
 }
-local SIM_OK, SIM_OFF, SIM_UNKNOWN = "|cff66ff66", "|cff777777", "|cffffaa33"
 
 local function SimulatedText()
   local results, lines = ns.Simulate(blocks, simState), {}
@@ -513,16 +559,16 @@ local function SimulatedText()
     local line, res = ns.CompileBlock(block), results[i]
     if line ~= "" and res then
       local def = ns.BlockById[block.type]
-      local color = not res.clause and SIM_OFF or res.unknown and SIM_UNKNOWN or SIM_OK
+      local color = not res.clause and T.sim.off or res.unknown and T.sim.unknown or T.sim.ok
       local parts = {}
       for ci, clause in ipairs(block.clauses) do
         local t = ns.CompileClause(clause, block.reset)
-        if t ~= "" then parts[#parts + 1] = (ci == res.clause and color or SIM_OFF) .. t .. "|r" end
+        if t ~= "" then parts[#parts + 1] = (ci == res.clause and color or T.sim.off) .. t .. "|r" end
       end
       line = color .. def.cmd .. "|r" .. (#parts > 0 and (" " .. table.concat(parts, "; ")) or "")
-      if not res.clause then line = line .. SIM_OFF .. "  —|r"
-      elseif res.unknown then line = line .. SIM_UNKNOWN .. "  ?|r"
-      elseif def.arg or block.type == "petattack" then line = line .. SIM_OK .. "  -> @" .. res.unit .. "|r" end
+      if not res.clause then line = line .. T.sim.off .. "  —|r"
+      elseif res.unknown then line = line .. T.sim.unknown .. "  ?|r"
+      elseif def.arg or block.type == "petattack" then line = line .. T.sim.ok .. "  -> @" .. res.unit .. "|r" end
     end
     if line ~= "" then lines[#lines + 1] = line end
   end
@@ -544,13 +590,15 @@ function Refresh()
       local line = ns.CompileBlock(block)
       row.full = line ~= "" and line or def.label
       LayoutRow(row, block, def)
+      -- bloc choisi : fond et bordure a la couleur d'accent, marque a droite ; les autres restent discrets
       if isSel then
-        row:SetBackdropColor(0.2, 0.18, 0.08, 1)
-        row:SetBackdropBorderColor(GOLD[1], GOLD[2], GOLD[3], 1)
+        row:SetBackdropColor(T.accent[1] * 0.22, T.accent[2] * 0.22, T.accent[3] * 0.22, 1)
+        row:SetBackdropBorderColor(T.accent[1], T.accent[2], T.accent[3], 1)
       else
-        row:SetBackdropColor(0.09, 0.09, 0.11, 0.95)
-        row:SetBackdropBorderColor(def.color[1] * 0.7, def.color[2] * 0.7, def.color[3] * 0.7, 1)
+        row:SetBackdropColor(T.row[1], T.row[2], T.row[3], 0.95)
+        row:SetBackdropBorderColor(def.color[1] * 0.45, def.color[2] * 0.45, def.color[3] * 0.45, 1)
       end
+      row.sel:SetShown(isSel)
       row:Show()
     else
       row:Hide()
@@ -574,12 +622,12 @@ function Refresh()
     local n = selected.clauses and #selected.clauses or 0
     for i, tab in ipairs(clauseTabs) do
       tab:SetShown(i <= n)
-      Tint(tab, i == activeClause and GOLD or GREY, i == activeClause and 0.95 or 0.7)
+      Tint(tab, i == activeClause and T.accent or T.grey, i == activeClause and 0.95 or 0.7)
     end
     clauseTabs.box:SetShown(n > 0)
     for _, b in ipairs(condButtons) do
       local on = n > 0 and ns.HasCond(holder, b.cond)
-      Tint(b, on and b.color or GREY, on and 1 or 0.6)
+      Tint(b, on and b.color or T.grey, on and 1 or 0.6)
       b.text:SetTextColor(1, 1, 1, on and 1 or 0.75)
     end
   end
@@ -601,7 +649,9 @@ function Refresh()
   fixButton:SetShown(fix ~= nil)
   if fix then fixButton.text:SetText(L["Remplacer par « %s »"]:format(fix[2])) end
   local len = #text
-  preview:SetText(text ~= "" and (simOn and SimulatedText() or text) or "|cff777777" .. L["(la macro compilée s'affiche ici)"] .. "|r")
+  preview:SetText(text ~= "" and (simOn and SimulatedText() or ns.Colorize(text, T.code))
+    or "|cff777777" .. L["(la macro compilée s'affiche ici)"] .. "|r")
+  view.Sync()
   local ratio = math.min(1, len / ns.MAX_CHARS)
   local r, g = len > ns.MAX_CHARS and 1 or (ratio > 0.85 and 1 or 0.3), len > ns.MAX_CHARS and 0.25 or (ratio > 0.85 and 0.7 or 0.9)
   counter:SetText(("%d / %d"):format(len, ns.MAX_CHARS))
@@ -627,8 +677,37 @@ local function BuildBottom(parent, palette)
   counterBar:SetHeight(4)
   counterBar.max = 420
   preview = Label(bottom, "", 10, -38, "BlockForgeCodeFont")
-  preview:SetSize(420, 86) -- hauteur fixe : une macro tres longue est coupee au lieu de deborder du panneau
+  preview:SetSize(364, 86) -- hauteur fixe : une macro tres longue est coupee au lieu de deborder du panneau
   preview:SetJustifyV("TOP")
+
+  -- Bouton d'action : l'icone et le nom comme sur une barre. Apercu de 10 a 374, bouton de 386 a 422,
+  -- nom centre dessous (376 a 432, -79), separation a 440. Un clic ouvre la grille au-dessus du bouton.
+  local action = IconButton(bottom)
+  action:SetPoint("TOPLEFT", 386, -40)
+  local actionName = bottom:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  actionName:SetPoint("TOP", action, "BOTTOM", 0, -3)
+  actionName:SetWidth(56)
+  actionName:SetWordWrap(false)
+  function view.Sync()
+    action.icon:SetTexture(view.icon or MacroIcon())
+    actionName:SetText(ns.trim(nameBox:GetText()))
+    local c = view.icon and T.accent or T.grey
+    action:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+  end
+  view.picker = ns.BuildIconPicker(bottom, function(icon)
+    view.icon, view.touched = icon, true
+    Refresh()
+  end)
+  view.picker:SetPoint("BOTTOMLEFT", action, "TOPLEFT", -141, 4) -- 318 de large, centre sur le bouton
+  bottom:SetScript("OnHide", function() view.picker:Hide() end)
+  action:SetScript("OnClick", function()
+    if InCombatLockdown() then return Msg(L["Impossible de modifier une macro en combat."]) end
+    view.picker:Toggle(view.icon)
+  end)
+  Tip(action, function()
+    return L["Icône de la macro"],
+      L["Ce que montrera le bouton sur une barre d'action. Clic : choisir une autre icône, ou revenir à « Automatique »."]
+  end)
 
   -- Simulateur dans le bandeau : bouton entre le titre et le compteur (fini a 430), etats de 446 a 863
   local simChips = {}
@@ -636,7 +715,7 @@ local function BuildBottom(parent, palette)
   simToggle:SetPoint("TOPLEFT", 74, -5)
   simToggle.text:SetText(L["Simuler"])
   local function SimSync()
-    Tint(simToggle, simOn and GOLD or GREY, simOn and 0.95 or 0.7)
+    Tint(simToggle, simOn and T.accent or T.grey, simOn and 0.95 or 0.7)
     for _, chip in ipairs(simChips) do
       chip:SetShown(simOn)
       chip.text:SetText(chip.spec[1]:format(chip.spec[3][chip.at][1]))
@@ -654,7 +733,7 @@ local function BuildBottom(parent, palette)
     chip:SetPoint("TOPLEFT", sx, -5)
     sx = sx + spec[2] + 3
     chip.spec, chip.at = spec, 1
-    Tint(chip, MUTED, 0.6)
+    Tint(chip, T.muted, 0.6)
     chip:SetScript("OnClick", function()
       chip.at = chip.at % #spec[3] + 1
       for k, v in pairs(spec[3][chip.at][2]) do simState[k] = v end
@@ -664,7 +743,7 @@ local function BuildBottom(parent, palette)
     Tip(chip, function() return chip.text:GetText(), L["Clic : valeur suivante."] end)
     simChips[i] = chip
   end
-  SimSync()
+  T.Watch(SimSync)
 
   local split = bottom:CreateTexture(nil, "ARTWORK")
   split:SetColorTexture(1, 1, 1, 0.12)
@@ -672,7 +751,7 @@ local function BuildBottom(parent, palette)
   split:SetSize(1, 92)
 
   Label(bottom, L["Nom"], 452, -36, "GameFontNormal")
-  nameBox = Edit(bottom, 140, function() end)
+  nameBox = Edit(bottom, 140, function() view.Sync() end)
   nameBox:SetPoint("TOPLEFT", 490, -32)
   nameBox:SetMaxLetters(16)
   Tip(nameBox, function() return L["Nom de la macro"], L["16 caractères max. Un nom existant est mis à jour au lieu d'être recréé."] end)
@@ -686,6 +765,7 @@ local function BuildBottom(parent, palette)
 
   local save = Button(bottom, L["Créer / mettre à jour"], 150, Save)
   save:SetPoint("TOPLEFT", 450, -58)
+  T.Watch(function() Tint(save, T.accent, 0.9) end) -- l'action principale ressort des autres boutons
   Tip(save, function() return L["Créer / mettre à jour"], L["Hors combat seulement."] end)
   local load = Button(bottom, L["Charger ce nom"], 120, LoadExisting)
   load:SetPoint("LEFT", save, "RIGHT", 6, 0)
@@ -697,7 +777,7 @@ local function BuildBottom(parent, palette)
   -- sort mal ecrit : un clic met le nom du grimoire a la place
   fixButton = Chip(bottom, 240, 16)
   fixButton:SetPoint("BOTTOMRIGHT", -8, 5)
-  Tint(fixButton, GOLD, 0.6)
+  T.Watch(function() Tint(fixButton, T.accent, 0.6) end)
   fixButton:Hide()
   fixButton:SetScript("OnClick", function()
     local old, new = fixButton.fix[1], fixButton.fix[2]
@@ -720,20 +800,26 @@ local function BuildRow(i)
   row:SetPoint("TOPLEFT", 8, -28 - (i - 1) * ROW_STEP)
   row:SetBackdrop(PILL_BACKDROP)
   row.pills, row.texts = {}, {}
-  row.bar = SideBar(row, GREY)
+  row.bar = SideBar(row, T.grey)
+  -- icone de 22 px sur un carre noir de 24 : elle se detache du fond de la ligne
+  local iconBg = row:CreateTexture(nil, "BORDER")
+  iconBg:SetSize(24, 24)
+  iconBg:SetPoint("LEFT", 9, 0)
+  iconBg:SetColorTexture(0, 0, 0, 1)
   row.icon = row:CreateTexture(nil, "ARTWORK")
-  row.icon:SetSize(18, 18)
-  row.icon:SetPoint("LEFT", 8, 0)
+  row.icon:SetSize(22, 22)
+  row.icon:SetPoint("CENTER", iconBg)
   row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-  row.cmd = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  row.cmd:SetPoint("LEFT", row.icon, "RIGHT", 5, 0)
+  row.cmd = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+  row.cmd:SetPoint("LEFT", row, "LEFT", 38, 0)
+  row.sel = T.Accent(row:CreateTexture(nil, "ARTWORK"))
+  row.sel:SetPoint("TOPRIGHT", -1, -1)
+  row.sel:SetPoint("BOTTOMRIGHT", -1, 1)
+  row.sel:SetWidth(3)
   row.more = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-  row.more:SetPoint("RIGHT", -5, 0)
+  row.more:SetPoint("RIGHT", -8, 0)
   row.more:SetText("…")
-  local hl = row:CreateTexture(nil, "HIGHLIGHT")
-  hl:SetPoint("TOPLEFT", 1, -1)
-  hl:SetPoint("BOTTOMRIGHT", -1, 1)
-  hl:SetColorTexture(1, 1, 1, 0.08)
+  Highlight(row, 0.08)
   row:RegisterForDrag("LeftButton")
   row:SetScript("OnClick", function() Select(blocks[editOffset + i]) end)
   row:SetScript("OnDragStart", function()
@@ -767,7 +853,7 @@ local function BuildRow(i)
   return row
 end
 
--- Modeles : bouton en bas de la zone (les 12 lignes finissent a -349), liste au-dessus
+-- Modeles : bouton en bas de la zone (les 12 lignes finissent a -386, le bouton commence a -400), liste au-dessus
 -- un modele par technique du familier sorti (barre du familier) ; les ordres (attaque, suivre...) sont des jetons PET_
 function ns.PetTemplates()
   local list = {}
@@ -797,13 +883,13 @@ local function BuildTemplates()
       if not chip then
         chip = Chip(tplList, 204, 20)
         chip:SetPoint("TOPLEFT", 8, -6 - (i - 1) * 22)
-        Tint(chip, GOLD, 0.45)
         chip:SetScript("OnClick", function() tplList:Hide() ChooseTemplate(chip.tpl) end)
         Tip(chip, function() return chip.tpl.label, chip.tpl.desc end)
         chips[i] = chip
       end
       chip.tpl = tpl
       chip.text:SetText(tpl.label)
+      Tint(chip, T.accent, 0.45) -- a chaque ouverture : suit le reglage de couleur
       chip:Show()
     end
     for i = #list + 1, #chips do chips[i]:Hide() end
@@ -821,6 +907,39 @@ local function BuildTemplates()
   tplList:Hide()
   -- onglet change ou fenetre fermee (Echap compris) : la liste se ferme aussi
   canvas:HookScript("OnHide", function() tplList:Hide() end)
+end
+
+-- Zone vide et repere de depot, hors de BuildEditor (limite de 60 upvalues)
+local function BuildCanvasMarks()
+  -- Zone vide : un encadre a la place des lignes (360 x 96 depuis -28), qui dit par ou commencer
+  local hint = CreateFrame("Frame", nil, canvas, BACKDROP)
+  hint:SetSize(ROW_W, 96)
+  hint:SetPoint("TOPLEFT", 8, -28)
+  hint:SetBackdrop(PILL_BACKDROP)
+  T.Watch(function() Tint(hint, T.accent, 0.3) end)
+  local icon = hint:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(32, 32)
+  icon:SetPoint("TOPLEFT", 12, -12)
+  icon:SetTexture(QUESTION)
+  icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  icon:SetAlpha(0.7)
+  T.AccentText(Label(hint, L["Ta macro est vide"], 56, -12, "GameFontNormal"))
+  local steps = Label(hint, L["Clique un bloc à gauche pour l'ajouter.\nGlisse ici un sort du grimoire ou un objet des sacs.\nOu pars d'un modèle : bouton « Modèles » en bas."],
+    56, -32, "GameFontHighlightSmall")
+  steps:SetWidth(294) -- de 56 a 350 dans un encadre de 360
+  canvas.hint = hint
+
+  -- Repere de depot : trait de 3 px avec une butee a chaque bout, au-dessus des lignes
+  dropLine = CreateFrame("Frame", nil, canvas)
+  dropLine:SetSize(ROW_W, 3)
+  dropLine:SetFrameStrata("DIALOG")
+  T.Accent(dropLine:CreateTexture(nil, "OVERLAY")):SetAllPoints()
+  for _, side in ipairs({ "LEFT", "RIGHT" }) do
+    local cap = T.Accent(dropLine:CreateTexture(nil, "OVERLAY"))
+    cap:SetSize(3, 11)
+    cap:SetPoint(side)
+  end
+  dropLine:Hide()
 end
 
 ---------------------------------------------------------------------------
@@ -857,8 +976,7 @@ local function BuildEditor(parent)
   end
   canvas:SetScript("OnReceiveDrag", CanvasDrop)
   canvas:SetScript("OnMouseUp", CanvasDrop)
-  canvas.hint = Label(canvas, L["Vide : clique un bloc à gauche, ou glisse ici\nun sort du grimoire ou un objet des sacs."],
-    12, -36, "GameFontDisableSmall")
+  BuildCanvasMarks()
   for i = 1, MAX_ROWS do rows[i] = BuildRow(i) end
   canvas:EnableMouseWheel(true)
   canvas:SetScript("OnMouseWheel", function(_, delta)
@@ -868,11 +986,6 @@ local function BuildEditor(parent)
   editRange = canvas:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   editRange:SetPoint("BOTTOMRIGHT", -10, 14)
   BuildTemplates()
-
-  dropLine = canvas:CreateTexture(nil, "OVERLAY")
-  dropLine:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
-  dropLine:SetSize(ROW_W, 2)
-  dropLine:Hide()
 
   ghost = Chip(UIParent, 220, 22)
   ghost:SetFrameStrata("TOOLTIP")
@@ -953,7 +1066,7 @@ local function BuildEditor(parent)
   sep:SetSize(280, 1)
   local y = -134
   for gi, group in ipairs(ns.ConditionGroups) do
-    local color = GROUP_COLORS[gi] or GREY
+    local color = T.groups[gi] or T.grey
     local title = Label(clauseTabs.box, group.label .. (group.exclusive and "  |cff888888" .. L["(une seule)"] .. "|r" or ""), 10, y + 44)
     title:SetTextColor(Light(color))
     y = y - 12
@@ -1001,7 +1114,6 @@ end
 ---------------------------------------------------------------------------
 local FAV = "FAVORITES" -- pseudo-classe : jamais memorisee comme derniere classe
 local CLASS_ORDER = { FAV, "ALL", "WARLOCK", "HUNTER", "ROGUE", "MAGE", "PRIEST", "DRUID", "WARRIOR", "PALADIN", "SHAMAN" }
-local CATEGORY_COLOR = { PvE = { 0.25, 0.55, 0.95 }, PvP = { 0.9, 0.35, 0.35 }, Pet = { 0.85, 0.7, 0.2 }, Utility = { 0.3, 0.75, 0.4 } }
 local CATEGORY_LABEL = { Pet = L["Familier"], Utility = L["Utilitaire"] }
 
 -- noms traduits des techniques de familier, pour l'avertissement monture de ns.Diagnose
@@ -1127,7 +1239,7 @@ local function BuildLibrary(parent, showEditor)
     if not current then return end
     title:SetText(current.name)
     desc:SetText(LibraryDesc(current) or "")
-    body:SetText(LibraryBody(current))
+    body:SetText(ns.Colorize(LibraryBody(current), T.code))
     source:SetText(current.source and L["Source : %s"]:format(current.source) or "")
     favButton:SetText(ns.db.favorites[FavKey(current)] and L["Retirer des favoris"] or L["Ajouter aux favoris"])
   end
@@ -1143,7 +1255,7 @@ local function BuildLibrary(parent, showEditor)
           .. ("[%s] %s"):format(CATEGORY_LABEL[entry.category] or entry.category or "?", entry.name))
         local c = entry.usable and 1 or 0.5 -- grise : un sort de la macro n'est pas connu du personnage
         row.text:SetTextColor(c, c, c)
-        Tint(row, CATEGORY_COLOR[entry.category] or GREY, entry == current and 1 or 0.45)
+        Tint(row, T.category[entry.category] or T.grey, entry == current and 1 or 0.45)
         row.mark:SetShown(entry == current)
       end
     end
@@ -1178,7 +1290,7 @@ local function BuildLibrary(parent, showEditor)
   for i = 1, MAX_LIB_ROWS do
     local row = Chip(listPanel, 284, 24)
     row:SetPoint("TOPLEFT", 8, -74 - (i - 1) * 26)
-    row.mark = SideBar(row, GOLD)
+    row.mark = SideBar(row, T.accent)
     row:SetScript("OnClick", function()
       current = shown[offset + i]
       ShowDetail()
@@ -1205,6 +1317,16 @@ local function BuildLibrary(parent, showEditor)
     return SearchText(entry):find(query, 1, true) ~= nil
   end
 
+  local function PaintChips()
+    for token, chip in pairs(classChips) do
+      Tint(chip, token == currentClass and T.accent or T.grey, token == currentClass and 0.95 or 0.7)
+    end
+    for cat, chip in pairs(catChips) do
+      local on = (category or false) == cat
+      Tint(chip, on and T.accent or (T.category[cat] or T.grey), on and 0.95 or 0.6)
+    end
+  end
+
   -- sans argument : reapplique les filtres a la classe affichee
   function ShowClass(class, keepOffset)
     currentClass = class or currentClass
@@ -1223,13 +1345,7 @@ local function BuildLibrary(parent, showEditor)
       or L["Aucune macro pour cette classe."])
     Render()
     ShowDetail()
-    for token, chip in pairs(classChips) do
-      Tint(chip, token == currentClass and GOLD or GREY, token == currentClass and 0.95 or 0.7)
-    end
-    for cat, chip in pairs(catChips) do
-      local on = (category or false) == cat
-      Tint(chip, on and GOLD or (CATEGORY_COLOR[cat] or GREY), on and 0.95 or 0.6)
-    end
+    PaintChips()
   end
 
   for i, token in ipairs(CLASS_ORDER) do
@@ -1259,6 +1375,7 @@ local function BuildLibrary(parent, showEditor)
   if not (start and classChips[start]) then start = classChips[playerClass] and playerClass or "ALL" end
   ShowClass(start)
   ns.RefreshLibrary = function() ShowDetail() Render() end
+  T.OnChange(function() PaintChips() Render() end)
 
   -- objets hors cache : demandes une seule fois ; a leur arrivee, les macros qui les citent sont retraduites
   if GetItemName and C_Item.RequestLoadItemDataByID then
@@ -1399,11 +1516,11 @@ local function BuildMacros(parent, showEditor)
     local key = GetBindingKey("MACRO " .. current.name)
     info:SetText((current.char and L["Macro du personnage"] or L["Macro générale"]) .. "  ·  "
       .. (key and L["Raccourci : %s"]:format(key) or L["Aucun raccourci"]))
-    body:SetText(current.body)
+    body:SetText(ns.Colorize(current.body, T.code))
   end
 
   local open = Button(detail, L["Ouvrir dans l'éditeur"], 180, function()
-    if current and LoadText(current.name, current.body) then showEditor() end
+    if current and LoadText(current.name, current.body, current.icon) then showEditor() end
   end)
   open:SetPoint("TOPLEFT", 10, -312)
   local bind
@@ -1472,7 +1589,7 @@ local function BuildMacros(parent, showEditor)
         row.icon:SetTexture(m.icon or QUESTION)
         row.text:SetText(m.name)
         row.scope:SetText(m.char and L["Personnage"] or L["Générale"])
-        Tint(row, m.char and GOLD or GREY, m == current and 1 or 0.5)
+        Tint(row, m.char and T.accent or T.grey, m == current and 1 or 0.5)
         row.mark:SetShown(m == current)
       end
     end
@@ -1484,7 +1601,7 @@ local function BuildMacros(parent, showEditor)
   for i = 1, MAX_MACRO_ROWS do -- 20 lignes depuis -28 finissent a -546 (panneau : 566)
     local row = Chip(listPanel, 284, 24)
     row:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 26)
-    row.mark = SideBar(row, GOLD)
+    row.mark = SideBar(row, T.accent)
     row.icon = row:CreateTexture(nil, "ARTWORK")
     row.icon:SetSize(18, 18)
     row.icon:SetPoint("LEFT", 8, 0)
@@ -1530,7 +1647,7 @@ local function BuildMacros(parent, showEditor)
       if name then
         local set = ns.db.sets[name]
         row.text:SetText(name .. "  |cff888888(" .. (type(set) == "table" and #set or 0) .. ")|r")
-        Tint(row, name == chosen and GOLD or GREY, name == chosen and 0.95 or 0.6)
+        Tint(row, name == chosen and T.accent or T.grey, name == chosen and 0.95 or 0.6)
       end
     end
     if chosen then restore:Enable() delete:Enable() else restore:Disable() delete:Disable() end
@@ -1614,6 +1731,7 @@ local function BuildMacros(parent, showEditor)
     end
   end)
   RefreshMacros()
+  T.OnChange(function() Render() RenderSets() end)
 end
 
 ---------------------------------------------------------------------------
@@ -1640,8 +1758,59 @@ local function TryBuild(key, build)
   end)
 end
 
+-- Barre de titre (de -4 a -28) : icone, nom, version du TOC, fermeture ; trait d'accent dessous
+local function BuildHeader()
+  main:SetBackdrop({ bgFile = WHITE, edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                     edgeSize = 14, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+  main:SetBackdropColor(T.window[1], T.window[2], T.window[3], 0.97)
+  main:SetBackdropBorderColor(T.border[1], T.border[2], T.border[3])
+  local band = main:CreateTexture(nil, "BORDER")
+  band:SetColorTexture(T.band[1], T.band[2], T.band[3], 1)
+  band:SetPoint("TOPLEFT", 4, -4)
+  band:SetPoint("TOPRIGHT", -4, -4)
+  band:SetHeight(24)
+  local line = T.Accent(main:CreateTexture(nil, "ARTWORK"), 0.8)
+  line:SetPoint("TOPLEFT", band, "BOTTOMLEFT")
+  line:SetPoint("TOPRIGHT", band, "BOTTOMRIGHT")
+  line:SetHeight(1)
+  local icon = main:CreateTexture(nil, "ARTWORK")
+  icon:SetSize(18, 18)
+  icon:SetPoint("LEFT", band, "LEFT", 6, 0)
+  icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09") -- l'icone de l'add-on (TOC, bouton de minicarte)
+  icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  main.TitleText = T.AccentText(main:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+  main.TitleText:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+  main.TitleText:SetText(L["BlockForge — éditeur de macros par blocs"])
+  local close = Chip(main, 22, 18)
+  close:SetPoint("TOPRIGHT", -7, -7)
+  close.text:ClearAllPoints()
+  close.text:SetPoint("CENTER")
+  close.text:SetText("x")
+  Tint(close, T.close, 0.9)
+  close:SetScript("OnClick", function() main:Hide() end)
+  local version = ns.Version and ns.Version() or "?"
+  if version ~= "?" then
+    local v = main:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    v:SetPoint("RIGHT", close, "LEFT", -8, 0)
+    v:SetText("v" .. version)
+  end
+
+  -- fondu a l'ouverture : une animation ne touche pas a l'alpha reel, la fenetre ne peut pas rester a moitie transparente
+  local fade = main.CreateAnimationGroup and main:CreateAnimationGroup()
+  local alpha = fade and fade.CreateAnimation and fade:CreateAnimation("Alpha")
+  if alpha and alpha.SetFromAlpha and alpha.SetToAlpha and alpha.SetDuration then
+    alpha:SetFromAlpha(0)
+    alpha:SetToAlpha(1)
+    alpha:SetDuration(0.18)
+    main:SetScript("OnShow", function() fade:Play() end)
+    fade:Play() -- la creation n'appelle pas OnShow
+    ns.fade = fade
+  end
+end
+
 local function Build()
-  main =CreateFrame("Frame", "BlockForgeFrame", UIParent, "BasicFrameTemplateWithInset")
+  ns.ApplyTheme() -- la classe du joueur n'etait peut-etre pas encore connue au chargement
+  main = CreateFrame("Frame", "BlockForgeFrame", UIParent, BACKDROP)
   main:SetSize(900, 640)
   main:SetFrameStrata("HIGH")
   main:SetMovable(true)
@@ -1656,8 +1825,7 @@ local function Build()
       if point then ns.db.pos = { point, relPoint, x, y } end
     end
   end)
-  local title = main.TitleText or (main.TitleContainer and main.TitleContainer.TitleText)
-  if title then title:SetText(L["BlockForge — éditeur de macros par blocs"]) end
+  BuildHeader()
   tinsert(UISpecialFrames, "BlockForgeFrame")
 
   local pages = {}
@@ -1668,22 +1836,32 @@ local function Build()
   end
   editor, library, settingsTab = pages.editor, pages.library, pages.settings
 
-  local tabs = {}
+  -- Onglets de 124 x 22 de -33 a -55 (pages a -58) ; l'actif est teinte et souligne a la couleur d'accent
+  local tabs, shownTab = {}, "editor"
   function ShowTab(which)
+    shownTab = which or shownTab
     for key, page in pairs(pages) do
-      page:SetShown(key == which)
-      -- onglet actif : surbrillance verrouillee
-      if key == which then tabs[key]:LockHighlight() else tabs[key]:UnlockHighlight() end
+      local on = key == shownTab
+      page:SetShown(on)
+      Tint(tabs[key], on and T.accent or T.grey, on and 0.95 or 0.6)
+      tabs[key].line:SetShown(on)
     end
   end
-  tabs.editor = Button(main, L["Éditeur"], 110, function() ShowTab("editor") end)
-  tabs.editor:SetPoint("TOPLEFT", 10, -30)
-  tabs.library = Button(main, L["Bibliothèque"], 110, function() ShowTab("library") end)
-  tabs.library:SetPoint("LEFT", tabs.editor, "RIGHT", 4, 0)
-  tabs.macros = Button(main, L["Mes macros"], 110, function() ShowTab("macros") end)
-  tabs.macros:SetPoint("LEFT", tabs.library, "RIGHT", 4, 0)
-  tabs.settings = Button(main, L["Paramètres"], 110, function() ShowTab("settings") end)
-  tabs.settings:SetPoint("LEFT", tabs.macros, "RIGHT", 4, 0)
+  for i, spec in ipairs({ { "editor", L["Éditeur"] }, { "library", L["Bibliothèque"] },
+                          { "macros", L["Mes macros"] }, { "settings", L["Paramètres"] } }) do
+    local tab = Chip(main, 124, 22)
+    tab:SetPoint("TOPLEFT", 10 + (i - 1) * 128, -33)
+    tab.text:SetFontObject(GameFontHighlight)
+    tab.text:SetJustifyH("CENTER")
+    tab.text:SetText(spec[2])
+    tab.line = T.Accent(tab:CreateTexture(nil, "ARTWORK"))
+    tab.line:SetPoint("BOTTOMLEFT", 1, 1)
+    tab.line:SetPoint("BOTTOMRIGHT", -1, 1)
+    tab.line:SetHeight(2)
+    tab:SetScript("OnClick", function() ShowTab(spec[1]) end)
+    tabs[spec[1]] = tab
+  end
+  T.OnChange(function() ShowTab() end)
 
   local function ShowEditor() ShowTab("editor") end
   TryBuild("editor", function() BuildEditor(editor) end)
@@ -1696,7 +1874,10 @@ local function Build()
   end)
   ShowTab("editor")
   ns.ApplyWindow()
-  if not buildErrors.editor then Refresh() end
+  if not buildErrors.editor then
+    Refresh()
+    T.OnChange(Refresh)
+  end
 end
 
 -- pour /bf test : construit la fenetre (sans l'afficher si elle ne l'etait pas) et renvoie les erreurs par onglet

@@ -16,7 +16,9 @@ For WoW Forever. Interface in English and French, following the game client lang
 - **Simulator.** Shows which line of the macro would fire for a given modifier key, target, mouseover and focus.
 - **My macros.** Lists your game macros, opens them as blocks, binds a key to a macro, exports and imports a macro as a text string, and saves and restores whole sets of macros.
 - **Library search.** Search box, category filter and favorites.
-- **Settings.** Window scale, minimap button, per-character macros by default, confirmation before overwrite.
+- **Coloured preview.** Commands, conditions, targets and arguments each get their own colour in the macro text.
+- **Macro icon.** An action-button preview shows the icon and name the macro will have on your bars; click it to pick an icon from your spellbook or the game's macro icons, or leave it on automatic.
+- **Settings.** Window scale, minimap button, per-character macros by default, confirmation before overwrite, accent colour (your class colour or gold).
 
 ## How to use it
 
@@ -61,7 +63,9 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 - **Simulateur.** Montre quelle ligne de la macro partirait selon la touche, la cible, le survol et le focus.
 - **Mes macros.** Liste vos macros du jeu, les ouvre en blocs, attribue un raccourci clavier, exporte et importe une macro par chaîne de texte, sauvegarde et restaure des jeux de macros.
 - **Recherche dans la bibliothèque.** Champ de recherche, filtre par catégorie et favoris.
-- **Paramètres.** Échelle de la fenêtre, bouton de minicarte, macros par personnage par défaut, confirmation avant écrasement.
+- **Aperçu coloré.** Commandes, conditions, cibles et arguments ont chacun leur couleur dans le texte de la macro.
+- **Icône de la macro.** Un bouton d'action montre l'icône et le nom qu'aura la macro sur vos barres ; cliquez dessus pour choisir une icône de votre grimoire ou parmi celles du jeu, ou laissez le choix automatique.
+- **Paramètres.** Échelle de la fenêtre, bouton de minicarte, macros par personnage par défaut, confirmation avant écrasement, couleur d'accent (celle de votre classe ou or).
 
 ## Utilisation
 
