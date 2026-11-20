@@ -19,5 +19,9 @@ Theme.lua
 Settings.lua
 Debug.lua
 UI.lua
+Tools.lua
+Personal.lua
+Share.lua
+Tutorial.lua
 IconPicker.lua
 Minimap.lua

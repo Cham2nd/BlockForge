@@ -201,6 +201,134 @@ assert(col("bonjour | tous") == "bonjour || tous")
 print("test_core OK")
 `), "test");
 
+// Cycle 3, lot 2 : historique annuler / retablir, texte libre, envoi en morceaux
+run(to_luastring(String.raw`
+local ns = NS
+local function text(blocks) return ns.Compile(blocks) end
+
+-- copie : independante de l'original, alternatives et blocs vides compris
+local src = ns.Parse("/cast [@focus,harm] Fear; Peur\n/castsequence reset=3 A, B")
+src[#src + 1] = ns.NewBlock("raw")
+local copy = ns.CloneBlocks(src)
+assert(ns.BlocksKey(copy) == ns.BlocksKey(src) and #copy == 3 and copy[1] ~= src[1] and copy[1].clauses[1].conds ~= src[1].clauses[1].conds)
+copy[1].clauses[1].conds[1] = "@mouseover"
+assert(src[1].clauses[1].conds[1] == "@focus", "la copie partage ses conditions")
+-- l'empreinte voit ce que le texte compile ne voit pas : bloc libre vide, alternative vide
+local a, b = { ns.NewBlock("cast") }, { ns.NewBlock("cast") }
+b[1].clauses[2] = ns.NewClause()
+assert(text(a) == text(b) and ns.BlocksKey(a) ~= ns.BlocksKey(b))
+assert(ns.BlocksKey({}) ~= ns.BlocksKey({ ns.NewBlock("raw") }))
+
+-- pile : rien a annuler au depart, un etat identique n'est pas empile, annuler / retablir
+local h = ns.NewHistory(5)
+local blocks = {}
+assert(h:Record(blocks) and not h:Record(blocks) and not h:CanUndo() and not h:CanRedo() and h:Undo() == nil and h:Redo() == nil)
+blocks = ns.Parse("/cast A")
+assert(h:Record(blocks))
+blocks[2] = ns.NewBlock("stopcasting")
+assert(h:Record(blocks) and h:CanUndo() and not h:CanRedo())
+local back = h:Undo()
+assert(text(back) == "/cast A" and h:CanRedo())
+back[1].clauses[1].arg = "modifie"
+assert(text(h:Redo()) == "/cast A\n/stopcasting", "l'etat rendu doit etre une copie")
+assert(text(h:Undo()) == "/cast A", "l'historique a ete modifie par l'appelant")
+assert(text(h:Undo()) == "" and h:Undo() == nil and not h:CanUndo())
+-- un changement apres une annulation efface ce qui etait a retablir
+assert(h:Record(ns.Parse("/use 13")) and not h:CanRedo() and h:Redo() == nil)
+assert(text(h:Undo()) == "")
+-- frappe : meme tag = une seule etape ; un autre tag, ou aucun, en ouvre une nouvelle
+h = ns.NewHistory(50)
+h:Record({})
+for _, s in ipairs({ "F", "Fe", "Fea", "Fear" }) do h:Record(ns.Parse("/cast " .. s), "arg") end
+assert(#h.states == 2 and text(h:Undo()) == "", "frappe non regroupee")
+assert(text(h:Redo()) == "/cast Fear")
+h:Record(ns.Parse("/cast Fear\n/use 13"), "arg") -- apres annuler / retablir : nouvelle etape
+h:Record(ns.Parse("/cast Fear\n/use 14"), "reset")
+h:Record(ns.Parse("/cast Fear\n/use 15"))
+h:Record(ns.Parse("/cast Fear\n/use 16"))
+assert(#h.states == 6, #h.states)
+-- pile bornee : les plus anciens etats sont oublies
+h = ns.NewHistory(5)
+for i = 1, 20 do h:Record(ns.Parse("/cast A" .. i)) end
+assert(#h.states == 5 and h.at == 5)
+local n = 0
+while h:Undo() do n = n + 1 end
+assert(n == 4 and text(ns.CloneBlocks(h.states[1].blocks)) == "/cast A16")
+
+-- texte libre : aller-retour, ligne inconnue gardee telle quelle, lignes vides et espaces retires
+local typed = "#showtooltip Fear\n\n  /cast [@mouseover,harm][] Fear  \n/commande inconnue [x] y; z\ndu texte sans barre\n/run print(\"a;b\")\n"
+local parsed = ns.Parse(typed)
+assert(#parsed == 5 and parsed[3].type == "raw" and parsed[4].type == "raw" and parsed[2].type == "cast")
+local clean = "#showtooltip Fear\n/cast [@mouseover,harm][] Fear\n/commande inconnue [x] y; z\ndu texte sans barre\n/run print(\"a;b\")"
+assert(text(parsed) == clean, text(parsed))
+assert(text(ns.Parse(clean)) == clean, "le texte remis au propre doit etre stable")
+assert(text(ns.Parse("/cast [@focus")) == "/cast [@focus", "ligne en cours de frappe perdue")
+
+-- morceaux : moins de 255 octets chacun, recolles dans l'ordre ou le desordre, jamais coupes dans un caractere UTF-8
+local payload = ns.Export(string.rep("é", 16), string.rep("é|:%\n", 42)) -- 252 octets dont 4 sur 6 sont echappes
+assert(#payload > 600 and #payload <= 1000, #payload)
+local chunks = ns.Chunks(payload, "42")
+assert(#chunks >= 4 and #chunks <= 6, #chunks)
+for i, c in ipairs(chunks) do
+  assert(#c <= 255 and c:match("^42:" .. i .. ":" .. #chunks .. ":"), c)
+end
+local box = ns.NewInbox()
+for i = 1, #chunks - 1 do assert(box:Receive("Ami", chunks[i], 0) == nil) end
+assert(box:Receive("Ami", chunks[#chunks], 1) == payload and box.count == 0)
+local n2, b2 = ns.Import(payload)
+assert(n2 == string.rep("é", 16) and b2 == string.rep("é|:%\n", 42))
+box = ns.NewInbox()
+local got
+for i = #chunks, 1, -1 do got = box:Receive("Ami", chunks[i], 0) or got end
+assert(got == payload, "desordre")
+local utf = ns.Chunks("BF1:x:" .. string.rep("é", 300), "7") -- 606 octets non echappes
+for _, c in ipairs(utf) do
+  local data = c:match("^7:%d+:%d+:(.*)$")
+  assert(not data:find("^[\128-\191]") and #data % 2 == 0 or data:find("^BF1"), "coupe au milieu d'un caractere")
+end
+assert(ns.Chunks("", "1") == nil and ns.Chunks(string.rep("x", 1001), "1") == nil, "vide ou trop long")
+-- doublon ignore, puis le transfert se termine normalement
+box = ns.NewInbox()
+local two = ns.Chunks(string.rep("a", 300), "9")
+assert(#two == 2 and box:Receive("Ami", two[1], 0) == nil and box:Receive("Ami", two[1], 0) == nil)
+assert(box:Receive("Ami", two[2], 0) == string.rep("a", 300))
+-- deux expediteurs avec le meme numero : pas de melange
+box = ns.NewInbox()
+local other = ns.Chunks(string.rep("b", 300), "9")
+box:Receive("Ami", two[1], 0) box:Receive("Autre", other[1], 0)
+assert(box:Receive("Autre", other[2], 0) == string.rep("b", 300) and box:Receive("Ami", two[2], 0) == string.rep("a", 300))
+-- malforme : ignore sans erreur, rien en attente
+box = ns.NewInbox()
+for _, bad in ipairs({ "", "bonjour", "9:1:2", "9:0:2:x", "9:3:2:x", "9:1:0:x", "9:1:7:x", "9:1:2:", "abcdefg:1:2:x",
+                       "9:x:2:y", "9:1:99999999999999999999:x", ":1:2:x", "9:1:2:" .. string.rep("x", 250) }) do
+  assert(box:Receive("Ami", bad, 0) == nil and box.count == 0, bad)
+end
+assert(box:Receive(nil, two[1], 0) == nil and box:Receive("Ami", 12, 0) == nil and box.count == 0)
+-- trop gros : 6 morceaux de 200 octets depassent la limite, le transfert est abandonne
+box = ns.NewInbox()
+local big
+for i = 1, 6 do big = box:Receive("Ami", ("5:%d:6:%s"):format(i, string.rep("x", 200)), 0) end
+assert(big == nil and box.count == 0, "transfert trop gros accepte")
+-- delai : un transfert incomplet est oublie, ses morceaux tardifs ne completent rien
+box = ns.NewInbox()
+box:Receive("Ami", two[1], 0)
+assert(box.count == 1 and box:Receive("Ami", two[2], ns.SHARE_TIMEOUT + 1) == nil)
+assert(box:Receive("Ami", two[1], ns.SHARE_TIMEOUT + 2) == string.rep("a", 300), "le transfert repart de zero apres le delai")
+-- plafonds : 2 transferts en attente par expediteur, 8 en tout
+box = ns.NewInbox()
+for i = 1, 5 do box:Receive("Bavard", i .. ":1:2:x", 0) end
+assert(box.count == 2, box.count)
+for i = 1, 20 do box:Receive("Joueur" .. i, "1:1:2:x", 0) end
+assert(box.count == 8, box.count)
+-- total different pour le meme numero : l'ancien transfert est remplace
+box = ns.NewInbox()
+box:Receive("Ami", "3:1:3:aaa", 0)
+assert(box:Receive("Ami", "3:1:2:bb", 0) == nil and box:Receive("Ami", "3:2:2:cc", 0) == "bbcc")
+-- Plain : un | recu ne peut pas ouvrir un code de couleur
+assert(ns.Plain("|cffff0000Admin|r") == "||cffff0000Admin||r" and ns.Plain(12) == "12")
+print("test_core lot 2 OK")
+`), "lot2");
+
 // Langue : Locale.lua + Core.lua avec un client anglais, puis sans GetLocale (hors jeu : francais)
 function loadLocalized(locale) {
   const S = lauxlib.luaL_newstate();

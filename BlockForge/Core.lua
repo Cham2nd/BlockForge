@@ -19,9 +19,9 @@ ns.BlockDefs = {
   { id = "cast",         label = L["Lancer un sort"],      cmd = "/cast",         arg = L["nom du sort"], clauses = true, color = { 0.25, 0.55, 0.95 } },
   { id = "use",          label = L["Utiliser un objet"],   cmd = "/use",          arg = L["objet ou n° d'emplacement"], clauses = true, color = { 0.30, 0.75, 0.40 } },
   { id = "castsequence", label = L["Séquence de sorts"],   cmd = "/castsequence", arg = L["Sort A, Sort B, ..."], clauses = true, reset = true, color = { 0.60, 0.40, 0.90 } },
-  { id = "stopcasting",  label = L["Interrompre mon cast"], cmd = "/stopcasting", clauses = true, color = { 0.90, 0.35, 0.35 } },
+  { id = "stopcasting",  label = L["Arrêter l'incantation"], cmd = "/stopcasting", clauses = true, color = { 0.90, 0.35, 0.35 } },
   { id = "startattack",  label = L["Attaque auto"],        cmd = "/startattack",  clauses = true, color = { 0.90, 0.55, 0.20 } },
-  { id = "stopattack",   label = L["Stop attaque"],        cmd = "/stopattack",   clauses = true, color = { 0.90, 0.55, 0.20 } },
+  { id = "stopattack",   label = L["Arrêter l'attaque"],        cmd = "/stopattack",   clauses = true, color = { 0.90, 0.55, 0.20 } },
   { id = "petattack",    label = L["Familier : attaque"],  cmd = "/petattack",    clauses = true, color = { 0.85, 0.70, 0.20 } },
   { id = "petfollow",    label = L["Familier : suivre"],   cmd = "/petfollow",    clauses = true, color = { 0.85, 0.70, 0.20 } },
   { id = "petpassive",   label = L["Familier : passif"],   cmd = "/petpassive",   clauses = true, color = { 0.85, 0.70, 0.20 } },
@@ -109,7 +109,7 @@ ns.trim = trim
 
 -- recherche sans accents ni casse : les lettres accentuees du francais (UTF-8, octet de tete 195) deviennent ASCII
 local FOLD = {}
-for from, to in ("éeèeêeëeàaâaçcôoîiïiùuûuüuÉeÈeÊeËeÀaÂaÇcÔoÎiÏiÙuÛuÜu"):gmatch("(\195[\128-\191])(%a)") do FOLD[from] = to end
+for from, to in ("éeèeêeëeàaâaçcôoîiïiùuûuüuÉeÈeÊeËeÀaÂaÇcÔoÎiÏiÙuÛuÜu"):gmatch("(\195[\128-\191])(%a)") do FOLD[from] = to end -- locale-ok : table de lettres, pas un texte affiche
 function ns.Fold(s) return (s:lower():gsub("\195[\128-\191]", FOLD)) end
 
 -- nom de la liste le plus proche de name (faute de frappe, accent, casse) ; nil si rien d'assez proche
@@ -497,7 +497,7 @@ function ns.Diagnose(blocks)
   end
   -- une macro ne peut pas attendre : pas de /wait pour laisser le familier revenir
   if dismount and pet then
-    warnings[#warnings + 1] = L["Familier : ses ordres et techniques ne partent pas sur une monture ni juste après en être descendu. Appuyer une seconde fois."]
+    warnings[#warnings + 1] = L["Familier : ses ordres et techniques ne partent pas sur une monture ni juste après en être descendu. Appuie une seconde fois."]
   end
   return text, warnings
 end
@@ -522,6 +522,142 @@ function ns.Import(str)
   if trim(name) == "" or letters > 16 then return nil, L["Nom de macro vide ou trop long (16 caractères max)."] end
   if #body > ns.MAX_CHARS then return nil, L["Macro trop longue : %d / %d."]:format(#body, ns.MAX_CHARS) end
   return name, body
+end
+
+-- texte venu d'ailleurs affiche tel quel : un | seul serait lu comme un code de couleur ou de lien
+function ns.Plain(s) return (tostring(s):gsub("|", "||")) end
+
+---------------------------------------------------------------------------
+-- Envoi a un autre joueur : le texte "BF1:" coupe en messages "id:index:total:donnees"
+---------------------------------------------------------------------------
+-- un message d'add-on porte 255 octets ; un export fait au plus ~870 octets (nom et corps echappes)
+local CHUNK, MAX_CHUNKS, MAX_BYTES, MAX_PENDING, MAX_PER_SENDER = 200, 6, 1000, 8, 2
+ns.SHARE_TIMEOUT = 30
+
+function ns.Chunks(payload, id)
+  local parts, pos = {}, 1
+  while pos <= #payload do
+    local last = math.min(#payload, pos + CHUNK - 1)
+    -- jamais au milieu d'un caractere UTF-8 (octets de suite : 128 a 191)
+    while last > pos and last < #payload and payload:byte(last + 1) >= 128 and payload:byte(last + 1) < 192 do last = last - 1 end
+    parts[#parts + 1] = payload:sub(pos, last)
+    pos = last + 1
+  end
+  if #parts == 0 or #parts > MAX_CHUNKS or #payload > MAX_BYTES then return nil end
+  for i, part in ipairs(parts) do parts[i] = ("%s:%d:%d:%s"):format(id, i, #parts, part) end
+  return parts
+end
+
+-- Reception : box:Receive(expediteur, message, heure) renvoie le texte complet au dernier morceau, sinon nil.
+-- Tout message douteux est ignore sans bruit ; un transfert incomplet est oublie apres ns.SHARE_TIMEOUT secondes.
+function ns.NewInbox()
+  local box = { pending = {}, count = 0 }
+  local function drop(key)
+    if box.pending[key] then
+      box.pending[key] = nil
+      box.count = box.count - 1
+    end
+  end
+  function box:Receive(sender, msg, now)
+    for key, t in pairs(self.pending) do
+      if now - t.at > ns.SHARE_TIMEOUT then drop(key) end
+    end
+    if type(sender) ~= "string" or type(msg) ~= "string" or #msg > 255 then return nil end
+    local id, index, total, data = msg:match("^(%w+):(%d+):(%d+):(.+)$")
+    index, total = tonumber(index), tonumber(total)
+    if not id or #id > 6 or total < 1 or total > MAX_CHUNKS or index < 1 or index > total then return nil end
+    local prefix = sender .. "\0"
+    local key = prefix .. id
+    local t = self.pending[key]
+    if t and t.total ~= total then
+      drop(key)
+      t = nil
+    end
+    if not t then
+      local mine = 0
+      for k in pairs(self.pending) do
+        if k:sub(1, #prefix) == prefix then mine = mine + 1 end
+      end
+      if self.count >= MAX_PENDING or mine >= MAX_PER_SENDER then return nil end
+      t = { total = total, parts = {}, have = 0, bytes = 0, at = now }
+      self.pending[key] = t
+      self.count = self.count + 1
+    end
+    if t.parts[index] then return nil end -- doublon
+    t.parts[index], t.have, t.bytes = data, t.have + 1, t.bytes + #data
+    if t.bytes > MAX_BYTES then
+      drop(key)
+      return nil
+    end
+    if t.have < t.total then return nil end
+    drop(key)
+    return table.concat(t.parts)
+  end
+  return box
+end
+
+---------------------------------------------------------------------------
+-- Historique annuler / retablir : pile bornee de copies de la liste de blocs
+---------------------------------------------------------------------------
+function ns.CloneBlocks(blocks)
+  local out = {}
+  for i, b in ipairs(blocks) do
+    local copy = { type = b.type, arg = b.arg, reset = b.reset }
+    if b.clauses then
+      copy.clauses = {}
+      for j, clause in ipairs(b.clauses) do
+        local conds = {}
+        for k, cond in ipairs(clause.conds) do conds[k] = cond end
+        copy.clauses[j] = { conds = conds, arg = clause.arg, alt = clause.alt }
+      end
+    end
+    out[i] = copy
+  end
+  return out
+end
+
+-- empreinte d'un etat : contrairement au texte compile, elle voit les blocs et les alternatives encore vides
+function ns.BlocksKey(blocks)
+  local out = {}
+  for _, b in ipairs(blocks) do
+    out[#out + 1] = b.type .. "\1" .. (b.arg or "") .. "\1" .. (b.reset or "")
+    for _, clause in ipairs(b.clauses or {}) do
+      out[#out + 1] = "\2" .. table.concat(clause.conds, ",") .. "\1" .. (clause.alt or "") .. "\1" .. (clause.arg or "")
+    end
+  end
+  return table.concat(out, "\3")
+end
+
+function ns.NewHistory(max)
+  local h = { states = {}, at = 0, max = max or 50 }
+  -- tag : deux enregistrements de suite avec le meme tag (frappe dans un champ) ne font qu'une etape
+  function h:Record(blocks, tag)
+    local key = ns.BlocksKey(blocks)
+    local current = self.states[self.at]
+    if current and current.key == key then return false end
+    for i = #self.states, self.at + 1, -1 do self.states[i] = nil end -- un changement efface ce qui etait a retablir
+    local state = { key = key, blocks = ns.CloneBlocks(blocks) }
+    if tag and tag == self.tag then
+      self.states[self.at] = state
+    else
+      self.states[#self.states + 1] = state
+      if #self.states > self.max then table.remove(self.states, 1) end
+      self.at = #self.states
+    end
+    self.tag = tag
+    return true
+  end
+  local function move(self, step)
+    local state = self.states[self.at + step]
+    if not state then return nil end
+    self.at, self.tag = self.at + step, nil
+    return ns.CloneBlocks(state.blocks)
+  end
+  function h:Undo() return move(self, -1) end
+  function h:Redo() return move(self, 1) end
+  function h:CanUndo() return self.at > 1 end
+  function h:CanRedo() return self.at < #self.states end
+  return h
 end
 
 ---------------------------------------------------------------------------

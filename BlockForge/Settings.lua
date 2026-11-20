@@ -18,6 +18,9 @@ ns.DEFAULTS = {
   accent = "class",        -- couleur d'accent : "class" (classe du joueur) ou "gold"
   favorites = {},          -- [classe .. "/" .. nom] = true (bibliotheque)
   sets = {},               -- [nom] = { { name, icon, body, char }, ... } (sauvegardes de "Mes macros")
+  personal = {},           -- { { name, body, icon, note }, ... } : "Mes modeles", communs a tous les personnages
+  acceptShared = true,     -- proposer les macros envoyees par d'autres joueurs (Share.lua)
+  tutorialSeen = false,    -- la visite guidee s'est deja lancee toute seule
   errors = {},             -- diagnostics (Debug.lua) : 20 dernieres erreurs Lua de l'add-on
   selftest = {},           -- diagnostics (Debug.lua) : dernier rapport de /bf test
 }
@@ -50,6 +53,16 @@ local function Sanitize(db)
   if db.accent ~= "class" and db.accent ~= "gold" then db.accent = "class" end
   db.scale = math.min(ns.SCALE_MAX, math.max(ns.SCALE_MIN, db.scale))
   db.minimap.angle = db.minimap.angle % 360
+  -- modeles : seules les entrees lisibles sont gardees (fichier modifie a la main, ancienne version)
+  local kept = {}
+  for _, m in ipairs(db.personal) do
+    if type(m) == "table" and type(m.name) == "string" and type(m.body) == "string" then
+      if type(m.note) ~= "string" then m.note = nil end
+      if type(m.icon) ~= "string" and type(m.icon) ~= "number" then m.icon = nil end
+      kept[#kept + 1] = m
+    end
+  end
+  db.personal = kept
 end
 
 function ns.InitDB()
@@ -74,10 +87,12 @@ function ns.ApplySettings()
 end
 
 function ns.ResetDB()
-  -- favoris et sauvegardes ne sont pas des reglages : la reinitialisation les garde
-  local favorites, sets = BlockForgeDB.favorites, BlockForgeDB.sets
+  -- favoris, sauvegardes et modeles ne sont pas des reglages : la reinitialisation les garde (et ne relance pas la visite)
+  local keep = {}
+  for _, k in ipairs({ "favorites", "sets", "personal", "tutorialSeen" }) do keep[k] = BlockForgeDB[k] end
   for k in pairs(BlockForgeDB) do BlockForgeDB[k] = nil end
-  BlockForgeDB.favorites, BlockForgeDB.sets = favorites, sets
+  for k, v in pairs(keep) do BlockForgeDB[k] = v end
+  ns.personalCache = nil
   ns.InitDB()
   ns.ApplySettings()
 end
@@ -107,6 +122,9 @@ local CHECKS = {
   { L["Infobulles d'aide détaillées"], function(db) return db.helpTooltips end,
     function(db, v) db.helpTooltips = v end, nil,
     L["Désactivé : les infobulles n'affichent plus que leur titre."] },
+  { L["Accepter les macros envoyées par d'autres joueurs"], function(db) return db.acceptShared end,
+    function(db, v) db.acceptShared = v end, nil,
+    L["Une macro reçue t'est toujours proposée avant d'être ouverte. Désactivé : elles sont ignorées sans rien afficher."] },
 }
 
 local function CheckBox(parent, x, y, text)
@@ -194,7 +212,13 @@ function ns.BuildSettingsPage(parent, title)
   local reset = ui.Button(parent, L["Réinitialiser les paramètres"], 210, function() ns.ResetDB() end)
   reset:SetPoint("TOPLEFT", 18, y)
   ui.Tip(reset, function() return L["Réinitialiser"], L["Remet tous les paramètres par défaut, y compris la position de la fenêtre et du bouton."] end)
-  ui.Label(parent, L["Commande : /bf (ouvrir), /bf options (cette page)"], 20, y - 34, "GameFontDisableSmall")
+  -- reinitialiser de 18 a 228, visite guidee de 234 a 414
+  local tour = ui.Button(parent, L["Revoir le tutoriel"], 180, function()
+    if ns.Tutorial then ns.Tutorial.Start(true) end
+  end)
+  tour:SetPoint("LEFT", reset, "RIGHT", 6, 0)
+  ui.Tip(tour, function() return L["Revoir le tutoriel"], L["Relance la visite guidée de la fenêtre, étape par étape. Aussi : /bf tuto."] end)
+  ui.Label(parent, L["Commandes : /bf (ouvrir), /bf options (cette page), /bf tuto (visite guidée), /bf test (diagnostic)"], 20, y - 34, "GameFontDisableSmall")
 
   local page = { Sync = function() if ns.db then for _, f in ipairs(syncs) do f() end end end }
   pages[#pages + 1] = page

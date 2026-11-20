@@ -53,6 +53,7 @@ local function noop() end
 W.__index = function(t, k)
   local m = rawget(W, k)
   if m then return m end
+  if ABSENT and ABSENT[k] then return nil end -- methode que ce client n'a pas
   if type(k) == "string" and k:match("^%u") then return noop end -- toute methode inconnue est acceptee
   return nil -- champ absent (ex. .text) : nil comme en jeu
 end
@@ -235,6 +236,31 @@ function debugstack() return string.rep("x", 3000) end
 function GetBuildInfo() return "1.60.1", "70959", "Nov 1 2026", 16001 end
 C_AddOns = { GetAddOnMetadata = function(addon, field) assert(addon == "BlockForge") return field == "Version" and "0.6.2" or nil end }
 function PickupMacro(x) assert(x ~= nil) CALLS[#CALLS + 1] = { "PickupMacro", x } end
+-- lot 2 : canal des add-ons, cible, horloge, touche Ctrl
+SENT = {}           -- messages d'add-on envoyes : { prefixe, texte, canal, destinataire }
+SEND_RESULT = 0     -- retour de SendAddonMessage (0 = envoye)
+PREFIXES = {}
+NOW = 1000
+CTRL = false
+TARGET = nil        -- nom du joueur ami cible
+C_ChatInfo = {
+  RegisterAddonMessagePrefix = function(p) PREFIXES[#PREFIXES + 1] = p return true end,
+  SendAddonMessage = function(prefix, text, channel, target)
+    assert(not COMBAT, "SendAddonMessage en combat")
+    assert(#prefix <= 16 and #text <= 255, "message d'add-on trop long : " .. #text)
+    SENT[#SENT + 1] = { prefix, text, channel, target }
+    return SEND_RESULT
+  end,
+}
+function GetTime() return NOW end
+function IsControlKeyDown() return CTRL end
+function UnitName(unit) assert(unit == "player") return "Moi" end
+function GetNormalizedRealmName() return "Royaume" end
+function UnitExists(unit) return unit == "target" and TARGET ~= nil end
+function UnitIsPlayer() return true end
+function UnitIsFriend() return true end
+function UnitIsUnit() return false end
+function GetUnitName(unit, realm) assert(unit == "target" and realm == true) return TARGET end
 function print(...) PRINTS[#PRINTS + 1] = table.concat({ ... }, " ") end
 unpack = unpack or table.unpack
 
@@ -346,8 +372,8 @@ local function delButton(row)
 end
 local edits = {}
 for _, w in ipairs(ALL) do if w._type == "EditBox" then edits[#edits + 1] = w end end
-local argBox, resetBox, custom, nameBox, search = edits[1], edits[2], edits[3], edits[4], edits[5]
-assert(#edits == 7, "champs : " .. #edits) -- + partage et nom de sauvegarde (Mes macros)
+local argBox, resetBox, custom, nameBox, textBox, modelShare, search = edits[1], edits[2], edits[3], edits[4], edits[5], edits[6], edits[7]
+assert(#edits == 9, "champs : " .. #edits) -- + partage des modeles (Bibliotheque), partage et nom de sauvegarde (Mes macros)
 local perChar = find(function(w) return w._template == "UICheckButtonTemplate" and w._parent == nameBox._parent end)
 assert(perChar)
 local condButtons = {}
@@ -770,7 +796,7 @@ fire(byText("Paramètres", BlockForgeFrame), "OnClick")
 local settingsPanel = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, BlockForgeFrame) and w ~= perChar and w:IsVisible() end)._parent
 assert(settingsPanel:IsVisible(), "onglet Parametres non affiche")
 local checks = checkboxes(settingsPanel)
-assert(#checks == 11, "cases : " .. #checks) -- 7 reglages + 2 choix de classe + 2 couleurs d'accent
+assert(#checks == 12, "cases : " .. #checks) -- 8 reglages + 2 choix de classe + 2 couleurs d'accent
 for _, c in ipairs(checks) do assert(c.label, "case sans libelle") end
 local function cb(fragment)
   for _, c in ipairs(checks) do if c.label:find(fragment, 1, true) then return c.box end end
@@ -920,7 +946,7 @@ local gamePanel
 for _, w in ipairs(ALL) do if w.name == "BlockForge" and not w._parent then gamePanel = w end end
 assert(gamePanel, "panneau des options du jeu absent")
 local gameChecks = checkboxes(gamePanel)
-assert(#gameChecks == 11)
+assert(#gameChecks == 12)
 click(gameChecks[1].box, false)
 fire(settingsPanel, "OnShow")
 assert(cb("minicarte")._checked == false, "les deux pages ne sont pas synchronisees")
@@ -997,7 +1023,7 @@ assert(plain(previewLabel._text) == soinBody and previewLabel._text ~= soinBody 
 
 -- export puis import : ouvert dans l'editeur, rien d'enregistre
 fire(byText("Mes macros"), "OnClick")
-local share, setBox = edits[6], edits[7]
+local share, setBox = edits[8], edits[9]
 fire(byText("Exporter", mPage), "OnClick")
 assert(share._text == ns.Export("Soin", soinBody) and FOCUS == share, "export : " .. share._text)
 share._text = share._text:gsub("^BF1:Soin:", "BF1:Soin2:")
@@ -1218,6 +1244,16 @@ boot("nil", `function GetLocale() return "enUS" end`);
 run(String.raw`
 SlashCmdList.BLOCKFORGE("")
 assert(BlockForgeFrame.TitleText._text == "BlockForge — block-based macro editor")
+-- visite guidee en anglais : lancee a la premiere ouverture, aucun texte reste en francais
+local coach = NS.Tutorial.coach
+assert(NS.Tutorial.step == 1 and coach.title._text == "Blocks" and coach.next._text == "Next" and coach.skip._text == "Skip", coach.title._text)
+for _, s in ipairs(NS.TutorialSteps) do
+  for _, c in ipairs({ "é", "è", "ê", "à", "ù", "ç", "«", "»", " :", " ;", " ?" }) do
+    assert(not (s.title .. s.text):find(c, 1, true), "etape en francais : " .. s.title)
+  end
+end
+fire(coach.skip, "OnClick")
+assert(byText("Undo") and byText("Redo") and byText("Edit text") and byText("More...") and byText("Add to my library") and byText("My templates") and byText("Send to..."))
 fire(byText("Create / update"), "OnClick")
 assert(lastLine():find("Give the macro a name"), lastLine())
 local descs = {}
@@ -1233,4 +1269,562 @@ for _, w in ipairs(ALL) do
 end
 `, "=anglais");
 
-console.log("test_ui.js : OK (5 scenarios)");
+// ---------------------------------------------------------------- 6. cycle 3, lot 2 : tutoriel, annuler / retablir, texte libre, modeles, envoi
+boot("nil");
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+local function said(fragment) return lastLine():find(fragment, 1, true) ~= nil end
+local function accept(kind) -- repond au dernier dialogue : "OnAccept", "OnAlt" ou "OnCancel"
+  local p = POPUPS[#POPUPS]
+  StaticPopupDialogs[p.which][kind or "OnAccept"]({}, p.data)
+end
+
+-- A. tutoriel : premiere ouverture en combat = rien, la visite attend ; hors combat elle se lance une seule fois
+assert(db.tutorialSeen == false and db.acceptShared == true and type(db.personal) == "table")
+COMBAT = true
+SlashCmdList.BLOCKFORGE("")
+assert(BlockForgeFrame:IsShown() and db.tutorialSeen == false and ns.Tutorial.step == nil, "visite lancee en combat")
+SlashCmdList.BLOCKFORGE("tuto")
+assert(said("combat") and ns.Tutorial.step == nil)
+COMBAT = false
+SlashCmdList.BLOCKFORGE("") -- ferme
+SlashCmdList.BLOCKFORGE("") -- rouvre : premiere ouverture hors combat
+local tour, steps = ns.Tutorial, ns.TutorialSteps
+local coach = tour.coach
+assert(db.tutorialSeen == true and tour.step == 1 and coach and coach:IsShown() and tour.frame:IsShown(), "visite non lancee")
+assert(#steps >= 8 and #steps <= 10, #steps)
+assert(coach._parent == BlockForgeFrame and coach._w == 320 and coach._h == 140)
+local tabs = { editor = byText("Éditeur"), library = byText("Bibliothèque"), macros = byText("Mes macros", BlockForgeFrame), settings = byText("Paramètres", BlockForgeFrame) }
+local seenTabs = {}
+for i, s in ipairs(steps) do
+  assert(tour.step == i, "etape " .. i)
+  -- chaque etape : onglet affiche, widget existant et visible dans la fenetre, panneau et cadre poses dessus, textes non vides
+  local anchor = s.anchor()
+  assert(getmetatable(anchor) == WIDGET and inside(anchor, BlockForgeFrame), "repere de l'etape " .. i)
+  assert(tabs[s.tab].line:IsShown() and anchor:IsVisible(), "onglet de l'etape " .. i)
+  assert(coach._point[2] == anchor and tour.frame._point[2] == anchor, "panneau non pose sur le repere " .. i)
+  assert(coach.title._text == s.title and coach.text._text == s.text and #s.title > 3 and #s.text > 40 and #s.text < 330, "texte de l'etape " .. i)
+  assert(coach.count._text == i .. " / " .. #steps, coach.count._text)
+  assert(coach.prev._enabled == (i > 1), "bouton precedent a l'etape " .. i)
+  assert(coach.next._text == (i == #steps and "Terminer" or "Suivant"))
+  seenTabs[s.tab] = true
+  if i < #steps then fire(coach.next, "OnClick") end
+end
+assert(seenTabs.editor and seenTabs.library and seenTabs.macros and seenTabs.settings, "un onglet n'est pas visite")
+fire(coach.prev, "OnClick")
+assert(tour.step == #steps - 1 and tabs[steps[#steps - 1].tab].line:IsShown(), "retour en arriere")
+fire(coach.next, "OnClick")
+fire(coach.next, "OnClick") -- « Terminer »
+assert(tour.step == nil and not coach:IsShown() and not tour.frame:IsShown(), "fin de visite")
+-- une seule fois toute seule ; /bf tuto, /bf tutorial et /bf help la relancent
+SlashCmdList.BLOCKFORGE("")
+SlashCmdList.BLOCKFORGE("")
+assert(BlockForgeFrame:IsShown() and tour.step == nil, "visite relancee a la 2e ouverture")
+for _, cmd in ipairs({ "tuto", "tutorial", "help", " TUTO " }) do
+  SlashCmdList.BLOCKFORGE(cmd)
+  assert(tour.step == 1 and coach:IsShown() and tabs.editor.line:IsShown(), cmd)
+  fire(coach.skip, "OnClick") -- « Passer »
+  assert(tour.step == nil and not coach:IsShown(), "passer")
+end
+-- elle ne bloque rien : changer d'onglet a la main, fermer la fenetre ou entrer en combat l'arrete proprement
+SlashCmdList.BLOCKFORGE("tuto")
+fire(tabs.library, "OnClick")
+assert(tour.step == nil and tabs.library.line:IsShown(), "changement d'onglet pendant la visite")
+SlashCmdList.BLOCKFORGE("tuto")
+fire(BlockForgeFrame, "OnHide") -- fermeture, Echap compris
+assert(tour.step == nil and not coach:IsShown())
+SlashCmdList.BLOCKFORGE("tuto")
+fireEvent("PLAYER_REGEN_DISABLED")
+assert(tour.step == nil and not coach:IsShown(), "visite encore la en combat")
+-- bouton des parametres
+fire(tabs.settings, "OnClick")
+fire(byText("Revoir le tutoriel", BlockForgeFrame), "OnClick")
+assert(tour.step == 1 and tabs.editor.line:IsShown())
+fire(coach.skip, "OnClick")
+
+-- reperes de l'editeur
+local w = ns.ed.w
+local palette = {}
+for _, def in ipairs(ns.BlockDefs) do palette[def.id] = byText(def.label, w.palette) end
+local rows = {}
+for _, c in ipairs(w.canvas._children) do if c.pills then rows[#rows + 1] = c end end
+local function rowButton(row, text)
+  for _, c in ipairs(row._children) do if c._type == "Button" and c._text == text then return c end end
+end
+local edits = {}
+for _, e in ipairs(ALL) do if e._type == "EditBox" then edits[#edits + 1] = e end end
+local argBox, nameBox, textBox, modelShare, search = edits[1], edits[4], edits[5], edits[6], edits[7]
+assert(textBox == w.textBox, "champ du texte libre")
+local undo, redo, clear = byText("Annuler", w.canvas), byText("Rétablir", w.canvas), byText("Tout effacer")
+local function text() return ns.Compile(ns.ed.Blocks()) end
+local function typeArg(s) -- frappe lettre par lettre
+  FOCUS = argBox
+  for i = 1, #s do argBox._text = s:sub(1, i) fire(argBox, "OnTextChanged", true) end
+end
+local function blur(box) FOCUS = nil fire(box, "OnEditFocusLost") end
+
+-- B. annuler / retablir
+assert(text() == "" and undo._enabled == false and redo._enabled == false, "historique non vide au depart")
+fire(palette.cast, "OnClick")
+typeArg("Fear")
+blur(argBox)
+fire(palette.use, "OnClick")
+typeArg("13")
+blur(argBox)
+assert(text() == "/cast Fear\n/use 13" and undo._enabled == true and redo._enabled == false)
+fire(undo, "OnClick")
+assert(text() == "/cast Fear\n/use" and redo._enabled == true, "la frappe doit faire une seule etape : " .. text())
+fire(undo, "OnClick")
+assert(text() == "/cast Fear")
+fire(undo, "OnClick")
+assert(text() == "/cast", text())
+fire(undo, "OnClick")
+assert(text() == "" and undo._enabled == false)
+fire(undo, "OnClick") -- plus rien : sans effet
+for _ = 1, 4 do fire(redo, "OnClick") end
+assert(text() == "/cast Fear\n/use 13" and redo._enabled == false)
+fire(redo, "OnClick")
+assert(text() == "/cast Fear\n/use 13")
+-- conditions, alternative, suppression, dupliquer, deplacement, modele, chargement, tout effacer : chacun s'annule
+fire(rows[1], "OnClick")
+fire(byText("Survol", w.insp), "OnClick")
+assert(text() == "/cast [@mouseover] Fear\n/use 13")
+fire(undo, "OnClick")
+assert(text() == "/cast Fear\n/use 13", "condition non annulee")
+fire(rowButton(rows[1], "x"), "OnClick")
+assert(text() == "/use 13")
+fire(undo, "OnClick")
+assert(text() == "/cast Fear\n/use 13", "suppression non annulee")
+-- C. dupliquer : copie juste en dessous, independante de l'original
+fire(rowButton(rows[1], "x2"), "OnClick")
+assert(text() == "/cast Fear\n/cast Fear\n/use 13", text())
+assert(argBox._text == "Fear", "la copie doit etre choisie")
+typeArg("Peur")
+blur(argBox)
+assert(text() == "/cast Fear\n/cast Peur\n/use 13", "la copie partage son argument avec l'original")
+fire(undo, "OnClick")
+fire(undo, "OnClick")
+assert(text() == "/cast Fear\n/use 13", "duplication non annulee")
+-- frappe puis clic sur un autre bouton sans quitter le champ : deux etapes distinctes
+fire(rows[1], "OnClick")
+typeArg("Feara")
+fire(byText("Hostile", w.insp), "OnClick")
+assert(text() == "/cast [harm] Feara\n/use 13")
+fire(undo, "OnClick")
+assert(text() == "/cast Feara\n/use 13", "le clic a ete fondu dans la frappe")
+blur(argBox)
+fire(undo, "OnClick")
+assert(text() == "/cast Fear\n/use 13")
+local popups = #POPUPS
+fire(byText(ns.Templates[3].label), "OnClick")
+assert(#POPUPS == popups + 1)
+accept()
+assert(text() == ns.Templates[3].body)
+fire(undo, "OnClick")
+assert(text() == "/cast Fear\n/use 13", "modele non annule")
+fire(clear, "OnClick")
+assert(text() == "")
+fire(undo, "OnClick")
+assert(text() == "/cast Fear\n/use 13", "« Tout effacer » non annule")
+MACROS["Jeu"] = { index = 3, body = "/cast A\n/cast B" }
+nameBox._text = "Jeu"
+fire(byText("Charger ce nom"), "OnClick")
+assert(text() == "/cast A\n/cast B")
+fire(undo, "OnClick")
+assert(text() == "/cast Fear\n/use 13", "chargement non annule")
+-- Ctrl+Z / Ctrl+Y : seulement avec Ctrl, jamais pendant la frappe dans un champ, et la touche reste transmise au jeu
+assert(ns.ed.keys == nil, "clavier arme en combat") -- la fenetre a ete construite en combat (debut du scenario)
+fireEvent("PLAYER_REGEN_ENABLED")
+local keys = ns.ed.keys
+assert(keys and keys._scripts.OnKeyDown, "clavier non arme a la fin du combat")
+fire(keys, "OnKeyDown", "Z") -- sans Ctrl : rien
+assert(text() == "/cast Fear\n/use 13")
+CTRL = true
+fire(keys, "OnKeyDown", "Z")
+assert(text() == "/cast Fear\n/use", text())
+fire(keys, "OnKeyDown", "Y")
+assert(text() == "/cast Fear\n/use 13")
+GetCurrentKeyBoardFocus = function() return argBox end
+fire(keys, "OnKeyDown", "Z")
+assert(text() == "/cast Fear\n/use 13", "Ctrl+Z pris pendant une saisie")
+GetCurrentKeyBoardFocus = nil
+CTRL = false
+-- historique borne a 50 etats
+for i = 1, 60 do fire(palette.stopcasting, "OnClick") end
+assert(#ns.ed.history.states == 50, #ns.ed.history.states)
+fire(clear, "OnClick")
+
+-- D. texte libre : bascule, frappe relue apres une pause, ligne inconnue gardee, compteur vivant
+local toggle = byText("Éditer le texte")
+local scroll, preview = textBox._parent, w.preview
+local counter = find(function(x) return x._type == "FontString" and x._parent == w.bottom and (x._text or ""):find("^%d+ / 255$") end)
+assert(counter and counter._text == "0 / 255" and not scroll:IsShown() and preview:IsShown())
+fire(palette.cast, "OnClick")
+typeArg("Fear")
+blur(argBox)
+fire(toggle, "OnClick")
+assert(scroll:IsShown() and not preview:IsShown() and textBox._text == "/cast Fear", "texte libre non affiche")
+fire(palette.stopcasting, "OnClick") -- les blocs changent : le champ suit tant qu'il n'a pas le focus
+assert(textBox._text == "/cast Fear\n/stopcasting")
+FOCUS = textBox
+MOUSE_OVER = true -- la souris reste sur le champ pendant la frappe
+local typed = "#showtooltip\n/cast [@mouseover,harm][] Fear\n\n/commande inconnue [x] y\n  du texte libre  "
+for _, s in ipairs({ typed:sub(1, 20), typed:sub(1, 50), typed }) do
+  textBox._text = s
+  fire(textBox, "OnTextChanged", true)
+end
+assert(counter._text == #ns.trim(typed) .. " / 255", "compteur pendant la frappe : " .. counter._text)
+assert(text() == "/cast Fear\n/stopcasting", "relu a chaque touche")
+fire(textBox, "OnUpdate", 0.5)
+assert(text() == "/cast Fear\n/stopcasting", "relu avant la pause")
+fire(textBox, "OnUpdate", 0.5)
+local clean = "#showtooltip\n/cast [@mouseover,harm][] Fear\n/commande inconnue [x] y\ndu texte libre"
+assert(text() == clean, text())
+local blocks = ns.ed.Blocks()
+assert(#blocks == 4 and blocks[2].type == "cast" and blocks[3].type == "raw" and blocks[4].type == "raw")
+assert(textBox._text == typed, "le champ ne doit pas etre reecrit pendant la frappe")
+assert(rows[2].full == "/cast [@mouseover,harm][] Fear" and rows[4]:IsShown(), "les blocs ne suivent pas le texte")
+assert(counter._text == #clean .. " / 255")
+textBox._text = typed .. "\n/use 13"
+fire(textBox, "OnTextChanged", true)
+blur(textBox) -- perte du focus : relu tout de suite, texte remis au propre
+assert(text() == clean .. "\n/use 13" and textBox._text == clean .. "\n/use 13", textBox._text)
+fire(undo, "OnClick") -- toute la frappe (deux relectures) ne fait qu'une etape
+assert(text() == "/cast Fear\n/stopcasting" and textBox._text == "/cast Fear\n/stopcasting", "annulation du texte libre : " .. text())
+fire(redo, "OnClick")
+assert(text() == clean .. "\n/use 13")
+-- trop long : le compteur passe au rouge, rien n'est perdu
+FOCUS = textBox
+textBox._text = string.rep("/cast Sort tres long\n", 15)
+fire(textBox, "OnTextChanged", true)
+assert(counter._text == "314 / 255" and counter._textColor[1] == 1 and counter._textColor[2] == 0.25, counter._text)
+-- annuler pendant la frappe : le texte en cours est d'abord pris en compte, puis annule
+fire(undo, "OnClick")
+assert(text() == clean .. "\n/use 13", text())
+-- la souris quitte le champ (pour aller cliquer) : relu tout de suite ; le bloc clique ensuite n'est pas ecrase
+-- par le texte du champ, qui a garde le focus, et le champ affiche le nouveau bloc
+textBox._text = "/cast A"
+fire(textBox, "OnTextChanged", true)
+MOUSE_OVER = false
+fire(textBox, "OnUpdate", 0.01)
+assert(text() == "/cast A", "texte non relu quand la souris quitte le champ")
+fire(palette.stopcasting, "OnClick")
+assert(text() == "/cast A\n/stopcasting" and textBox._text == "/cast A\n/stopcasting", "champ non mis a jour apres un clic : " .. textBox._text)
+fire(textBox, "OnUpdate", 2)
+assert(text() == "/cast A\n/stopcasting", "bloc clique ecrase par l'ancien texte du champ")
+FOCUS = nil
+fire(toggle, "OnClick")
+assert(not scroll:IsShown() and preview:IsShown())
+fire(textBox, "OnCursorChanged", 0, -120, 2, 13) -- suivi du curseur et molette : sans erreur avec un cadre sans defilement
+fire(scroll, "OnMouseWheel", -1)
+fire(scroll, "OnMouseDown")
+FOCUS = nil
+fire(clear, "OnClick")
+
+-- E. bibliotheque personnelle : rien dans les macros du jeu, tout dans BlockForgeDB.personal
+local callsBefore = #CALLS
+local more = byText("Plus…")
+local addModel = byText("Ajouter à ma bibliothèque")
+local menu = addModel._parent
+assert(not menu:IsShown())
+fire(more, "OnClick")
+assert(menu:IsShown())
+nameBox._text = ""
+fire(addModel, "OnClick")
+assert(not menu:IsShown() and said("nom") and #db.personal == 0, "modele sans nom accepte")
+nameBox._text = "Mon |modele"
+fire(addModel, "OnClick")
+assert(said("vide") and #db.personal == 0, "modele vide accepte")
+fire(palette.cast, "OnClick")
+typeArg("Corruption")
+blur(argBox)
+COMBAT = true
+fire(addModel, "OnClick")
+assert(said("combat") and #db.personal == 0, "modele ajoute en combat")
+COMBAT = false
+fire(addModel, "OnClick")
+assert(#db.personal == 1 and db.personal[1].name == "Mon modele" and db.personal[1].body == "/cast Corruption" and db.personal[1].icon == nil, "modele non range")
+assert(said("Mes modèles"))
+local popups2 = #POPUPS
+fire(addModel, "OnClick") -- meme nom : confirmation avant de remplacer
+assert(#POPUPS == popups2 + 1 and POPUPS[#POPUPS].which == "BLOCKFORGE_REPLACE_PERSONAL" and #db.personal == 1)
+typeArg("Peur")
+blur(argBox)
+fire(addModel, "OnClick")
+assert(db.personal[1].body == "/cast Corruption", "remplace sans confirmation")
+accept()
+assert(#db.personal == 1 and db.personal[1].body == "/cast Peur")
+nameBox._text = "Second"
+typeArg("Corruption")
+blur(argBox)
+fire(addModel, "OnClick")
+assert(#db.personal == 2 and db.personal[2].body == "/cast Corruption")
+-- onglet Bibliotheque, « Mes modeles »
+fire(tabs.library, "OnClick")
+local listPanel = w.libraryList
+local libRows = {}
+for _, c in ipairs(listPanel._children) do if c.mark then libRows[#libRows + 1] = c end end
+local function shownNames()
+  local list = {}
+  for _, r in ipairs(libRows) do if r:IsShown() then list[#list + 1] = r.text._text end end
+  return table.concat(list, ",")
+end
+local mine = byText("Mes modèles", w.libraryClasses)
+fire(mine, "OnClick")
+assert(shownNames() == "Mon modele,Second", shownNames())
+local delete, rename, note = byText("Supprimer", w.library), byText("Renommer", w.library), byText("Note…", w.library)
+local exportB, importB = byText("Exporter", w.library), byText("Importer", w.library)
+local openB, favB = byText("Ouvrir dans l'éditeur", w.library), byText("Ajouter aux favoris", w.library)
+assert(delete:IsVisible() and delete._enabled == false and rename._enabled == false and importB:IsVisible() and not favB:IsShown(), "actions sans modele choisi")
+fire(libRows[1], "OnClick")
+assert(delete._enabled and rename._enabled and note._enabled and exportB._enabled)
+assert(find(function(x) return x._type == "FontString" and x._text and plain(x._text) == "/cast Peur" and inside(x, w.library) end), "corps du modele non affiche")
+-- renommer : fenetre de saisie ; nom deja pris refuse ; Entree valide
+fire(rename, "OnClick")
+local prompt = ns.prompt
+assert(prompt:IsShown() and prompt.box._text == "Mon modele" and FOCUS == prompt.box and prompt.ok._text == "Renommer")
+prompt.box._text = "Second"
+fire(prompt.box, "OnEnterPressed")
+assert(not prompt:IsShown() and said("déjà") and db.personal[1].name == "Mon modele")
+fire(rename, "OnClick")
+prompt.box._text = "  Peur |survol  "
+fire(prompt.ok, "OnClick")
+assert(db.personal[1].name == "Peur survol" and shownNames() == "Peur survol,Second", shownNames())
+assert(rename._enabled, "la selection doit suivre le modele renomme")
+fire(rename, "OnClick")
+fire(prompt.box, "OnEscapePressed") -- Echap : rien ne change
+assert(not prompt:IsShown() and db.personal[1].name == "Peur survol")
+-- note : affichee (echappee) et trouvee par la recherche
+fire(note, "OnClick")
+prompt.box._text = "Pour les |cffff0000donjons"
+fire(prompt.box, "OnEnterPressed")
+assert(db.personal[1].note == "Pour les |cffff0000donjons")
+assert(find(function(x) return x._type == "FontString" and x._text == "Pour les ||cffff0000donjons" end), "note non affichee ou non echappee")
+search._text = "DONJON"
+fire(search, "OnTextChanged", true)
+assert(shownNames() == "Peur survol", shownNames())
+search._text = "/cast"
+fire(search, "OnTextChanged", true)
+assert(shownNames() == "Peur survol,Second")
+search._text = ""
+fire(search, "OnTextChanged", true)
+fire(byText("PvP", listPanel), "OnClick") -- un modele n'a pas de categorie
+assert(shownNames() == "")
+fire(byText("Toutes", listPanel), "OnClick")
+-- « Mes sorts seulement » : meme filtre que la bibliotheque
+C_Spell.GetSpellInfo = function(name) return name ~= "Corruption" and { name = name } or nil end
+fireEvent("SPELLS_CHANGED")
+fire(mine, "OnClick")
+assert(shownNames() == "Peur survol,Second", shownNames()) -- sans la case : grise, pas cache
+local second
+for _, r in ipairs(libRows) do if r.text._text == "Second" then second = r end end
+assert(second.text._textColor[1] == 0.5 and libRows[1].text._textColor[1] == 1, "modele au sort inconnu non grise")
+local onlyKnown = find(function(x) return x._template == "UICheckButtonTemplate" and x._parent == w.libraryClasses end)
+click(onlyKnown, true)
+assert(shownNames() == "Peur survol", "« Mes sorts seulement » sans effet sur les modeles : " .. shownNames())
+click(onlyKnown, false)
+C_Spell.GetSpellInfo = nil
+fireEvent("SPELLS_CHANGED")
+fire(mine, "OnClick")
+fire(libRows[1], "OnClick")
+-- exporter / importer (format BF1)
+fire(exportB, "OnClick")
+assert(modelShare._text == ns.Export("Peur survol", "/cast Peur"), modelShare._text)
+modelShare._text = "n'importe quoi"
+fire(importB, "OnClick")
+assert(said("BF1") and #db.personal == 2)
+modelShare._text = ns.Export("Importe", "/use 13\n/cast Fear")
+fire(importB, "OnClick")
+assert(#db.personal == 3 and db.personal[3].name == "Importe" and db.personal[3].body == "/use 13\n/cast Fear" and modelShare._text == "")
+assert(shownNames() == "Peur survol,Second,Importe")
+-- ouvrir dans l'editeur
+fire(libRows[3], "OnClick")
+fire(openB, "OnClick")
+assert(tabs.editor.line:IsShown() and text() == "/use 13\n/cast Fear" and nameBox._text == "Importe", "modele non ouvert")
+-- supprimer : confirmation, puis la liste et le detail se vident
+fire(tabs.library, "OnClick")
+local popups3 = #POPUPS
+fire(delete, "OnClick")
+assert(#POPUPS == popups3 + 1 and POPUPS[#POPUPS].which == "BLOCKFORGE_DELETE_PERSONAL" and POPUPS[#POPUPS].text:find("Importe") and #db.personal == 3)
+accept()
+assert(#db.personal == 2 and shownNames() == "Peur survol,Second" and delete._enabled == false and openB._enabled == false, "modele non supprime")
+-- les autres classes marchent toujours, et le bouton des favoris revient
+fire(byText("Démoniste"), "OnClick")
+assert(not delete:IsVisible() and favB:IsShown() and libRows[1]:IsShown())
+-- la reinitialisation des parametres garde les modeles et ne relance pas la visite
+ns.ResetDB()
+assert(#db.personal == 2 and db.tutorialSeen == true and db.acceptShared == true)
+assert(#CALLS == callsBefore, "une macro du jeu a ete touchee")
+
+-- F. envoi a un joueur : en morceaux, par chuchotement d'add-on
+assert(PREFIXES[1] == "BlockForge" and ns.CanShare())
+fire(tabs.editor, "OnClick")
+local sendChip = byText("Envoyer à…", menu)
+nameBox._text = "Envoi"
+COMBAT = true
+fire(sendChip, "OnClick")
+assert(said("combat") and not prompt:IsShown() and #SENT == 0)
+COMBAT = false
+TARGET = "Ami-Royaume"
+fire(sendChip, "OnClick")
+assert(prompt:IsShown() and prompt.box._text == "Ami-Royaume" and prompt.ok._text == "Envoyer" and prompt.title._text:find("Envoi"), "cible non proposee")
+fire(prompt.box, "OnEnterPressed")
+assert(#SENT == 1 and SENT[1][1] == "BlockForge" and SENT[1][3] == "WHISPER" and SENT[1][4] == "Ami-Royaume" and said("envoyée"), lastLine())
+assert(SENT[1][2]:find("^%d+:1:1:BF1:Envoi:"), SENT[1][2])
+TARGET = nil
+fire(sendChip, "OnClick")
+assert(prompt.box._text == "", "sans cible : champ vide")
+fire(prompt.box, "OnEnterPressed") -- nom vide : rien
+assert(#SENT == 1)
+-- macro longue : plusieurs messages de moins de 255 octets
+fire(tabs.macros, "OnClick")
+MACROS = { Longue = { index = 1, body = string.rep("/cast [@mouseover,harm] Éclair|:%\n", 7) } }
+fire(w.macros, "OnShow")
+local macroRow = find(function(x) return x.scope and x.text._text == "Longue" end)
+fire(macroRow, "OnClick")
+local sendMacro = byText("Envoyer à…", w.macros)
+assert(sendMacro._enabled)
+fire(sendMacro, "OnClick")
+prompt.box._text = "Ami"
+SENT = {}
+fire(prompt.ok, "OnClick")
+assert(#SENT >= 2, #SENT)
+-- echec : retour false, code d'erreur, ou erreur Lua ; en combat rien ne part
+for _, result in ipairs({ false, 3 }) do
+  SEND_RESULT, SENT = result, {}
+  assert(ns.SendMacro("Envoi", "/cast A", "Ami") == nil and said("échoué") and #SENT == 1, "echec non signale")
+end
+SEND_RESULT = 0
+local realSend = C_ChatInfo.SendAddonMessage
+C_ChatInfo.SendAddonMessage = function() error("bloque") end
+assert(ns.SendMacro("Envoi", "/cast A", "Ami|r") == nil and said("échoué") and said("Ami||r"))
+C_ChatInfo.SendAddonMessage = realSend
+COMBAT, SENT = true, {}
+assert(ns.SendMacro("Envoi", "/cast A", "Ami") == nil and said("combat") and #SENT == 0)
+COMBAT = false
+assert(ns.SendMacro(string.rep("x", 17), "/cast A", "Ami") == nil and #SENT == 0, "nom trop long envoye")
+
+-- G. reception : rien n'est cree sans un clic ; tout ce qui est douteux est ignore sans bruit
+MACROS["Longue"] = nil
+local function deliver(sender, name, body, id)
+  for _, chunk in ipairs(ns.Chunks(ns.Export(name, body), id or "1")) do fireEvent("CHAT_MSG_ADDON", "BlockForge", chunk, "WHISPER", sender) end
+end
+local function state() return #POPUPS .. "/" .. #CALLS .. "/" .. #db.personal .. "/" .. text() .. "/" .. #PRINTS end
+fire(tabs.editor, "OnClick")
+fire(clear, "OnClick")
+local quiet = state()
+local body = string.rep("/cast [@mouseover,harm] Éclair|:%\n", 7)
+deliver("Moi-Royaume", "Perso", body) -- envoye par soi-meme
+deliver("Moi", "Perso", body)
+assert(state() == quiet, "message de soi-meme accepte")
+COMBAT = true
+deliver("Autre-Royaume", "Combat", body) -- en combat : meme pas mis en attente
+COMBAT = false
+assert(state() == quiet, "reception en combat")
+fireEvent("CHAT_MSG_ADDON", "AutreAddon", "1:1:1:" .. ns.Export("X", "/cast A"), "WHISPER", "Autre-Royaume")
+fireEvent("CHAT_MSG_ADDON", "BlockForge", "1:1:1:" .. ns.Export("X", "/cast A"), "PARTY", "Autre-Royaume")
+fireEvent("CHAT_MSG_ADDON", "BlockForge", "1:1:1:pas un export", "WHISPER", "Autre-Royaume")
+fireEvent("CHAT_MSG_ADDON", "BlockForge", "n'importe quoi", "WHISPER", "Autre-Royaume")
+fireEvent("CHAT_MSG_ADDON", "BlockForge", "1:1:1:" .. ns.Export("|cffff0000Admin", "/cast A"), "WHISPER", "Autre-Royaume")
+fireEvent("CHAT_MSG_ADDON", "BlockForge", "1:1:1:BF1:" .. string.rep("x", 17) .. ":/cast A", "WHISPER", "Autre-Royaume")
+fireEvent("CHAT_MSG_ADDON", "BlockForge", "1:1:1:" .. ns.Export("X", "/cast A"), "WHISPER", string.rep("x", 65))
+fireEvent("CHAT_MSG_ADDON", "BlockForge", "1:1:1:" .. ns.Export("X", "/cast A"), "WHISPER", nil)
+assert(state() == quiet, "message douteux accepte : " .. state())
+db.acceptShared = false
+deliver("Autre-Royaume", "Refusee", body)
+assert(state() == quiet, "reglage « accepter » ignore")
+db.acceptShared = true
+-- transfert incomplet oublie apres le delai
+local parts = ns.Chunks(ns.Export("Tardive", body), "7")
+assert(#parts >= 2)
+fireEvent("CHAT_MSG_ADDON", "BlockForge", parts[1], "WHISPER", "Autre-Royaume")
+NOW = NOW + ns.SHARE_TIMEOUT + 1
+for i = 2, #parts do fireEvent("CHAT_MSG_ADDON", "BlockForge", parts[i], "WHISPER", "Autre-Royaume") end
+assert(state() == quiet, "transfert perime accepte")
+NOW = NOW + ns.SHARE_TIMEOUT + 1
+-- macro valide, morceaux dans le desordre : une proposition, et rien d'autre
+local ok = ns.Chunks(ns.Export("Recue", body), "8")
+for i = #ok, 1, -1 do fireEvent("CHAT_MSG_ADDON", "BlockForge", ok[i], "WHISPER", "Autre|cffff0000-Royaume") end
+local p = POPUPS[#POPUPS]
+assert(p.which == "BLOCKFORGE_INCOMING" and p.text:find("Recue", 1, true) and p.text:find("Autre||cffff0000-Royaume", 1, true), "proposition attendue : " .. p.text)
+assert(text() == "" and #db.personal == 2 and #CALLS == callsBefore and next(MACROS) == nil, "quelque chose a ete cree sans confirmation")
+local asked = #POPUPS
+deliver("Tiers-Royaume", "Autre", "/cast A") -- une proposition a la fois
+assert(#POPUPS == asked, "deux propositions en meme temps")
+-- accepter en combat : refuse
+COMBAT = true
+accept()
+assert(said("combat") and text() == "" and #db.personal == 2)
+COMBAT = false
+accept() -- la proposition a ete consommee : un second clic ne fait rien
+assert(text() == "")
+-- limite par expediteur : pas de nouvelle proposition avant 30 s
+deliver("Autre|cffff0000-Royaume", "Encore", "/cast A", "9")
+assert(#POPUPS == asked, "expediteur non limite")
+NOW = NOW + 31
+deliver("Autre-Royaume", "Ouverte", body, "10")
+assert(#POPUPS == asked + 1)
+SlashCmdList.BLOCKFORGE("") -- fenetre fermee : « Ouvrir » la rouvre sur l'editeur
+assert(not BlockForgeFrame:IsShown())
+accept("OnAccept")
+assert(BlockForgeFrame:IsShown() and tabs.editor.line:IsShown() and text() == ns.trim(body) and nameBox._text == "Ouverte", "macro recue non ouverte")
+assert(#CALLS == callsBefore and #db.personal == 2, "macro recue enregistree toute seule")
+-- « Ma bibliotheque » : rangee dans les modeles, avec l'expediteur en note
+NOW = NOW + 31
+deliver("Autre-Royaume", "Rangee", "/cast B", "11")
+accept("OnAlt")
+assert(#db.personal == 3 and db.personal[3].name == "Rangee" and db.personal[3].body == "/cast B" and db.personal[3].note == "Reçue de Autre-Royaume")
+-- refuser : rien, et la proposition suivante peut arriver
+NOW = NOW + 31
+deliver("Autre-Royaume", "Non", "/cast C", "12")
+accept("OnCancel")
+NOW = NOW + 31
+deliver("Autre-Royaume", "Suite", "/cast D", "13")
+assert(#POPUPS == asked + 4 and #db.personal == 3 and #CALLS == callsBefore)
+accept("OnCancel")
+
+-- H. /bf test : lignes du lot 2
+GetLocale = function() return "frFR" end
+SlashCmdList.BLOCKFORGE("test")
+GetLocale = nil
+local report = table.concat(db.selftest.lines, "\n")
+assert(report:find("OK share round trip: ", 1, true) and report:find("OK tutorial: " .. #steps .. " steps, anchors missing: ", 1, true), report)
+assert(report:find("INFO lot 2: sharing on (accept true), text editor on, undo keys on, personal macros 3, tutorial seen true", 1, true), report)
+assert(report:find("INFO optional api present: C_ChatInfo.SendAddonMessage", 1, true) and report:find("INFO optional api absent: canaccessvalue", 1, true), report)
+for _, x in ipairs(ALL) do
+  if x._scripts.OnEnter then x._scripts.OnEnter(x) end
+end
+`, "=lot2");
+
+// ---------------------------------------------------------------- 7. modeles abimes dans BlockForgeDB, client sans canal d'add-on ni clavier
+boot(`{ tutorialSeen = true, acceptShared = "oui", personal = { 5, { name = 1, body = "/cast A" }, { name = "Garde", body = "/cast A", note = 3, icon = {} }, { name = "Sans corps" } } }`,
+  `C_ChatInfo = nil  IsControlKeyDown = nil  GetTime = nil  UnitName = nil`);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+assert(#db.personal == 1 and db.personal[1].name == "Garde" and db.personal[1].note == nil and db.personal[1].icon == nil and db.acceptShared == true, "modeles non nettoyes")
+SlashCmdList.BLOCKFORGE("")
+assert(ns.Tutorial.step == nil, "visite relancee alors qu'elle a deja ete vue")
+assert(not ns.CanShare() and ns.ed.keys == nil)
+assert(not find(function(w) return (w._text == "Envoyer à…") or (w.text and w.text._text == "Envoyer à…") end), "bouton d'envoi visible sans canal d'add-on")
+assert(byText("Ajouter à ma bibliothèque") and byText("Annuler") and byText("Éditer le texte"))
+fireEvent("CHAT_MSG_ADDON", "BlockForge", "1:1:1:" .. ns.Export("X", "/cast A"), "WHISPER", "Autre") -- personne n'ecoute
+assert(#POPUPS == 0)
+assert(ns.SendMacro("X", "/cast A", "Ami") == nil)
+GetLocale = function() return "frFR" end
+SlashCmdList.BLOCKFORGE("test")
+GetLocale = nil
+local report = table.concat(db.selftest.lines, "\n")
+assert(report:find("INFO lot 2: sharing absent (accept true), text editor on, undo keys absent, personal macros 1", 1, true), report)
+assert(report:find("INFO optional api absent: C_ChatInfo.SendAddonMessage", 1, true))
+-- sans champ de saisie sur plusieurs lignes : pas de bascule, l'apercu reste
+`, "=sans canal");
+boot("nil", `ABSENT = { SetMultiLine = true, SetPropagateKeyboardInput = true }`);
+run(String.raw`
+SlashCmdList.BLOCKFORGE("")
+assert(not find(function(w) return w.text and w.text._text == "Éditer le texte" end), "bascule du texte libre sans champ multi-ligne")
+assert(NS.ed.w.preview:IsShown() and NS.ed.Commit == nil)
+assert(NS.ed.keys == nil, "clavier arme sans SetPropagateKeyboardInput : les touches du joueur seraient avalees")
+fire(byText("Annuler"), "OnClick")
+`, "=sans multiligne");
+
+console.log("test_ui.js : OK (8 scenarios)");

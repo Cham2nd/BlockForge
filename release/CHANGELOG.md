@@ -1,5 +1,12 @@
 # BlockForge 0.8.0
 
+- Annuler / Rétablir : chaque modification des blocs s'annule et se rétablit (boutons en bas de la zone, ou Ctrl+Z / Ctrl+Y), jusqu'à 50 étapes.
+- Édition du texte : « Éditer le texte » transforme l'aperçu en champ de saisie ; tapez ou collez la macro, les blocs suivent, et une ligne inconnue de l'éditeur est gardée telle quelle.
+- Dupliquer : le bouton « x2 » d'une ligne copie le bloc juste en dessous.
+- Bibliothèque personnelle : « Plus… » puis « Ajouter à ma bibliothèque » garde une macro dans « Mes modèles » (onglet Bibliothèque), pour tous vos personnages ; recherche, renommage, note, export et import.
+- Envoi à un joueur : « Envoyer à… » (éditeur et « Mes macros ») envoie une macro à un autre joueur qui a BlockForge ; il doit l'accepter, rien n'est enregistré chez lui sans son accord, et la réception se coupe dans les Paramètres.
+- Tutoriel : une visite guidée en 10 étapes à la première ouverture de la fenêtre ; `/bf tuto` ou le bouton « Revoir le tutoriel » des Paramètres la relance.
+- Traductions : tous les textes de l'interface et les descriptions de la bibliothèque ont été relus, en français comme en anglais.
 - Nouveau look : barre de titre épurée avec le numéro de version, onglet actif bien visible, boutons plats, surbrillance au survol de tout ce qui se clique.
 - Couleur d'accent : celle de votre classe par défaut, ou l'or d'origine (onglet Paramètres), appliquée tout de suite.
 - Éditeur : blocs plus lisibles (icône plus grande, bloc choisi et repère de dépôt plus nets), et une zone vide qui explique par où commencer.

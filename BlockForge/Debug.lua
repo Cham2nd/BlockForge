@@ -68,7 +68,11 @@ local APIS = {
 }
 
 -- facultatives : l'add-on a un repli pour chacune, leur absence n'est pas un echec
-local OPTIONAL = { "RAID_CLASS_COLORS", "GetMacroIcons", "GetPetActionInfo", "C_SpellBook.GetNumSpellBookSkillLines" }
+local OPTIONAL = { "RAID_CLASS_COLORS", "GetMacroIcons", "GetPetActionInfo", "C_SpellBook.GetNumSpellBookSkillLines",
+  -- cycle 3, lot 2 : envoi a un joueur, cible pre-remplie, Ctrl+Z / Ctrl+Y
+  "C_ChatInfo.RegisterAddonMessagePrefix", "C_ChatInfo.SendAddonMessage", "GetTime", "UnitName", "GetNormalizedRealmName",
+  "UnitExists", "UnitIsPlayer", "UnitIsFriend", "UnitIsUnit", "GetUnitName", "IsControlKeyDown", "GetCurrentKeyBoardFocus",
+  "canaccessvalue" }
 
 local function Lookup(path)
   local v = _G
@@ -149,6 +153,26 @@ local CHECKS = {
     local a = ns.Theme.accent
     out[#out + 1] = ("INFO look: accent %s = %.2f %.2f %.2f, opening fade %s, icon choices %d"):format(
       tostring(ns.db.accent), a[1], a[2], a[3], ns.fade and "on" or "absent", #ns.IconChoices())
+  end },
+  { "lot 2", function(out)
+    -- aller-retour de l'envoi : la plus longue macro de la bibliotheque, coupee puis recollee dans le desordre
+    local longest = ns.Library[1]
+    for _, e in ipairs(ns.Library) do
+      if #e.body > #longest.body then longest = e end
+    end
+    local payload = ns.Export(longest.name, longest.body)
+    local chunks, box, got = ns.Chunks(payload, "1"), ns.NewInbox(), nil
+    for i = #chunks, 1, -1 do got = box:Receive("selftest", chunks[i], 0) or got end
+    out[#out + 1] = (got == payload and "OK" or "FAIL") .. (" share round trip: %d bytes in %d messages"):format(#payload, #chunks)
+    local missing = {}
+    for i, step in ipairs(ns.TutorialSteps) do
+      if not step.anchor() then missing[#missing + 1] = tostring(i) end
+    end
+    out[#out + 1] = (#missing == 0 and "OK" or "FAIL") .. (" tutorial: %d steps, anchors missing: %s"):format(#ns.TutorialSteps, First(missing, 20))
+    local w = ns.ed.w
+    out[#out + 1] = ("INFO lot 2: sharing %s (accept %s), text editor %s, undo keys %s, personal macros %d, tutorial seen %s"):format(
+      ns.CanShare() and "on" or "absent", tostring(ns.db.acceptShared), w.textToggle and "on" or "absent",
+      ns.ed.keys and "on" or "absent", #ns.db.personal, tostring(ns.db.tutorialSeen))
   end },
 }
 

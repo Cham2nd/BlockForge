@@ -28,8 +28,12 @@ local preview, counter, counterBar, warnText, fixButton
 -- icone de la macro : icon = choix du joueur (nil = automatique), touched = choisie depuis le chargement,
 -- Sync() repeint le bouton d'action, picker = grille de choix. Une table : un seul upvalue pour les grosses fonctions.
 local view = {}
+ns.ed = view -- l'editeur vu des autres fichiers (Tools, Personal, Share, Tutorial)
+view.w = {}  -- reperes : widgets vises par les outils et le tutoriel
+view.history = ns.NewHistory(50)
 
 local function Msg(text) print(L["|cff66ccffBlockForge|r : %s"]:format(text)) end
+ns.Msg = Msg
 
 ---------------------------------------------------------------------------
 -- Petits constructeurs
@@ -55,7 +59,7 @@ local function Panel(parent, w, h, title)
     local t = T.AccentText(f:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
     t:SetPoint("LEFT", band, "LEFT", 7, 0)
     t:SetText(title)
-    f.band = band
+    f.band, f.title = band, t
   end
   return f
 end
@@ -135,11 +139,18 @@ local function Button(parent, text, w, onClick)
   return b
 end
 
-local function Edit(parent, w, onChange)
+-- typing : nom du champ pour l'historique (frappes successives = une etape), nil pour un champ hors editeur
+local function Edit(parent, w, onChange, typing)
   local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
   e:SetSize(w, 20)
   e:SetAutoFocus(false)
-  e:SetScript("OnTextChanged", function(self, user) if user then onChange(self:GetText()) end end)
+  e:SetScript("OnTextChanged", function(self, user)
+    if not user then return end
+    view.typing = typing
+    onChange(self:GetText())
+    view.typing = nil
+  end)
+  e:SetScript("OnEditFocusLost", function() view.history.tag = nil end)
   e:SetScript("OnEnterPressed", e.ClearFocus)
   e:SetScript("OnEscapePressed", e.ClearFocus)
   return e
@@ -178,7 +189,7 @@ local function TabOrder(boxes)
 end
 
 -- partages avec Settings.lua
-ns.ui = { Panel = Panel, Label = Label, Button = Button, Tip = Tip, IconButton = IconButton }
+ns.ui = { Panel = Panel, Label = Label, Button = Button, Tip = Tip, IconButton = IconButton, Chip = Chip, Tint = Tint, Edit = Edit }
 
 -- police du code : le client n'a pas de police a chasse fixe, ARIALN (etroite) est la plus lisible
 local codeFont = CreateFont("BlockForgeCodeFont")
@@ -504,6 +515,8 @@ end
 
 -- icon : celle d'une macro du jeu (nil pour un modele, la bibliotheque, un import)
 local function LoadText(name, body, icon)
+  argBox:ClearFocus() -- sinon le champ garderait le texte de l'ancien bloc
+  resetBox:ClearFocus()
   blocks = ns.Parse(body or "")
   view.icon, view.touched = CustomIcon(icon), false
   nameBox:SetText(name or "")
@@ -511,6 +524,8 @@ local function LoadText(name, body, icon)
   Refresh()
   return true
 end
+
+view.Load = LoadText
 
 -- le nom tape est garde : un modele est un point de depart, pas une macro du jeu
 local function LoadTemplate(tpl) LoadText(nameBox:GetText(), tpl.body) end
@@ -648,17 +663,47 @@ function Refresh()
   fixButton.fix = fix
   fixButton:SetShown(fix ~= nil)
   if fix then fixButton.text:SetText(L["Remplacer par « %s »"]:format(fix[2])) end
-  local len = #text
   preview:SetText(text ~= "" and (simOn and SimulatedText() or ns.Colorize(text, T.code))
     or "|cff777777" .. L["(la macro compilée s'affiche ici)"] .. "|r")
   view.Sync()
+  view.Count(#text)
+  warnText:SetText(table.concat(warnings, "\n"))
+  -- view.typing : pose par un champ pendant sa frappe, qui ne fait qu'une etape d'historique
+  view.history:Record(blocks, view.typing)
+  if view.OnRefresh then view.OnRefresh(text) end
+end
+
+-- compteur et jauge ; appele aussi pendant la frappe dans le texte libre (Tools.lua)
+function view.Count(len)
   local ratio = math.min(1, len / ns.MAX_CHARS)
   local r, g = len > ns.MAX_CHARS and 1 or (ratio > 0.85 and 1 or 0.3), len > ns.MAX_CHARS and 0.25 or (ratio > 0.85 and 0.7 or 0.9)
   counter:SetText(("%d / %d"):format(len, ns.MAX_CHARS))
   counter:SetTextColor(r, g, 0.3)
   counterBar:SetWidth(math.max(1, counterBar.max * ratio))
   counterBar:SetColorTexture(r, g, 0.3, 0.9)
-  warnText:SetText(table.concat(warnings, "\n"))
+end
+
+function view.Blocks() return blocks end
+function view.Name() return ns.trim(nameBox:GetText()) end
+
+-- remplace la liste de blocs (texte libre, annuler / retablir) ; le bloc choisi reste celui de meme rang
+function view.SetBlocks(list)
+  local at
+  for i, b in ipairs(blocks) do
+    if b == selected then at = i end
+  end
+  blocks = list
+  selected, activeClause = at and blocks[at] or nil, 1
+  Refresh()
+end
+
+function view.Step(redo)
+  if view.Commit then view.Commit() end -- texte libre en cours de frappe : pris en compte d'abord
+  argBox:ClearFocus()
+  resetBox:ClearFocus()
+  local state
+  if redo then state = view.history:Redo() else state = view.history:Undo() end
+  if state then view.SetBlocks(state) end
 end
 
 -- Bas de l'editeur, hors de BuildEditor : Lua 5.1 (le jeu) refuse plus de 60 upvalues par fonction
@@ -767,11 +812,14 @@ local function BuildBottom(parent, palette)
   save:SetPoint("TOPLEFT", 450, -58)
   T.Watch(function() Tint(save, T.accent, 0.9) end) -- l'action principale ressort des autres boutons
   Tip(save, function() return L["Créer / mettre à jour"], L["Hors combat seulement."] end)
-  local load = Button(bottom, L["Charger ce nom"], 120, LoadExisting)
+  -- creer de 450 a 600, charger de 606 a 710, effacer de 714 a 810, « Plus… » de 814 a 876 (Tools.lua)
+  local load = Button(bottom, L["Charger ce nom"], 104, LoadExisting)
   load:SetPoint("LEFT", save, "RIGHT", 6, 0)
   Tip(load, function() return L["Charger ce nom"], L["Ouvre dans l'éditeur la macro du jeu qui porte ce nom."] end)
-  local reset = Button(bottom, L["Tout effacer"], 110, function() LoadText("", "") ns.ApplyPerCharDefault() end)
-  reset:SetPoint("LEFT", load, "RIGHT", 6, 0)
+  local reset = Button(bottom, L["Tout effacer"], 96, function() LoadText("", "") ns.ApplyPerCharDefault() end)
+  reset:SetPoint("LEFT", load, "RIGHT", 4, 0)
+  local w = view.w
+  w.bottom, w.preview, w.action, w.save, w.reset = bottom, preview, action, save, reset
   warnText = Label(bottom, "", 452, -86, "GameFontRedSmall")
   warnText:SetWidth(420)
   -- sort mal ecrit : un clic met le nom du grimoire a la place
@@ -843,13 +891,22 @@ local function BuildRow(i)
     if drag or not blocks[editOffset + i] then return end
     return row.full, L["Clic : régler. Glisser : déplacer."]
   end)
-  local del = Button(row, "x", 22, function()
+  local del = Button(row, "x", 20, function()
     if selected == blocks[editOffset + i] then selected = nil end
     table.remove(blocks, editOffset + i)
     Refresh()
   end)
-  del:SetPoint("LEFT", row, "RIGHT", 2, 0)
+  -- ligne de 8 a 368, dupliquer de 370 a 390, supprimer de 392 a 412 (panneau : 416, bord a 413)
+  del:SetPoint("LEFT", row, "RIGHT", 24, 0)
   Tip(del, function() return L["Supprimer ce bloc"] end)
+  local dup = Button(row, "x2", 20, function()
+    local at = editOffset + i
+    local copy = ns.CloneBlocks({ blocks[at] })[1]
+    table.insert(blocks, at + 1, copy)
+    Select(copy)
+  end)
+  dup:SetPoint("LEFT", row, "RIGHT", 2, 0)
+  Tip(dup, function() return L["Dupliquer ce bloc"], L["Ajoute une copie juste en dessous."] end)
   return row
 end
 
@@ -900,6 +957,7 @@ local function BuildTemplates()
     tplList:SetShown(not tplList:IsShown())
   end)
   tplButton:SetPoint("BOTTOMLEFT", 8, 8)
+  view.w.templates = tplButton
   Tip(tplButton, function() return L["Modèles"], L["Point de départ guidé : choisis un modèle, puis glisse tes sorts sur les blocs marqués « (argument ?) »."] end)
   tplList:SetPoint("BOTTOMLEFT", tplButton, "TOPLEFT", 0, 2)
   tplList:SetFrameStrata("DIALOG")
@@ -924,7 +982,7 @@ local function BuildCanvasMarks()
   icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
   icon:SetAlpha(0.7)
   T.AccentText(Label(hint, L["Ta macro est vide"], 56, -12, "GameFontNormal"))
-  local steps = Label(hint, L["Clique un bloc à gauche pour l'ajouter.\nGlisse ici un sort du grimoire ou un objet des sacs.\nOu pars d'un modèle : bouton « Modèles » en bas."],
+  local steps = Label(hint, L["Clique sur un bloc à gauche pour l'ajouter.\nGlisse ici un sort du grimoire ou un objet des sacs.\nOu pars d'un modèle : bouton « Modèles » en bas."],
     56, -32, "GameFontHighlightSmall")
   steps:SetWidth(294) -- de 56 a 350 dans un encadre de 360
   canvas.hint = hint
@@ -947,10 +1005,11 @@ end
 ---------------------------------------------------------------------------
 local function BuildEditor(parent)
   -- Palette
-  local palette = Panel(parent, 176, 430, L["Blocs"])
+  -- trois colonnes : blocs 160, zone 416 (lignes de 360 + deux boutons), reglages 296 ; 160 + 6 + 416 + 6 + 296 = 884
+  local palette = Panel(parent, 160, 430, L["Blocs"])
   palette:SetPoint("TOPLEFT", 0, 0)
   for i, def in ipairs(ns.BlockDefs) do
-    local chip = Chip(palette, 160, 18)
+    local chip = Chip(palette, 144, 18)
     chip:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 19) -- 21 blocs : le dernier finit a -426 (panneau : 430)
     chip.text:SetPoint("LEFT", 10, 0)
     chip.text:SetText(def.label)
@@ -967,7 +1026,7 @@ local function BuildEditor(parent)
   end
 
   -- Zone de construction
-  canvas = Panel(parent, 400, 430, L["Ta macro — glisse les blocs ici, ou clique dessus"])
+  canvas = Panel(parent, 416, 430, L["Ta macro — glisse les blocs ici, ou clique dessus"])
   canvas:SetPoint("TOPLEFT", palette, "TOPRIGHT", 6, 0)
   canvas:EnableMouse(true)
   local function CanvasDrop()
@@ -996,7 +1055,7 @@ local function BuildEditor(parent)
   -- Reglages du bloc selectionne
   local insp = Panel(parent, 296, 430, L["Réglages du bloc"])
   insp:SetPoint("TOPLEFT", canvas, "TOPRIGHT", 6, 0)
-  inspHint = Label(insp, L["Clique un bloc de ta macro\npour le régler."], 10, -34, "GameFontDisableSmall")
+  inspHint = Label(insp, L["Clique sur un bloc de ta macro\npour le régler."], 10, -34, "GameFontDisableSmall")
   inspBody = CreateFrame("Frame", nil, insp)
   inspBody:SetAllPoints()
   inspTitle = Label(inspBody, "", 10, -28, "GameFontHighlight")
@@ -1038,7 +1097,7 @@ local function BuildEditor(parent)
   argBox = Edit(inspBody, 268, function(text)
     EditedArgHolder().arg = text
     Refresh()
-  end)
+  end, "arg")
   argBox:SetPoint("TOPLEFT", 14, -86)
   local function ArgDrop()
     local name = CursorPayload()
@@ -1055,7 +1114,7 @@ local function BuildEditor(parent)
   resetBox = Edit(inspBody, 56, function(text)
     selected.reset = ns.trim(text)
     Refresh()
-  end)
+  end, "reset")
   resetBox:SetPoint("TOPLEFT", 14, -108)
 
   -- Conditions. Les y sont comptes depuis le haut du panneau (box est a -44, d'ou le +44).
@@ -1107,13 +1166,17 @@ local function BuildEditor(parent)
   TabOrder({ argBox, resetBox, custom })
 
   BuildBottom(parent, palette)
+  local w = view.w
+  w.page, w.palette, w.canvas, w.insp = parent, palette, canvas, insp
+  if ns.BuildEditorTools then ns.BuildEditorTools() end
 end
 
 ---------------------------------------------------------------------------
 -- Bibliotheque
 ---------------------------------------------------------------------------
 local FAV = "FAVORITES" -- pseudo-classe : jamais memorisee comme derniere classe
-local CLASS_ORDER = { FAV, "ALL", "WARLOCK", "HUNTER", "ROGUE", "MAGE", "PRIEST", "DRUID", "WARRIOR", "PALADIN", "SHAMAN" }
+local PERSONAL = "PERSONAL" -- pseudo-classe : les modeles du joueur (BlockForgeDB.personal, Personal.lua)
+local CLASS_ORDER = { FAV, PERSONAL, "ALL", "WARLOCK", "HUNTER", "ROGUE", "MAGE", "PRIEST", "DRUID", "WARRIOR", "PALADIN", "SHAMAN" }
 local CATEGORY_LABEL = { Pet = L["Familier"], Utility = L["Utilitaire"] }
 
 -- noms traduits des techniques de familier, pour l'avertissement monture de ns.Diagnose
@@ -1131,7 +1194,7 @@ local GetItemName = C_Item and C_Item.GetItemNameByID
 
 -- la bibliotheque est ecrite en anglais : traduite a la demande, et seulement si le reglage le veut
 local function LibraryBody(entry)
-  if not ns.db.localizeLibrary then return entry.body end
+  if entry.personal or not ns.db.localizeLibrary then return entry.body end -- un modele du joueur est deja dans sa langue
   if not entry.localized then
     entry.localized = ns.Localize(entry.body, (C_Spell and C_Spell.GetSpellName) or GetSpellInfo, RANK, GetItemName)
   end
@@ -1153,7 +1216,7 @@ local GetSpellName = (C_Spell and C_Spell.GetSpellName) or GetSpellInfo
 function ns.LibraryUnknown(entry)
   if not entry.unknown then
     -- noms dans la langue du client, meme si l'affichage traduit est coupe
-    entry.unknown = UnknownSpells(ns.Parse(ns.Localize(entry.body, GetSpellName, RANK)))
+    entry.unknown = UnknownSpells(ns.Parse(entry.personal and entry.body or ns.Localize(entry.body, GetSpellName, RANK)))
   end
   return entry.unknown
 end
@@ -1189,6 +1252,7 @@ usableEvents:RegisterEvent("SPELLS_CHANGED")
 usableEvents:RegisterEvent("PLAYER_REGEN_ENABLED") -- en combat, UnknownSpells ne verifie rien
 usableEvents:SetScript("OnEvent", function()
   spellBook = nil
+  ns.personalCache = nil
   for _, entry in ipairs(ns.Library or {}) do entry.unknown = nil end
 end)
 
@@ -1213,7 +1277,7 @@ local function BuildLibrary(parent, showEditor)
   local current
   local open = Button(detail, L["Ouvrir dans l'éditeur"], 180, function()
     if not current then return end
-    LoadText(current.name, LibraryBody(current))
+    LoadText(current.name, LibraryBody(current), current.icon)
     showEditor()
   end)
   open:SetPoint("BOTTOMLEFT", 10, 10)
@@ -1221,7 +1285,7 @@ local function BuildLibrary(parent, showEditor)
   local function FavKey(entry) return entry.class .. "/" .. entry.name end
   local ShowClass
   local favButton = Button(detail, L["Ajouter aux favoris"], 180, function()
-    if not current then return end
+    if not current or current.personal then return end
     local key = FavKey(current)
     ns.db.favorites[key] = not ns.db.favorites[key] or nil
     ShowClass(nil, true)
@@ -1235,7 +1299,12 @@ local function BuildLibrary(parent, showEditor)
   local range = listPanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   range:SetPoint("RIGHT", listPanel.band, "RIGHT", -6, 0)
 
+  local personalUI = ns.BuildPersonal and ns.BuildPersonal(detail)
   local function ShowDetail()
+    if personalUI then
+      personalUI.Sync(currentClass == PERSONAL, current)
+      favButton:SetShown(currentClass ~= PERSONAL)
+    end
     if not current then return end
     title:SetText(current.name)
     desc:SetText(LibraryDesc(current) or "")
@@ -1251,7 +1320,8 @@ local function BuildLibrary(parent, showEditor)
       local entry = shown[offset + i]
       row:SetShown(entry ~= nil)
       if entry then
-        row.text:SetText((ns.db.favorites[FavKey(entry)] and "|A:PetJournal-FavoritesIcon:12:12|a" or "")
+        row.text:SetText(entry.personal and entry.name
+          or (ns.db.favorites[FavKey(entry)] and "|A:PetJournal-FavoritesIcon:12:12|a" or "")
           .. ("[%s] %s"):format(CATEGORY_LABEL[entry.category] or entry.category or "?", entry.name))
         local c = entry.usable and 1 or 0.5 -- grise : un sort de la macro n'est pas connu du personnage
         row.text:SetTextColor(c, c, c)
@@ -1333,8 +1403,24 @@ local function BuildLibrary(parent, showEditor)
     shown = {}
     if not keepOffset then offset = 0 end
     if currentClass ~= FAV then ns.db.lastClass = currentClass end
-    for _, entry in ipairs(ns.Library or {}) do
-      local inList = currentClass == FAV and ns.db.favorites[FavKey(entry)] or entry.class == currentClass
+    local personal = currentClass == PERSONAL and ns.PersonalEntries and ns.PersonalEntries() or nil
+    -- modele renomme ou supprime : les lignes sont refaites, la selection suit le modele lui-meme
+    if current and current.personal then
+      local kept = current.personal
+      current = nil
+      for _, entry in ipairs(ns.PersonalEntries()) do
+        if entry.personal == kept then current = entry end
+      end
+      if not current then
+        title:SetText("")
+        desc:SetText(L["Choisis une macro dans la liste."])
+        body:SetText("")
+        source:SetText("")
+        open:Disable()
+      end
+    end
+    for _, entry in ipairs(personal or ns.Library or {}) do
+      local inList = personal or currentClass == FAV and ns.db.favorites[FavKey(entry)] or entry.class == currentClass
       if inList and Matches(entry) then
         entry.usable = #ns.LibraryUnknown(entry) == 0
         if entry.usable or not ns.db.onlyKnown then shown[#shown + 1] = entry end
@@ -1342,6 +1428,7 @@ local function BuildLibrary(parent, showEditor)
     end
     empty:SetText((category or (query and query ~= "")) and L["Aucune macro ne correspond."]
       or currentClass == FAV and L["Aucun favori : ajoute-en depuis le détail d'une macro."]
+      or currentClass == PERSONAL and L["Aucun modèle : dans l'éditeur, « Plus… » puis « Ajouter à ma bibliothèque »."]
       or L["Aucune macro pour cette classe."])
     Render()
     ShowDetail()
@@ -1352,6 +1439,7 @@ local function BuildLibrary(parent, showEditor)
     local chip = Chip(classPanel, 160, 22)
     chip:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 24)
     chip.text:SetText(token == FAV and ("|A:PetJournal-FavoritesIcon:12:12|a" .. L["Favoris"])
+      or token == PERSONAL and L["Mes modèles"]
       or token == "ALL" and L["Toutes classes"]
       or (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[token]) or token)
     chip:SetScript("OnClick", function() ShowClass(token) end)
@@ -1375,6 +1463,10 @@ local function BuildLibrary(parent, showEditor)
   if not (start and classChips[start]) then start = classChips[playerClass] and playerClass or "ALL" end
   ShowClass(start)
   ns.RefreshLibrary = function() ShowDetail() Render() end
+  -- pour Personal.lua : refait la liste apres un ajout, un renommage ou une suppression
+  ns.ReloadLibrary = function() ShowClass(nil, true) end
+  local w = view.w
+  w.library, w.libraryList, w.libraryClasses = parent, listPanel, classPanel
   T.OnChange(function() PaintChips() Render() end)
 
   -- objets hors cache : demandes une seule fois ; a leur arrivee, les macros qui les citent sont retraduites
@@ -1578,7 +1670,17 @@ local function BuildMacros(parent, showEditor)
   end)
   import:SetPoint("LEFT", export, "RIGHT", 6, 0)
   Tip(import, function() return L["Importer"], L["Colle (Ctrl+V) dans le champ un texte « BF1:... », puis clique : la macro s'ouvre dans l'éditeur, sans être enregistrée."] end)
-  for _, b in ipairs({ open, bind, export }) do b:Disable() end
+  -- exporter de 10 a 130, importer de 136 a 256, envoyer de 262 a 382 (panneau : 396)
+  local actions = { open, bind, export }
+  if ns.CanShare and ns.CanShare() then
+    local send = Button(detail, L["Envoyer à…"], 120, function()
+      if current then ns.SendPrompt(current.name, current.body) end
+    end)
+    send:SetPoint("LEFT", import, "RIGHT", 6, 0)
+    Tip(send, function() return L["Envoyer à…"], L["Envoie cette macro à un autre joueur qui a BlockForge. Il choisit de l'ouvrir ou non ; rien n'est enregistré chez lui sans son accord."] end)
+    actions[#actions + 1] = send
+  end
+  for _, b in ipairs(actions) do b:Disable() end
 
   local function Render()
     offset = math.max(0, math.min(offset, #macros - MAX_MACRO_ROWS))
@@ -1613,7 +1715,7 @@ local function BuildMacros(parent, showEditor)
     row:SetScript("OnClick", function()
       if capturing then StopCapture() end
       current = macros[offset + i]
-      for _, b in ipairs({ open, bind, export }) do b:Enable() end
+      for _, b in ipairs(actions) do b:Enable() end
       ShowDetail()
       Render()
     end)
@@ -1711,7 +1813,7 @@ local function BuildMacros(parent, showEditor)
       title:SetText(L["Choisis une macro dans la liste."])
       info:SetText("")
       body:SetText("")
-      for _, b in ipairs({ open, bind, export }) do b:Disable() end
+      for _, b in ipairs(actions) do b:Disable() end
     elseif not capturing then
       ShowDetail()
     end
@@ -1732,6 +1834,8 @@ local function BuildMacros(parent, showEditor)
   end)
   RefreshMacros()
   T.OnChange(function() Render() RenderSets() end)
+  local w = view.w
+  w.macros, w.macroDetail = parent, detail
 end
 
 ---------------------------------------------------------------------------
@@ -1839,6 +1943,8 @@ local function Build()
   -- Onglets de 124 x 22 de -33 a -55 (pages a -58) ; l'actif est teinte et souligne a la couleur d'accent
   local tabs, shownTab = {}, "editor"
   function ShowTab(which)
+    -- le joueur change d'onglet pendant la visite guidee : elle s'arrete
+    if which and ns.Tutorial and ns.Tutorial.OnTab then ns.Tutorial.OnTab(which) end
     shownTab = which or shownTab
     for key, page in pairs(pages) do
       local on = key == shownTab
@@ -1871,8 +1977,14 @@ local function Build()
     local settingsPanel = Panel(settingsTab, 884, 566, L["Paramètres"])
     settingsPanel:SetPoint("TOPLEFT")
     ns.BuildSettingsPage(settingsPanel)
+    view.w.settings = settingsPanel
   end)
   ShowTab("editor")
+  view.w.main, view.ShowTab = main, ShowTab
+  main:HookScript("OnHide", function()
+    if ns.Tutorial then ns.Tutorial.Stop() end
+    if ns.prompt then ns.prompt:Hide() end
+  end)
   ns.ApplyWindow()
   if not buildErrors.editor then
     Refresh()
@@ -1890,8 +2002,16 @@ function ns.TabErrors()
 end
 
 function ns.Toggle()
-  if not main then Build() return end
-  main:SetShown(not main:IsShown())
+  if not main then Build() else main:SetShown(not main:IsShown()) end
+  -- premiere ouverture : visite guidee (une seule fois ; pas en combat, elle attendra la prochaine ouverture)
+  if main:IsShown() and ns.Tutorial and not ns.db.tutorialSeen and not InCombatLockdown() then ns.Tutorial.Start() end
+end
+
+-- ouvre la fenetre sur un onglet (visite guidee, macro recue)
+function ns.Open(tab)
+  if not main then Build() end
+  main:Show()
+  if tab then ShowTab(tab) end
 end
 
 function ns.OpenSettings()
@@ -1906,5 +2026,6 @@ SlashCmdList.BLOCKFORGE = function(msg)
   msg = ns.trim((msg or ""):lower())
   if msg == "options" or msg == "config" or msg == "param" then return ns.OpenSettings() end
   if msg == "test" then return ns.SelfTest() end
+  if msg == "tuto" or msg == "tutorial" or msg == "help" then return ns.Tutorial.Start(true) end
   ns.Toggle()
 end

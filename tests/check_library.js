@@ -31,7 +31,7 @@ if (csv) {
   run(names + "}");
 }
 
-run(`
+run(String.raw`
 local ns, errors, seen = NS, {}, {}
 local CATEGORY = { PvE = true, PvP = true, Pet = true, Utility = true }
 local function err(entry, text) errors[#errors + 1] = entry.class .. " / " .. entry.name .. " : " .. text end
@@ -42,7 +42,14 @@ for _, m in ipairs(ns.Library) do
   if #m.name > 16 then err(m, "nom de plus de 16 caracteres") end
   if #m.body > 255 then err(m, "macro de plus de 255 caracteres") end
   if not CATEGORY[m.category] then err(m, "categorie inconnue") end
-  if (m.desc or "") == "" or (m.descEN or "") == "" then err(m, "description manquante") end
+  if (m.desc or "") == "" then err(m, "description francaise (desc) manquante") end
+  if (m.descEN or "") == "" then err(m, "description anglaise (descEN) manquante") end
+  -- descEN restee en francais (lettre accentuee, octet de tete 195) ; desc qui vouvoie ; nom de macro hors ASCII
+  if (m.descEN or ""):find("\195") then err(m, "descEN contient une lettre accentuee") end
+  if m.descEN == m.desc then err(m, "descEN identique a desc") end
+  local words = " " .. (m.desc or ""):lower():gsub("[^%a\128-\255]", " ") .. " "
+  if words:find(" vous ") or words:find(" votre ") or words:find(" vos ") then err(m, "desc vouvoie le joueur") end
+  if m.name:find("[^\32-\126]") then err(m, "nom hors ASCII") end
   for _, spell in ipairs(ns.SpellsOf(ns.Parse(m.body))) do
     local id = ns.SpellIDs[spell]
     if not id and not (ns.ItemIDs and ns.ItemIDs[spell]) then

@@ -12,18 +12,26 @@ For WoW Forever. Interface in English and French, following the game client lang
 - **Macro library.** 274 macros for the 9 classes, sorted by PvE, PvP, pet and utility. Open one in the editor, change it, save it.
 - **Client language.** Spell and item names in the library are translated to your game language.
 - **Templates.** Five starting points for pet and PvP macros (pet attack + spell, pet modes on modifier keys, interrupt on focus, crowd control on mouseover, trinket then spell), plus one per ability of your current pet. Drop a spell on the empty slot.
-- **Knows your character.** Warns about a spell your character does not know or a misspelled name, and offers the closest spellbook name in one click; the library greys out or hides macros you cannot use yet.
+- **Knows your character.** Warns about a spell your character does not know or a misspelled name, and offers the closest spellbook name in one click; the library grays out or hides macros you cannot use yet.
 - **Simulator.** Shows which line of the macro would fire for a given modifier key, target, mouseover and focus.
 - **My macros.** Lists your game macros, opens them as blocks, binds a key to a macro, exports and imports a macro as a text string, and saves and restores whole sets of macros.
 - **Library search.** Search box, category filter and favorites.
-- **Coloured preview.** Commands, conditions, targets and arguments each get their own colour in the macro text.
+- **Colored preview.** Commands, conditions, targets and arguments each get their own color in the macro text.
 - **Macro icon.** An action-button preview shows the icon and name the macro will have on your bars; click it to pick an icon from your spellbook or the game's macro icons, or leave it on automatic.
-- **Settings.** Window scale, minimap button, per-character macros by default, confirmation before overwrite, accent colour (your class colour or gold).
+- **Undo and redo.** Every change to the blocks can be undone and redone (buttons, or Ctrl+Z / Ctrl+Y), up to 50 steps.
+- **Text editing.** Switch the preview to a text box and type or paste the macro by hand; the blocks follow, and a line the editor does not know is kept as it is.
+- **Duplicate a block.** One click copies a line right below it.
+- **My templates.** Keep your own macros in a personal library shared by all your characters: search, rename, notes, export and import.
+- **Send to a player.** Send a macro in game to another player who has BlockForge. They are asked first, nothing is saved on their side without their consent, and receiving can be turned off in the settings.
+- **Guided tour.** A short tutorial walks through the window the first time you open it; `/bf tuto` replays it.
+- **Settings.** Window scale, minimap button, per-character macros by default, confirmation before overwrite, accent color (your class color or gold).
 
 ## How to use it
 
 - `/bf` or the minimap button opens the window.
 - `/bf options` opens the settings.
+- `/bf tuto` replays the guided tour.
+- `/bf test` runs a self-check of the add-on in game.
 - Save creates a real game macro. Drag it to your action bar.
 
 ## Limits
@@ -65,12 +73,20 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 - **Recherche dans la bibliothèque.** Champ de recherche, filtre par catégorie et favoris.
 - **Aperçu coloré.** Commandes, conditions, cibles et arguments ont chacun leur couleur dans le texte de la macro.
 - **Icône de la macro.** Un bouton d'action montre l'icône et le nom qu'aura la macro sur vos barres ; cliquez dessus pour choisir une icône de votre grimoire ou parmi celles du jeu, ou laissez le choix automatique.
+- **Annuler et rétablir.** Chaque modification des blocs s'annule et se rétablit (boutons, ou Ctrl+Z / Ctrl+Y), jusqu'à 50 étapes.
+- **Édition du texte.** Transformez l'aperçu en champ de saisie et tapez ou collez la macro à la main ; les blocs suivent, et une ligne que l'éditeur ne connaît pas est gardée telle quelle.
+- **Dupliquer un bloc.** Un clic copie une ligne juste en dessous.
+- **Mes modèles.** Gardez vos propres macros dans une bibliothèque personnelle commune à tous vos personnages : recherche, renommage, notes, export et import.
+- **Envoi à un joueur.** Envoyez une macro en jeu à un autre joueur qui a BlockForge. Il doit d'abord l'accepter, rien n'est enregistré chez lui sans son accord, et la réception se coupe dans les paramètres.
+- **Visite guidée.** Un court tutoriel présente la fenêtre à la première ouverture ; `/bf tuto` le relance.
 - **Paramètres.** Échelle de la fenêtre, bouton de minicarte, macros par personnage par défaut, confirmation avant écrasement, couleur d'accent (celle de votre classe ou or).
 
 ## Utilisation
 
 - `/bf` ou le bouton de minicarte ouvre la fenêtre.
 - `/bf options` ouvre les paramètres.
+- `/bf tuto` relance la visite guidée.
+- `/bf test` lance un contrôle de l'add-on dans le jeu.
 - Enregistrer crée une vraie macro du jeu. Glissez-la dans votre barre d'action.
 
 ## Limites
