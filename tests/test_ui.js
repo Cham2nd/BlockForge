@@ -107,6 +107,7 @@ function W:SetSize(w, h) self._w, self._h = w, h end
 function W:SetWidth(w) assert(type(w) == "number", "SetWidth sans nombre") self._w = w end
 function W:SetHeight(h) self._h = h end
 function W:GetWidth() return self._w end
+function W:GetHeight() return self._h end
 function W:GetCenter() return 1000, 600 end
 function W:SetScale(s) assert(type(s) == "number" and s > 0, "SetScale invalide") self._scale = s end
 function W:SetTexture(t) self._tex = t end
@@ -218,7 +219,17 @@ function GetCurrentBindingSet() return 2 end
 function SaveBindings(set) SAVED_BINDINGS = set end
 function IsKeyPressIgnoredForBinding(key) return key == "LSHIFT" or key == "LCTRL" or key == "LALT" end
 function CreateKeyChordStringUsingMetaKeyState(key) return CHORD .. key end
-function date(fmt) assert(fmt == "%Y-%m-%d") return "2026-11-20" end
+function date(fmt)
+  assert(fmt == "%Y-%m-%d" or fmt == "%Y-%m-%d %H:%M:%S", fmt)
+  return fmt == "%Y-%m-%d" and "2026-11-20" or "2026-11-20 12:00:00"
+end
+HANDLED = {}        -- erreurs recues par le gestionnaire du jeu
+local errorHandler = function(msg) HANDLED[#HANDLED + 1] = msg end
+function geterrorhandler() return errorHandler end
+function seterrorhandler(fn) assert(type(fn) == "function") errorHandler = fn end
+function debugstack() return string.rep("x", 3000) end
+function GetBuildInfo() return "1.60.1", "70959", "Nov 1 2026", 16001 end
+C_AddOns = { GetAddOnMetadata = function(addon, field) assert(addon == "BlockForge") return field == "Version" and "0.6.2" or nil end }
 function PickupMacro(x) assert(x ~= nil) CALLS[#CALLS + 1] = { "PickupMacro", x } end
 function print(...) PRINTS[#PRINTS + 1] = table.concat({ ... }, " ") end
 unpack = unpack or table.unpack
@@ -244,6 +255,13 @@ function byText(text, root) -- bouton UIPanelButtonTemplate ou puce (texte dans 
   return w
 end
 function lastLine() return PRINTS[#PRINTS] or "" end
+function libraryList() -- liste de la bibliotheque : lignes marquees, sans colonne d'onglet (Mes macros)
+  for _, w in ipairs(ALL) do
+    if w._scripts.OnMouseWheel then
+      for _, c in ipairs(w._children) do if c.mark and not c.scope then return w end end
+    end
+  end
+end
 function fireEvent(event, ...)
   for _, w in ipairs(ALL) do if w._events[event] then w._scripts.OnEvent(w, event, ...) end end
 end
@@ -316,10 +334,13 @@ local plus, minus = byText("+", box), byText("-", box)
 local clear = byText("Tout effacer")
 local saveBtn = byText("Créer / mettre à jour")
 
--- 1. clic sur chaque bloc : 21 blocs, 12 acceptes puis message
+-- 1. clic sur chaque bloc : 21 blocs acceptes, 12 lignes visibles, defilement jusqu'au dernier ajoute
+local editRange = find(function(w) return w._type == "FontString" and w._point and w._point[1] == "BOTTOMRIGHT" and w._parent == canvas end)
 for _, def in ipairs(ns.BlockDefs) do fire(palette[def.id], "OnClick", "LeftButton") end
-assert(lastLine():find("Maximum"), "pas de message de limite")
+assert(editRange._text == "10-21 / 21  (molette)", "defilement : " .. tostring(editRange._text))
+assert(rows[12].full == ns.BlockById.raw.label, "dernier bloc non visible : " .. tostring(rows[12].full))
 fire(clear, "OnClick")
+assert(editRange._text == "", "indicateur sans defilement")
 
 -- 2. chaque type de bloc : selection, conditions, alternatives, argument, suppression
 for _, def in ipairs(ns.BlockDefs) do
@@ -412,6 +433,38 @@ fire(palette.cast, "OnDragStart")
 fire(ghost, "OnUpdate", 0.01)
 fire(palette.cast, "OnDragStop")
 
+-- 4b. macro de 15 lignes : rien de perdu, defilement, selection et deplacement au-dela de la 12e ligne
+local long = {}
+for i = 1, 15 do long[i] = "/cast A" .. i end
+MACROS["Longue"] = { index = 5, body = table.concat(long, "\n") }
+nameBox._text = "Longue"
+fire(byText("Charger ce nom"), "OnClick")
+MACROS["Longue"] = nil
+local function compiled() -- texte de l'apercu (simulateur coupe) = ns.Compile des blocs
+  return find(function(w) return w._type == "FontString" and w._text and w._text:find("^/cast A") and not inside(w, ghost) end)._text
+end
+assert(compiled() == table.concat(long, "\n"), "macro coupee : " .. compiled())
+assert(rows[1].full == "/cast A1" and editRange._text == "1-12 / 15  (molette)", editRange._text)
+fire(canvas, "OnMouseWheel", -1)
+assert(rows[1].full == "/cast A4" and rows[12].full == "/cast A15" and editRange._text == "4-15 / 15  (molette)", rows[1].full)
+fire(canvas, "OnMouseWheel", -1) -- deja en bas : l'offset reste borne
+assert(rows[1].full == "/cast A4")
+fire(rows[12], "OnClick")
+assert(argBox._text == "A15", "selection au-dela de la 12e ligne : " .. argBox._text)
+fire(rows[12], "OnDragStart")
+fire(ghost, "OnUpdate", 0.01)
+fire(rows[12], "OnDragStop") -- depose au-dessus de la 1re ligne visible (bloc 4)
+table.insert(long, 4, table.remove(long, 15))
+assert(compiled() == table.concat(long, "\n"), "deplacement : " .. compiled())
+assert(rows[1].full == "/cast A15" and argBox._text == "A15", "le bloc deplace doit rester visible et choisi")
+for _ = 1, 5 do fire(canvas, "OnMouseWheel", 1) end
+assert(rows[1].full == "/cast A1")
+fire(palette.cast, "OnClick") -- ajout en bas, hors des lignes visibles : on defile jusqu'a lui
+assert(rows[12].full == "/cast" and argBox._text == "" and editRange._text == "5-16 / 16  (molette)", editRange._text)
+fire(delButton(rows[12]), "OnClick")
+assert(editRange._text == "4-15 / 15  (molette)" and rows[12]:IsShown(), editRange._text)
+fire(clear, "OnClick")
+
 -- 5. sort du grimoire et objet des sacs
 CURSOR = { "spell", 3, "spell", 172 }
 fire(canvas, "OnReceiveDrag")
@@ -449,8 +502,7 @@ fire(saveBtn, "OnClick")
 
 -- 7. bibliotheque : chaque classe, molette, chaque ligne, ouverture
 fire(byText("Bibliothèque"), "OnClick")
-local listPanel
-for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel and not listPanel then listPanel = w end end -- la premiere : la bibliotheque
+local listPanel = libraryList()
 assert(listPanel, "liste sans molette")
 local libRows = {}
 for _, c in ipairs(listPanel._children) do if c.mark then libRows[#libRows + 1] = c end end
@@ -503,6 +555,37 @@ end
 local pet
 for _, e in ipairs(ns.Library) do if e.class == "WARLOCK" and e.category == "Pet" then pet = e break end end
 fire(byText("Démoniste"), "OnClick")
+-- sorts connus : calcules une fois par macro, pas a chaque rendu ni a chaque frappe ; recalcules quand les sorts changent
+local spellInfoCalls = 0
+C_Spell.GetSpellInfo = function(name) spellInfoCalls = spellInfoCalls + 1 return { name = name } end
+fireEvent("SPELLS_CHANGED") -- oublie les resultats calcules sans GetSpellInfo
+fire(byText("Démoniste"), "OnClick")
+local firstRender = spellInfoCalls
+assert(firstRender > 0, "aucune verification de sort")
+fire(byText("Démoniste"), "OnClick")
+search._text = "peur"
+fire(search, "OnTextChanged", true)
+local fold, folds = ns.Fold, 0
+ns.Fold = function(s) folds = folds + 1 return fold(s) end
+search._text = "peu"
+fire(search, "OnTextChanged", true)
+ns.Fold = fold
+assert(folds == 1, "texte de recherche recalcule : " .. folds) -- la requete seulement
+search._text = ""
+fire(search, "OnTextChanged", true)
+assert(spellInfoCalls == firstRender, ("GetSpellInfo : %d appels apres %d"):format(spellInfoCalls, firstRender))
+fireEvent("PLAYER_REGEN_ENABLED")
+fire(byText("Démoniste"), "OnClick")
+assert(spellInfoCalls == 2 * firstRender, "cache non invalide en fin de combat")
+C_Spell.GetSpellInfo = nil
+fireEvent("SPELLS_CHANGED")
+ns.Library[#ns.Library + 1] = { class = "WARLOCK", name = "ZZ Éclair GLACÉ", category = "PvE", body = "/cast Sort" }
+for _, q in ipairs({ "eclair glace", "ÉCLAIR GLACÉ", "éclair glacé" }) do -- sans accents ni casse
+  search._text = q
+  fire(search, "OnTextChanged", true)
+  assert(rowOf("ZZ Éclair GLACÉ"), "recherche sans accents : " .. q)
+end
+table.remove(ns.Library)
 search._text = pet.name:upper() -- insensible a la casse
 fire(search, "OnTextChanged", true)
 assert(rowOf(pet.name), "recherche : macro absente")
@@ -533,8 +616,14 @@ fire(byText("Démoniste"), "OnClick")
 -- 7c. modele charge dans l'editeur
 fire(byText("Éditeur"), "OnClick")
 fire(clear, "OnClick")
+local tplList = byText(ns.Templates[1].label)._parent
+fire(byText("Modèles"), "OnClick")
+assert(tplList:IsShown())
+fire(canvas, "OnHide") -- onglet change ou fenetre fermee : la liste se ferme
+assert(not tplList:IsShown(), "liste des modeles restee ouverte")
 fire(byText("Modèles"), "OnClick")
 fire(byText(ns.Templates[1].label), "OnClick") -- editeur vide : pas de confirmation
+assert(not tplList:IsShown())
 assert(rows[3].full == "/cast [@mouseover,harm,nodead][]", rows[3].full)
 local marked
 for _, t in ipairs(rows[3].texts) do if t:IsShown() and t._text == "(argument ?)" then marked = true end end
@@ -659,6 +748,13 @@ for _ = 1, 30 do fire(sminus, "OnClick") end
 assert(math.abs(db.scale - 0.6) < 1e-6, "echelle min : " .. db.scale)
 fire(sone, "OnClick")
 assert(db.scale == 1)
+-- petit ecran : l'echelle appliquee est bornee pour que la fenetre (900 x 640) tienne, le reglage garde sa valeur
+UIParent._w, UIParent._h = 1200, 700
+for _ = 1, 30 do fire(splus, "OnClick") end
+assert(math.abs(db.scale - 1.5) < 1e-6 and math.abs(BlockForgeFrame._scale - 700 / 640) < 1e-6, "echelle bornee : " .. BlockForgeFrame._scale)
+fire(sone, "OnClick")
+assert(BlockForgeFrame._scale == 1)
+UIParent._w, UIParent._h = 0, 0
 fire(splus, "OnClick")
 
 -- classe de depart
@@ -783,6 +879,9 @@ local set = db.sets["2026-11-20"]
 assert(set and #set == 3, "sauvegarde absente")
 setBox._text = "2026-11-20"
 fire(byText("Sauvegarder mes macros"), "OnClick")
+local replacePop = POPUPS[#POPUPS]
+assert(replacePop.which == "BLOCKFORGE_REPLACE_SET" and replacePop.text:find("2026-11-20", 1, true) and not lastLine():find("remplac"), "confirmation attendue avant de remplacer")
+StaticPopupDialogs.BLOCKFORGE_REPLACE_SET.OnAccept({}, replacePop.data)
 assert(lastLine():find("remplac"), lastLine())
 set = db.sets["2026-11-20"]
 set[#set + 1] = { name = "Trop", body = "/sit", char = true }
@@ -850,6 +949,51 @@ StaticPopupDialogs.BLOCKFORGE_BIND.OnAccept({}, { key = "H", name = "Soin" })
 assert(BINDINGS.H == nil and lastLine():find("combat"), "raccourci pose en combat")
 COMBAT = false
 
+-- 12. journal d'erreurs : seules celles qui citent l'add-on, le gestionnaire precedent recoit tout, tel quel
+local handler = geterrorhandler()
+HANDLED = {}
+handler("Interface/AddOns/BlockForge/UI.lua:12: boom", "extra")
+handler("Interface/AddOns/Autre/Autre.lua:1: pas nous")
+assert(#HANDLED == 2 and HANDLED[1] == "Interface/AddOns/BlockForge/UI.lua:12: boom" and HANDLED[2]:find("pas nous"), "gestionnaire precedent non appele")
+local e = db.errors[1]
+assert(#db.errors == 1 and e.message == HANDLED[1] and e.version == "0.6.2" and e.time == "2026-11-20 12:00:00" and #e.stack == 1500, "erreur mal enregistree")
+for i = 1, 25 do handler("BlockForge erreur " .. i) end
+assert(#db.errors == 20 and db.errors[1].message == "BlockForge erreur 6" and db.errors[20].message == "BlockForge erreur 25", "plafond de 20")
+db.errors = 5 -- erreur dans le journal lui-meme : avalee, l'erreur du jeu passe quand meme
+handler("BlockForge encore")
+assert(HANDLED[#HANDLED] == "BlockForge encore" and #HANDLED == 28)
+db.errors = {}
+
+-- 13. /bf test : refuse en combat, rapport enregistre, aucune macro ni raccourci touche
+GetLocale = function() return "frFR" end
+COMBAT = true
+SlashCmdList.BLOCKFORGE("test")
+assert(lastLine():find("combat") and next(db.selftest) == nil, "autotest en combat")
+COMBAT = false
+local callsBeforeTest, bindingsBefore = #CALLS, BINDINGS.G
+SlashCmdList.BLOCKFORGE("test")
+local report = db.selftest
+assert(report.time == "2026-11-20 12:00:00" and report.version == "0.6.2" and report.build == "1.60.1 70959 16001"
+  and report.locale == "frFR" and report.class == "WARLOCK", "en-tete du rapport")
+local byStart, text = {}, table.concat(report.lines, "\n")
+for _, line in ipairs(report.lines) do
+  assert(type(line) == "string", "ligne non texte")
+  local kind = line:match("^(%u+) ")
+  assert(kind == "OK" or kind == "FAIL" or kind == "INFO", line)
+  byStart[kind] = (byStart[kind] or 0) + 1
+end
+assert(text:find("OK api C_Spell.GetSpellName", 1, true) and text:find("FAIL api absent: C_Spell.GetSpellInfo", 1, true), text)
+assert(text:find("OK round trip Parse/Compile: 0 / ", 1, true) and text:find("OK spell ids without name: 0 / ", 1, true), text)
+assert(text:find("INFO items not cached yet:", 1, true) and text:find("INFO class WARLOCK:", 1, true) and text:find("INFO macros: ", 1, true), text)
+for _, tab in ipairs({ "editor", "library", "macros", "settings" }) do assert(text:find("OK tab " .. tab, 1, true), tab) end
+assert(lastLine():find(("%d OK, %d en échec"):format(byStart.OK, byStart.FAIL or 0), 1, true), lastLine())
+assert(#CALLS == callsBeforeTest and BINDINGS.G == bindingsBefore, "l'autotest a touche aux macros")
+GetLocale = nil
+-- diagnostics effaces par la reinitialisation, favoris et sauvegardes gardes
+handler("BlockForge avant reinitialisation")
+ns.ResetDB()
+assert(next(db.errors) == nil and next(db.selftest) == nil, "diagnostics gardes a la reinitialisation")
+
 -- 10. toutes les infobulles, commandes, fermeture / reouverture
 for _, w in ipairs(ALL) do
   if w._scripts.OnEnter then w._scripts.OnEnter(w) end
@@ -874,6 +1018,16 @@ assert(db.scale == 1, "echelle invalide gardee")
 assert(db.minimap.show == true and db.minimap.angle == 40, "minicarte mal completee")
 assert(db.pos[3] == 10 and db.libraryClass == "last" and db.lastClass == "MAGE")
 assert(db.confirmOverwrite == false and db.pickupAfterCreate == true and db.localizeLibrary == true)
+-- /bf test avant toute ouverture : la fenetre est construite cachee ; un onglet en erreur n'empeche pas les autres
+GetLocale = function() return "frFR" end
+local getNum = GetNumMacros
+GetNumMacros = function() error("panne de macros") end
+SlashCmdList.BLOCKFORGE("test")
+GetNumMacros, GetLocale = getNum, nil
+local text = table.concat(db.selftest.lines, "\n")
+assert(text:find("FAIL tab macros: [^\n]*panne de macros") and text:find("OK tab library", 1, true) and text:find("FAIL macros: ", 1, true), text)
+assert(HANDLED[#HANDLED]:find("panne de macros"), "erreur d'onglet non transmise au jeu")
+assert(not BlockForgeFrame:IsShown(), "l'autotest ne doit pas ouvrir la fenetre")
 SlashCmdList.BLOCKFORGE("")
 local p = BlockForgeFrame._point
 assert(p[1] == "TOPLEFT" and p[2] == UIParent and p[4] == 10 and p[5] == -20, "position non restauree")
@@ -881,8 +1035,7 @@ local perChar = find(function(w) return w._template == "UICheckButtonTemplate" a
 assert(perChar._checked == true, "case du personnage non cochee au chargement")
 fire(byText("Bibliothèque"), "OnClick")
 -- la bibliotheque s'ouvre sur la derniere classe (Mage) : sa puce est dans l'etat choisi
-local listPanel
-for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel and not listPanel then listPanel = w end end -- la premiere : la bibliotheque
+local listPanel = libraryList()
 local first
 for _, c in ipairs(listPanel._children) do if c.mark and c:IsShown() then first = c break end end
 local mage
@@ -926,8 +1079,7 @@ local descs = {}
 for _, e in ipairs(NS.Library) do e.descEN = e.descEN or ("EN " .. e.name) descs[e.descEN] = true end
 fire(byText("Library"), "OnClick")
 fire(byText("All classes"), "OnClick")
-local listPanel
-for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel and not listPanel then listPanel = w end end -- la premiere : la bibliotheque
+local listPanel = libraryList()
 for _, c in ipairs(listPanel._children) do if c.mark and c:IsShown() then fire(c, "OnClick") break end end
 assert(find(function(w) return w._type == "FontString" and descs[w._text] end), "descEN non affichee")
 fire(byText("Settings", BlockForgeFrame), "OnClick")

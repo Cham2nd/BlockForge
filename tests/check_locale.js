@@ -3,7 +3,7 @@
 // Usage : node check_locale.js [dossier BlockForge] [--list]
 const fs = require("fs");
 const dir = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : __dirname + "/../BlockForge";
-const FILES = ["Core.lua", "Settings.lua", "UI.lua", "Minimap.lua"];
+const FILES = ["Core.lua", "Settings.lua", "Debug.lua", "UI.lua", "Minimap.lua"];
 const USE = /\bL\["((?:[^"\\]|\\.)*)"\]/g;
 const DEF = /^\s*L\["((?:[^"\\]|\\.)*)"\]\s*=\s*"((?:[^"\\]|\\.)*)"/gm;
 

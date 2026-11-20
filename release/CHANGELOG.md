@@ -1,3 +1,12 @@
+# BlockForge 0.7.0
+
+- Éditeur : plus de limite à 12 lignes, la liste de blocs défile à la molette.
+- Diagnostic : l'add-on garde ses 20 dernières erreurs ; `/bf test` lance un contrôle complet dans le jeu.
+- Bibliothèque : recherche insensible aux accents et aux majuscules, affichage plus rapide.
+- Jeux de macros : confirmation avant de remplacer un jeu du même nom.
+- Fenêtre : l'échelle est plafonnée pour ne jamais dépasser l'écran.
+- La liste des modèles ne laisse plus passer les clics.
+
 # BlockForge 0.6.2
 
 - Corrigé : l'add-on ne se chargeait plus en jeu (limite du Lua du jeu dépassée dans l'éditeur). Les versions 0.5.0 à 0.6.1 sont touchées.

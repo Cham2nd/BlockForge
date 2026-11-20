@@ -14,6 +14,9 @@ local function rt(s) return ns.Compile(ns.Parse(s)) end
 -- commande collee au crochet
 assert(rt("/cast[@focus] Fear") == "/cast [@focus] Fear", rt("/cast[@focus] Fear"))
 assert(ns.Parse("/cast[@focus] Fear")[1].type == "cast")
+-- Fold : recherche sans accents ni casse, octets UTF-8, autres caracteres intacts
+assert(ns.Fold("Éclair GLACÉ : àâçôîïùûüéèêë ÀÂÇÔÎÏÙÛÜÈÊË") == "eclair glace : aacoiiuuueeee aacoiiuuueee", ns.Fold("Éclair GLACÉ"))
+assert(ns.Fold("Œil ñ 100%") == "Œil ñ 100%")
 -- reset= different par alternative : ligne gardee telle quelle
 local s = "/castsequence [mod:shift] reset=5 A, B; reset=10 C, D"
 assert(ns.Parse(s)[1].type == "raw" and rt(s) == s)

@@ -2,7 +2,7 @@
 local ADDON, ns = ...
 local L = ns.L
 
-local MAX_ROWS = 12    -- shortcut: 12 lignes max sans defilement, a revoir si 255 caracteres en demandent plus
+local MAX_ROWS = 12    -- lignes visibles ; la molette fait defiler au-dela (la vraie limite : 255 caracteres)
 local MAX_CLAUSES = 4
 local MAX_LIB_ROWS = 18 -- lignes visibles ; la molette fait defiler au-dela
 local ROW_W, ROW_H, ROW_STEP = 360, 24, 27
@@ -25,6 +25,7 @@ local PILL_LABEL = { nomod = L["Sans touche"] } -- libelles trop vagues hors de 
 
 local blocks, selected, activeClause = {}, nil, 1
 local rows, condButtons, clauseTabs = {}, {}, {}
+local editOffset, editRange = 0, nil -- rows[i] affiche blocks[editOffset + i]
 local Refresh
 local main, editor, library, settingsTab, canvas, dropLine
 local nameBox, perChar, argBox, argLabel, resetBox, resetLabel, inspTitle, inspBody, inspHint
@@ -189,11 +190,14 @@ local function Select(block)
   argBox:ClearFocus()
   resetBox:ClearFocus()
   selected, activeClause = block, 1
+  -- bloc hors des lignes visibles : on fait defiler jusqu'a lui
+  for i, b in ipairs(blocks) do
+    if b == block then editOffset = math.min(math.max(editOffset, i - MAX_ROWS), i - 1) end
+  end
   Refresh()
 end
 
 local function AddBlock(id, at, arg)
-  if #blocks >= MAX_ROWS then return Msg(L["Maximum %d blocs."]:format(MAX_ROWS)) end
   local block = ns.NewBlock(id)
   if arg then
     if block.clauses then block.clauses[1].arg = arg else block.arg = arg end
@@ -306,7 +310,7 @@ local function LayoutRow(row, block, def)
     t:SetTextColor(r, g, b)
     put(t, t:GetStringWidth() or 0)
   end
-  local needsArg = def.arg and not def.arg:find(L["optionnel"], 1, true)
+  local needsArg = def.arg and not def.optional
 
   if not def.clauses then
     local arg = ns.trim(block.arg or "")
@@ -337,23 +341,27 @@ end
 ---------------------------------------------------------------------------
 local ghost, drag
 
+-- lignes visibles occupees par un bloc
+local function VisibleCount() return math.max(0, math.min(MAX_ROWS, #blocks - editOffset)) end
+
 local function DropIndex()
   local _, y = GetCursorPosition()
-  for i = 1, #blocks do
+  for i = 1, VisibleCount() do
     local row = rows[i]
     local mid = (row:GetTop() + row:GetBottom()) / 2 * row:GetEffectiveScale()
-    if y > mid then return i end
+    if y > mid then return editOffset + i end
   end
-  return #blocks + 1
+  return editOffset + VisibleCount() + 1
 end
 
+-- info.from : index du bloc deplace ; info.row : sa ligne, estompee pendant le glisser
 local function StartDrag(info, label, color)
   drag = info
   ghost.text:SetText(label)
   Tint(ghost, color, 0.95)
   ghost:Show()
   GameTooltip:Hide()
-  if info.from then rows[info.from]:SetAlpha(0.35) end -- la ligne deplacee s'estompe
+  if info.row then info.row:SetAlpha(0.35) end
 end
 
 local function EndDrag()
@@ -361,7 +369,7 @@ local function EndDrag()
   drag = nil
   ghost:Hide()
   dropLine:Hide()
-  if d and d.from then rows[d.from]:SetAlpha(1) end
+  if d and d.row then d.row:SetAlpha(1) end
   if not d or not canvas:IsMouseOver() then return end
   local at = DropIndex()
   if d.new then
@@ -380,12 +388,12 @@ local function GhostUpdate(self)
   self:ClearAllPoints()
   self:SetPoint("LEFT", UIParent, "BOTTOMLEFT", x / scale + 12, y / scale)
   if canvas:IsMouseOver() then
-    local at = DropIndex()
+    local at, n = DropIndex() - editOffset, VisibleCount()
     dropLine:ClearAllPoints()
-    if at <= #blocks then
+    if at <= n then
       dropLine:SetPoint("BOTTOMLEFT", rows[at], "TOPLEFT", 0, 1)
-    elseif #blocks > 0 then
-      dropLine:SetPoint("TOPLEFT", rows[#blocks], "BOTTOMLEFT", 0, -1)
+    elseif n > 0 then
+      dropLine:SetPoint("TOPLEFT", rows[n], "BOTTOMLEFT", 0, -1)
     else
       dropLine:SetPoint("TOPLEFT", canvas, "TOPLEFT", 8, -26)
     end
@@ -450,12 +458,9 @@ function ns.ApplyPerCharDefault()
 end
 
 local function LoadText(name, body)
-  local parsed = ns.Parse(body or "")
-  -- trop de lignes pour l'editeur : ne rien charger plutot que couper, sinon enregistrer ecraserait la fin
-  if #parsed > MAX_ROWS then return Msg(L["Macro non chargée : %d lignes, l'éditeur en affiche %d au plus."]:format(#parsed, MAX_ROWS)) end
-  blocks = parsed
+  blocks = ns.Parse(body or "")
   nameBox:SetText(name or "")
-  selected, activeClause = blocks[1], 1
+  selected, activeClause, editOffset = blocks[1], 1, 0
   Refresh()
   return true
 end
@@ -528,8 +533,11 @@ end
 -- Rafraichissement
 ---------------------------------------------------------------------------
 function Refresh()
+  editOffset = math.max(0, math.min(editOffset, #blocks - MAX_ROWS))
+  editRange:SetText(#blocks > MAX_ROWS
+    and L["%d-%d / %d  (molette)"]:format(editOffset + 1, editOffset + MAX_ROWS, #blocks) or "")
   for i, row in ipairs(rows) do
-    local block = blocks[i]
+    local block = blocks[editOffset + i]
     if block then
       local def = ns.BlockById[block.type]
       local isSel = block == selected
@@ -677,6 +685,82 @@ local function BuildBottom(parent, palette)
   warnText:SetWidth(420)
 end
 
+-- Ligne i de la zone de construction : elle affiche blocks[editOffset + i]
+local function BuildRow(i)
+  local row = CreateFrame("Button", nil, canvas, BACKDROP)
+  row:SetSize(ROW_W, ROW_H)
+  row:SetPoint("TOPLEFT", 8, -28 - (i - 1) * ROW_STEP)
+  row:SetBackdrop(PILL_BACKDROP)
+  row.pills, row.texts = {}, {}
+  row.bar = SideBar(row, GREY)
+  row.icon = row:CreateTexture(nil, "ARTWORK")
+  row.icon:SetSize(18, 18)
+  row.icon:SetPoint("LEFT", 8, 0)
+  row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+  row.cmd = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  row.cmd:SetPoint("LEFT", row.icon, "RIGHT", 5, 0)
+  row.more = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+  row.more:SetPoint("RIGHT", -5, 0)
+  row.more:SetText("…")
+  local hl = row:CreateTexture(nil, "HIGHLIGHT")
+  hl:SetPoint("TOPLEFT", 1, -1)
+  hl:SetPoint("BOTTOMRIGHT", -1, 1)
+  hl:SetColorTexture(1, 1, 1, 0.08)
+  row:RegisterForDrag("LeftButton")
+  row:SetScript("OnClick", function() Select(blocks[editOffset + i]) end)
+  row:SetScript("OnDragStart", function()
+    local def = ns.BlockById[blocks[editOffset + i].type]
+    StartDrag({ from = editOffset + i, row = row }, row.full or def.label, def.color)
+  end)
+  row:SetScript("OnDragStop", EndDrag)
+  -- un sort lache sur une ligne s'insere a cette place, ou remplit l'emplacement vide du bloc (modele)
+  row:SetScript("OnReceiveDrag", function()
+    local name, id = CursorPayload()
+    if not name then return end
+    local block = blocks[editOffset + i]
+    if block and (block.type == id or block.type == "castsequence") then
+      for _, clause in ipairs(block.clauses) do
+        if ns.trim(clause.arg) == "" then clause.arg = name return Select(block) end
+      end
+    end
+    AddBlock(id, math.min(editOffset + i, #blocks + 1), name)
+  end)
+  Tip(row, function()
+    if drag or not blocks[editOffset + i] then return end
+    return row.full, L["Clic : régler. Glisser : déplacer."]
+  end)
+  local del = Button(row, "x", 22, function()
+    if selected == blocks[editOffset + i] then selected = nil end
+    table.remove(blocks, editOffset + i)
+    Refresh()
+  end)
+  del:SetPoint("LEFT", row, "RIGHT", 2, 0)
+  Tip(del, function() return L["Supprimer ce bloc"] end)
+  return row
+end
+
+-- Modeles : bouton en bas de la zone (les 12 lignes finissent a -349), liste au-dessus
+local function BuildTemplates()
+  local tplList = Panel(canvas, 220, 12 + #ns.Templates * 22)
+  local tplButton = Button(canvas, L["Modèles"], 100, function() tplList:SetShown(not tplList:IsShown()) end)
+  tplButton:SetPoint("BOTTOMLEFT", 8, 8)
+  Tip(tplButton, function() return L["Modèles"], L["Point de départ guidé : choisis un modèle, puis glisse tes sorts sur les blocs marqués « (argument ?) »."] end)
+  tplList:SetPoint("BOTTOMLEFT", tplButton, "TOPLEFT", 0, 2)
+  tplList:SetFrameStrata("DIALOG")
+  tplList:EnableMouse(true) -- le fond arrete les clics : pas de clic sur les lignes en dessous
+  tplList:Hide()
+  -- onglet change ou fenetre fermee (Echap compris) : la liste se ferme aussi
+  canvas:HookScript("OnHide", function() tplList:Hide() end)
+  for i, tpl in ipairs(ns.Templates) do
+    local chip = Chip(tplList, 204, 20)
+    chip:SetPoint("TOPLEFT", 8, -6 - (i - 1) * 22)
+    chip.text:SetText(tpl.label)
+    Tint(chip, GOLD, 0.45)
+    chip:SetScript("OnClick", function() tplList:Hide() ChooseTemplate(tpl) end)
+    Tip(chip, function() return tpl.label, tpl.desc end)
+  end
+end
+
 ---------------------------------------------------------------------------
 -- Construction de l'editeur
 ---------------------------------------------------------------------------
@@ -713,74 +797,15 @@ local function BuildEditor(parent)
   canvas:SetScript("OnMouseUp", CanvasDrop)
   canvas.hint = Label(canvas, L["Vide : clique un bloc à gauche, ou glisse ici\nun sort du grimoire ou un objet des sacs."],
     12, -36, "GameFontDisableSmall")
-  for i = 1, MAX_ROWS do
-    local row = CreateFrame("Button", nil, canvas, BACKDROP)
-    row:SetSize(ROW_W, ROW_H)
-    row:SetPoint("TOPLEFT", 8, -28 - (i - 1) * ROW_STEP)
-    row:SetBackdrop(PILL_BACKDROP)
-    row.pills, row.texts = {}, {}
-    row.bar = SideBar(row, GREY)
-    row.icon = row:CreateTexture(nil, "ARTWORK")
-    row.icon:SetSize(18, 18)
-    row.icon:SetPoint("LEFT", 8, 0)
-    row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    row.cmd = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    row.cmd:SetPoint("LEFT", row.icon, "RIGHT", 5, 0)
-    row.more = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row.more:SetPoint("RIGHT", -5, 0)
-    row.more:SetText("…")
-    local hl = row:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetPoint("TOPLEFT", 1, -1)
-    hl:SetPoint("BOTTOMRIGHT", -1, 1)
-    hl:SetColorTexture(1, 1, 1, 0.08)
-    row:RegisterForDrag("LeftButton")
-    row:SetScript("OnClick", function() Select(blocks[i]) end)
-    row:SetScript("OnDragStart", function()
-      local def = ns.BlockById[blocks[i].type]
-      StartDrag({ from = i }, row.full or def.label, def.color)
-    end)
-    row:SetScript("OnDragStop", EndDrag)
-    -- un sort lache sur une ligne s'insere a cette place, ou remplit l'emplacement vide du bloc (modele)
-    row:SetScript("OnReceiveDrag", function()
-      local name, id = CursorPayload()
-      if not name then return end
-      local block = blocks[i]
-      if block and (block.type == id or block.type == "castsequence") then
-        for _, clause in ipairs(block.clauses) do
-          if ns.trim(clause.arg) == "" then clause.arg = name return Select(block) end
-        end
-      end
-      AddBlock(id, i, name)
-    end)
-    Tip(row, function()
-      if drag or not blocks[i] then return end
-      return row.full, L["Clic : régler. Glisser : déplacer."]
-    end)
-    local del = Button(row, "x", 22, function()
-      if selected == blocks[i] then selected = nil end
-      table.remove(blocks, i)
-      Refresh()
-    end)
-    del:SetPoint("LEFT", row, "RIGHT", 2, 0)
-    Tip(del, function() return L["Supprimer ce bloc"] end)
-    rows[i] = row
-  end
-  -- Modeles : bouton en bas de la zone (les 12 lignes finissent a -349), liste au-dessus
-  local tplList = Panel(canvas, 220, 12 + #ns.Templates * 22)
-  local tplButton = Button(canvas, L["Modèles"], 100, function() tplList:SetShown(not tplList:IsShown()) end)
-  tplButton:SetPoint("BOTTOMLEFT", 8, 8)
-  Tip(tplButton, function() return L["Modèles"], L["Point de départ guidé : choisis un modèle, puis glisse tes sorts sur les blocs marqués « (argument ?) »."] end)
-  tplList:SetPoint("BOTTOMLEFT", tplButton, "TOPLEFT", 0, 2)
-  tplList:SetFrameStrata("DIALOG")
-  tplList:Hide()
-  for i, tpl in ipairs(ns.Templates) do
-    local chip = Chip(tplList, 204, 20)
-    chip:SetPoint("TOPLEFT", 8, -6 - (i - 1) * 22)
-    chip.text:SetText(tpl.label)
-    Tint(chip, GOLD, 0.45)
-    chip:SetScript("OnClick", function() tplList:Hide() ChooseTemplate(tpl) end)
-    Tip(chip, function() return tpl.label, tpl.desc end)
-  end
+  for i = 1, MAX_ROWS do rows[i] = BuildRow(i) end
+  canvas:EnableMouseWheel(true)
+  canvas:SetScript("OnMouseWheel", function(_, delta)
+    editOffset = editOffset - delta * 3
+    Refresh()
+  end)
+  editRange = canvas:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  editRange:SetPoint("BOTTOMRIGHT", -10, 14)
+  BuildTemplates()
 
   dropLine = canvas:CreateTexture(nil, "OVERLAY")
   dropLine:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
@@ -939,6 +964,32 @@ local function LibraryBody(entry)
   return entry.localized
 end
 
+-- texte cherche par la recherche : calcule une fois par macro et par langue d'affichage
+local function SearchText(entry)
+  local lang = ns.db.localizeLibrary
+  if entry.searchLang ~= lang then
+    entry.search = ns.Fold(entry.name .. "\n" .. (LibraryDesc(entry) or "") .. "\n" .. LibraryBody(entry))
+    entry.searchLang = lang
+  end
+  return entry.search
+end
+
+-- sorts de la macro inconnus du personnage, gardes jusqu'a ce que ses sorts changent ou que le combat finisse
+local GetSpellName = (C_Spell and C_Spell.GetSpellName) or GetSpellInfo
+function ns.LibraryUnknown(entry)
+  if not entry.unknown then
+    -- noms dans la langue du client, meme si l'affichage traduit est coupe
+    entry.unknown = UnknownSpells(ns.Parse(ns.Localize(entry.body, GetSpellName, RANK)))
+  end
+  return entry.unknown
+end
+local usableEvents = CreateFrame("Frame")
+usableEvents:RegisterEvent("SPELLS_CHANGED")
+usableEvents:RegisterEvent("PLAYER_REGEN_ENABLED") -- en combat, UnknownSpells ne verifie rien
+usableEvents:SetScript("OnEvent", function()
+  for _, entry in ipairs(ns.Library or {}) do entry.unknown = nil end
+end)
+
 local function BuildLibrary(parent, showEditor)
   local classPanel = Panel(parent, 176, 566, L["Classe"])
   classPanel:SetPoint("TOPLEFT", 0, 0)
@@ -1013,7 +1064,7 @@ local function BuildLibrary(parent, showEditor)
 
   -- Recherche et categories au-dessus de la liste ; 18 lignes depuis -74 finissent a -540 (panneau : 566)
   local search = Edit(listPanel, 272, function(text)
-    query = ns.trim(text):lower()
+    query = ns.Fold(ns.trim(text))
     ShowClass()
   end)
   search:SetPoint("TOPLEFT", 14, -28)
@@ -1061,8 +1112,7 @@ local function BuildLibrary(parent, showEditor)
   local function Matches(entry)
     if category and entry.category ~= category then return false end
     if not query or query == "" then return true end
-    local text = entry.name .. "\n" .. (LibraryDesc(entry) or "") .. "\n" .. LibraryBody(entry)
-    return text:lower():find(query, 1, true) ~= nil
+    return SearchText(entry):find(query, 1, true) ~= nil
   end
 
   -- sans argument : reapplique les filtres a la classe affichee
@@ -1071,12 +1121,10 @@ local function BuildLibrary(parent, showEditor)
     shown = {}
     if not keepOffset then offset = 0 end
     if currentClass ~= FAV then ns.db.lastClass = currentClass end
-    local getName = (C_Spell and C_Spell.GetSpellName) or GetSpellInfo
     for _, entry in ipairs(ns.Library or {}) do
       local inList = currentClass == FAV and ns.db.favorites[FavKey(entry)] or entry.class == currentClass
       if inList and Matches(entry) then
-        -- noms dans la langue du client, meme si l'affichage traduit est coupe
-        entry.usable = #UnknownSpells(ns.Parse(ns.Localize(entry.body, getName, RANK))) == 0
+        entry.usable = #ns.LibraryUnknown(entry) == 0
         if entry.usable or not ns.db.onlyKnown then shown[#shown + 1] = entry end
       end
     end
@@ -1135,7 +1183,7 @@ local function BuildLibrary(parent, showEditor)
       local name = nameOf[itemID]
       if not name then return end
       for _, entry in ipairs(ns.Library or {}) do
-        if entry.body:find(name, 1, true) then entry.localized = nil end
+        if entry.body:find(name, 1, true) then entry.localized, entry.searchLang = nil, nil end
       end
       ns.RefreshLibrary()
     end)
@@ -1216,6 +1264,12 @@ if StaticPopupDialogs then
       ns.db.sets[setName] = nil
       if RefreshMacros then RefreshMacros() end
     end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+  StaticPopupDialogs.BLOCKFORGE_REPLACE_SET = {
+    text = L["La sauvegarde « %s » existe déjà. La remplacer par tes macros actuelles ?"],
+    button1 = YES or L["Oui"], button2 = NO or L["Non"],
+    OnAccept = function(_, save) save() end,
     timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
   }
   StaticPopupDialogs.BLOCKFORGE_BIND = {
@@ -1371,7 +1425,7 @@ local function BuildMacros(parent, showEditor)
   setName:SetMaxLetters(40)
   local setHint = Label(setName, L["Nom (vide : date)"], 2, -4, "GameFontDisableSmall")
   setName:HookScript("OnTextChanged", function(self) setHint:SetShown(self:GetText() == "") end)
-  Tip(setName, function() return L["Nom de la sauvegarde"], L["Vide : la date du jour. Un nom existant est remplacé."] end)
+  Tip(setName, function() return L["Nom de la sauvegarde"], L["Vide : la date du jour. Un nom existant est remplacé après confirmation."] end)
   local restore, delete
 
   local function RenderSets()
@@ -1392,10 +1446,8 @@ local function BuildMacros(parent, showEditor)
     if chosen then restore:Enable() delete:Enable() else restore:Disable() delete:Disable() end
   end
 
-  local saveSet = Button(setsPanel, L["Sauvegarder mes macros"], 160, function()
+  local function SaveSet(name)
     if InCombatLockdown() then return Msg(L["Impossible de lire les macros en combat."]) end
-    local name = ns.trim(setName:GetText())
-    if name == "" then name = date("%Y-%m-%d") end
     local replaced = ns.db.sets[name] ~= nil
     local list = ReadMacros()
     ns.db.sets[name] = list
@@ -1403,6 +1455,13 @@ local function BuildMacros(parent, showEditor)
     setName:SetText("")
     Msg((replaced and L["Sauvegarde « %s » remplacée (%d macros)."] or L["Sauvegarde « %s » enregistrée (%d macros)."]):format(name, #list))
     RenderSets()
+  end
+  local saveSet = Button(setsPanel, L["Sauvegarder mes macros"], 160, function()
+    if InCombatLockdown() then return Msg(L["Impossible de lire les macros en combat."]) end
+    local name = ns.trim(setName:GetText())
+    if name == "" then name = date("%Y-%m-%d") end
+    if ns.db.sets[name] == nil then return SaveSet(name) end
+    StaticPopup_Show("BLOCKFORGE_REPLACE_SET", name, nil, function() SaveSet(name) end)
   end)
   saveSet:SetPoint("TOPLEFT", 8, -54)
   Tip(saveSet, function() return L["Sauvegarder mes macros"], L["Copie toutes tes macros (générales et de ce personnage) dans BlockForge, pour les restaurer plus tard."] end)
@@ -1474,14 +1533,25 @@ local ShowTab
 
 function ns.ApplyWindow()
   if not main then return end
-  main:SetScale(ns.db.scale)
+  -- la fenetre ne depasse jamais l'ecran ; le reglage enregistre reste celui choisi
+  local fit = math.min((UIParent:GetWidth() or 0) / main:GetWidth(), (UIParent:GetHeight() or 0) / main:GetHeight())
+  main:SetScale(fit > 0 and math.min(ns.db.scale, fit) or ns.db.scale)
   main:ClearAllPoints()
   local p = ns.db.rememberPos and ns.db.pos
   if p then main:SetPoint(p[1], UIParent, p[2], p[3], p[4]) else main:SetPoint("CENTER") end
 end
 
+-- un onglet qui echoue n'empeche pas les autres ; l'erreur est notee pour /bf test puis transmise au gestionnaire du jeu
+local buildErrors = {}
+local function TryBuild(key, build)
+  xpcall(build, function(err)
+    buildErrors[key] = tostring(err)
+    return geterrorhandler()(err)
+  end)
+end
+
 local function Build()
-  main = CreateFrame("Frame", "BlockForgeFrame", UIParent, "BasicFrameTemplateWithInset")
+  main =CreateFrame("Frame", "BlockForgeFrame", UIParent, "BasicFrameTemplateWithInset")
   main:SetSize(900, 640)
   main:SetFrameStrata("HIGH")
   main:SetMovable(true)
@@ -1525,15 +1595,27 @@ local function Build()
   tabs.settings = Button(main, L["Paramètres"], 110, function() ShowTab("settings") end)
   tabs.settings:SetPoint("LEFT", tabs.macros, "RIGHT", 4, 0)
 
-  BuildEditor(editor)
-  BuildLibrary(library, function() ShowTab("editor") end)
-  BuildMacros(pages.macros, function() ShowTab("editor") end)
-  local settingsPanel = Panel(settingsTab, 884, 566, L["Paramètres"])
-  settingsPanel:SetPoint("TOPLEFT")
-  ns.BuildSettingsPage(settingsPanel)
+  local function ShowEditor() ShowTab("editor") end
+  TryBuild("editor", function() BuildEditor(editor) end)
+  TryBuild("library", function() BuildLibrary(library, ShowEditor) end)
+  TryBuild("macros", function() BuildMacros(pages.macros, ShowEditor) end)
+  TryBuild("settings", function()
+    local settingsPanel = Panel(settingsTab, 884, 566, L["Paramètres"])
+    settingsPanel:SetPoint("TOPLEFT")
+    ns.BuildSettingsPage(settingsPanel)
+  end)
   ShowTab("editor")
   ns.ApplyWindow()
-  Refresh()
+  if not buildErrors.editor then Refresh() end
+end
+
+-- pour /bf test : construit la fenetre (sans l'afficher si elle ne l'etait pas) et renvoie les erreurs par onglet
+function ns.TabErrors()
+  if not main then
+    Build()
+    main:Hide()
+  end
+  return buildErrors
 end
 
 function ns.Toggle()
@@ -1552,5 +1634,6 @@ SLASH_BLOCKFORGE2 = "/bf"
 SlashCmdList.BLOCKFORGE = function(msg)
   msg = ns.trim((msg or ""):lower())
   if msg == "options" or msg == "config" or msg == "param" then return ns.OpenSettings() end
+  if msg == "test" then return ns.SelfTest() end
   ns.Toggle()
 end

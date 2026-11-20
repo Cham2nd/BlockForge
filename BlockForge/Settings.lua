@@ -17,6 +17,8 @@ ns.DEFAULTS = {
   helpTooltips = true,
   favorites = {},          -- [classe .. "/" .. nom] = true (bibliotheque)
   sets = {},               -- [nom] = { { name, icon, body, char }, ... } (sauvegardes de "Mes macros")
+  errors = {},             -- diagnostics (Debug.lua) : 20 dernieres erreurs Lua de l'add-on
+  selftest = {},           -- diagnostics (Debug.lua) : dernier rapport de /bf test
 }
 ns.SCALE_MIN, ns.SCALE_MAX, ns.SCALE_STEP = 0.6, 1.5, 0.05
 
@@ -53,6 +55,7 @@ function ns.InitDB()
   Merge(BlockForgeDB, ns.DEFAULTS)
   Sanitize(BlockForgeDB)
   ns.db = BlockForgeDB
+  if ns.FlushErrors then ns.FlushErrors() end
 end
 
 local pages = {}

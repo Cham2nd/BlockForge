@@ -12,9 +12,10 @@ ns.MAX_CHARS = 255
 -- Types de blocs
 --   clauses = true  : le bloc accepte des alternatives "[conditions] argument; ..."
 --   arg     = texte d'aide pour l'argument (nil = pas d'argument)
+--   optional = true : l'argument peut rester vide
 ---------------------------------------------------------------------------
 ns.BlockDefs = {
-  { id = "showtooltip",  label = L["Icône / infobulle"],   cmd = "#showtooltip",  arg = L["sort (optionnel)"], color = { 0.55, 0.55, 0.60 } },
+  { id = "showtooltip",  label = L["Icône / infobulle"],   cmd = "#showtooltip",  arg = L["sort (optionnel)"], optional = true, color = { 0.55, 0.55, 0.60 } },
   { id = "cast",         label = L["Lancer un sort"],      cmd = "/cast",         arg = L["nom du sort"], clauses = true, color = { 0.25, 0.55, 0.95 } },
   { id = "use",          label = L["Utiliser un objet"],   cmd = "/use",          arg = L["objet ou n° d'emplacement"], clauses = true, color = { 0.30, 0.75, 0.40 } },
   { id = "castsequence", label = L["Séquence de sorts"],   cmd = "/castsequence", arg = L["Sort A, Sort B, ..."], clauses = true, reset = true, color = { 0.60, 0.40, 0.90 } },
@@ -30,7 +31,7 @@ ns.BlockDefs = {
   { id = "cancelaura",   label = L["Annuler un buff"],     cmd = "/cancelaura",   arg = L["nom du buff"], clauses = true, color = { 0.80, 0.40, 0.70 } },
   { id = "target",       label = L["Cibler"],              cmd = "/target",       arg = L["nom ou unité"], clauses = true, color = { 0.35, 0.75, 0.80 } },
   { id = "targetenemy",  label = L["Cibler ennemi proche"], cmd = "/targetenemy", clauses = true, color = { 0.35, 0.75, 0.80 } },
-  { id = "focus",        label = L["Définir le focus"],    cmd = "/focus",        arg = L["unité (optionnel)"], clauses = true, color = { 0.35, 0.75, 0.80 } },
+  { id = "focus",        label = L["Définir le focus"],    cmd = "/focus",        arg = L["unité (optionnel)"], optional = true, clauses = true, color = { 0.35, 0.75, 0.80 } },
   { id = "assist",       label = L["Assister"],            cmd = "/assist",       arg = L["nom ou unité"], clauses = true, color = { 0.35, 0.75, 0.80 } },
   { id = "equip",        label = L["Équiper"],             cmd = "/equip",        arg = L["nom de l'objet"], clauses = true, color = { 0.30, 0.75, 0.40 } },
   { id = "dismount",     label = L["Descendre de monture"], cmd = "/dismount",    clauses = true, color = { 0.55, 0.55, 0.60 } },
@@ -105,6 +106,11 @@ end
 ---------------------------------------------------------------------------
 local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 ns.trim = trim
+
+-- recherche sans accents ni casse : les lettres accentuees du francais (UTF-8, octet de tete 195) deviennent ASCII
+local FOLD = {}
+for from, to in ("éeèeêeëeàaâaçcôoîiïiùuûuüuÉeÈeÊeËeÀaÂaÇcÔoÎiÏiÙuÛuÜu"):gmatch("(\195[\128-\191])(%a)") do FOLD[from] = to end
+function ns.Fold(s) return (s:lower():gsub("\195[\128-\191]", FOLD)) end
 
 function ns.NewClause() return { conds = {}, arg = "" } end
 
