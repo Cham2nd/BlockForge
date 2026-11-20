@@ -1,3 +1,11 @@
+# BlockForge 0.4.0
+
+- Éditeur : bouton « Modèles » avec cinq points de départ (familier : attaque + sort, familier : modes sur touches, PvP : interruption sur focus, PvP : contrôle sur survol, PvP : bijou puis sort).
+- Éditeur : nouveaux blocs `/petstay`, `/petdefensive`, `/petaggressive`.
+- Éditeur : nouvelles conditions en boutons : `spec:1`, `spec:2`, `group`, `group:raid`, `pvpcombat`, `swimming`, `indoors`, `outdoors`, `resting`.
+- Éditeur : un sort glissé sur un bloc remplit son emplacement vide.
+- Bibliothèque : recherche, filtre par catégorie, favoris.
+
 # BlockForge 0.3.1
 
 - Corrigé : une macro de plus de 12 lignes chargée dans l'éditeur était coupée sans avertir. Elle n'est plus chargée, avec un message.

@@ -4,7 +4,7 @@ local L = ns.L
 
 local MAX_ROWS = 12    -- shortcut: 12 lignes max sans defilement, a revoir si 255 caracteres en demandent plus
 local MAX_CLAUSES = 4
-local MAX_LIB_ROWS = 20 -- lignes visibles ; la molette fait defiler au-dela
+local MAX_LIB_ROWS = 18 -- lignes visibles ; la molette fait defiler au-dela
 local ROW_W, ROW_H, ROW_STEP = 360, 24, 27
 local BACKDROP = BackdropTemplateMixin and "BackdropTemplate" or nil
 local WHITE = "Interface\\Buttons\\WHITE8x8"
@@ -19,7 +19,8 @@ local GOLD = { 1, 0.82, 0.1 }
 local GREY = { 0.3, 0.3, 0.34 }
 local MUTED = { 0.62, 0.62, 0.66 }
 -- une couleur par groupe de conditions (meme ordre que ns.ConditionGroups)
-local GROUP_COLORS = { { 0.35, 0.75, 0.95 }, { 0.95, 0.45, 0.45 }, { 0.72, 0.52, 0.98 }, { 0.98, 0.66, 0.25 } }
+local GROUP_COLORS = { { 0.35, 0.75, 0.95 }, { 0.95, 0.45, 0.45 }, { 0.72, 0.52, 0.98 }, { 0.98, 0.66, 0.25 }, { 0.45, 0.85, 0.55 } }
+local GROUP_COLS = { 3, 3, 4, 3, 3 } -- boutons par ligne : les touches (libelles courts) tiennent sur une seule
 local PILL_LABEL = { nomod = L["Sans touche"] } -- libelles trop vagues hors de leur groupe
 
 local blocks, selected, activeClause = {}, nil, 1
@@ -458,6 +459,26 @@ local function LoadText(name, body)
   Refresh()
 end
 
+-- le nom tape est garde : un modele est un point de depart, pas une macro du jeu
+local function LoadTemplate(tpl) LoadText(nameBox:GetText(), tpl.body) end
+
+if StaticPopupDialogs then
+  StaticPopupDialogs.BLOCKFORGE_TEMPLATE = {
+    text = L["Remplacer le contenu de l'éditeur par le modèle « %s » ?"],
+    button1 = YES or L["Oui"], button2 = NO or L["Non"],
+    OnAccept = function(_, tpl) LoadTemplate(tpl) end,
+    timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+  }
+end
+
+local function ChooseTemplate(tpl)
+  if #blocks > 0 and StaticPopup_Show then
+    StaticPopup_Show("BLOCKFORGE_TEMPLATE", tpl.label, nil, tpl)
+  else
+    LoadTemplate(tpl)
+  end
+end
+
 local function LoadExisting()
   local name = ns.trim(nameBox:GetText())
   local macroName, _, body = GetMacroInfo(name)
@@ -541,8 +562,8 @@ local function BuildEditor(parent)
   local palette = Panel(parent, 176, 430, L["Blocs"])
   palette:SetPoint("TOPLEFT", 0, 0)
   for i, def in ipairs(ns.BlockDefs) do
-    local chip = Chip(palette, 160, 20)
-    chip:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 22)
+    local chip = Chip(palette, 160, 18)
+    chip:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 19) -- 21 blocs : le dernier finit a -426 (panneau : 430)
     chip.text:SetPoint("LEFT", 10, 0)
     chip.text:SetText(def.label)
     Tint(chip, def.color, 0.55)
@@ -596,10 +617,17 @@ local function BuildEditor(parent)
       StartDrag({ from = i }, row.full or def.label, def.color)
     end)
     row:SetScript("OnDragStop", EndDrag)
-    -- un sort lache sur une ligne s'insere a cette place
+    -- un sort lache sur une ligne s'insere a cette place, ou remplit l'emplacement vide du bloc (modele)
     row:SetScript("OnReceiveDrag", function()
       local name, id = CursorPayload()
-      if name then AddBlock(id, i, name) end
+      if not name then return end
+      local block = blocks[i]
+      if block and (block.type == id or block.type == "castsequence") then
+        for _, clause in ipairs(block.clauses) do
+          if ns.trim(clause.arg) == "" then clause.arg = name return Select(block) end
+        end
+      end
+      AddBlock(id, i, name)
     end)
     Tip(row, function()
       if drag or not blocks[i] then return end
@@ -614,6 +642,23 @@ local function BuildEditor(parent)
     Tip(del, function() return L["Supprimer ce bloc"] end)
     rows[i] = row
   end
+  -- Modeles : bouton en bas de la zone (les 12 lignes finissent a -349), liste au-dessus
+  local tplList = Panel(canvas, 220, 12 + #ns.Templates * 22)
+  local tplButton = Button(canvas, L["Modèles"], 100, function() tplList:SetShown(not tplList:IsShown()) end)
+  tplButton:SetPoint("BOTTOMLEFT", 8, 8)
+  Tip(tplButton, function() return L["Modèles"], L["Point de départ guidé : choisis un modèle, puis glisse tes sorts sur les blocs marqués « (argument ?) »."] end)
+  tplList:SetPoint("BOTTOMLEFT", tplButton, "TOPLEFT", 0, 2)
+  tplList:SetFrameStrata("DIALOG")
+  tplList:Hide()
+  for i, tpl in ipairs(ns.Templates) do
+    local chip = Chip(tplList, 204, 20)
+    chip:SetPoint("TOPLEFT", 8, -6 - (i - 1) * 22)
+    chip.text:SetText(tpl.label)
+    Tint(chip, GOLD, 0.45)
+    chip:SetScript("OnClick", function() tplList:Hide() ChooseTemplate(tpl) end)
+    Tip(chip, function() return tpl.label, tpl.desc end)
+  end
+
   dropLine = canvas:CreateTexture(nil, "OVERLAY")
   dropLine:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
   dropLine:SetSize(ROW_W, 2)
@@ -691,7 +736,7 @@ local function BuildEditor(parent)
   resetBox:SetPoint("TOPLEFT", 14, -108)
 
   -- Conditions. Les y sont comptes depuis le haut du panneau (box est a -44, d'ou le +44).
-  -- Pas : titre 13, ligne 19, ecart 2 => le champ "Autre condition" finit a -418 (panneau : 430).
+  -- Pas : titre 12, ligne 16, ecart 1, 12 lignes => le champ "Autre condition" finit a -425 (panneau : 430).
   local sep = clauseTabs.box:CreateTexture(nil, "ARTWORK")
   sep:SetColorTexture(1, 1, 1, 0.12)
   sep:SetPoint("TOPLEFT", 8, -131 + 44)
@@ -701,11 +746,13 @@ local function BuildEditor(parent)
     local color = GROUP_COLORS[gi] or GREY
     local title = Label(clauseTabs.box, group.label .. (group.exclusive and "  |cff888888" .. L["(une seule)"] .. "|r" or ""), 10, y + 44)
     title:SetTextColor(Light(color))
-    y = y - 13
+    y = y - 12
+    local cols = GROUP_COLS[gi] or 3
+    local step = math.floor(276 / cols)
     for i, item in ipairs(group.items) do
-      local col, line = (i - 1) % 3, math.floor((i - 1) / 3)
-      local b = Chip(clauseTabs.box, 90, 18)
-      b:SetPoint("TOPLEFT", 10 + col * 92, y + 44 - line * 19)
+      local col, line = (i - 1) % cols, math.floor((i - 1) / cols)
+      local b = Chip(clauseTabs.box, step - 2, 15)
+      b:SetPoint("TOPLEFT", 10 + col * step, y + 44 - line * 16)
       b.text:SetText(item[2])
       b.cond, b.color = item[1], color
       b:SetScript("OnClick", function()
@@ -715,7 +762,7 @@ local function BuildEditor(parent)
       Tip(b, function() return item[2], "[" .. item[1] .. "]  " .. L["clic : activer / retirer"] end)
       condButtons[#condButtons + 1] = b
     end
-    y = y - math.ceil(#group.items / 3) * 19 - 2
+    y = y - math.ceil(#group.items / cols) * 16 - 1
   end
   Label(clauseTabs.box, L["Autre condition (ex. stance:1) puis Entrée"], 10, y + 44)
   local custom = Edit(clauseTabs.box, 150, function() end)
@@ -785,7 +832,8 @@ end
 ---------------------------------------------------------------------------
 -- Bibliotheque
 ---------------------------------------------------------------------------
-local CLASS_ORDER = { "ALL", "WARLOCK", "HUNTER", "ROGUE", "MAGE", "PRIEST", "DRUID", "WARRIOR", "PALADIN", "SHAMAN" }
+local FAV = "FAVORITES" -- pseudo-classe : jamais memorisee comme derniere classe
+local CLASS_ORDER = { FAV, "ALL", "WARLOCK", "HUNTER", "ROGUE", "MAGE", "PRIEST", "DRUID", "WARRIOR", "PALADIN", "SHAMAN" }
 local CATEGORY_COLOR = { PvE = { 0.25, 0.55, 0.95 }, PvP = { 0.9, 0.35, 0.35 }, Pet = { 0.85, 0.7, 0.2 }, Utility = { 0.3, 0.75, 0.4 } }
 local CATEGORY_LABEL = { Pet = L["Familier"], Utility = L["Utilitaire"] }
 
@@ -834,9 +882,20 @@ local function BuildLibrary(parent, showEditor)
   end)
   open:SetPoint("BOTTOMLEFT", 10, 10)
   open:Disable()
+  local function FavKey(entry) return entry.class .. "/" .. entry.name end
+  local ShowClass
+  local favButton = Button(detail, L["Ajouter aux favoris"], 180, function()
+    if not current then return end
+    local key = FavKey(current)
+    ns.db.favorites[key] = not ns.db.favorites[key] or nil
+    ShowClass(nil, true)
+  end)
+  favButton:SetPoint("LEFT", open, "RIGHT", 6, 0)
+  favButton:Disable()
 
-  local entryRows, classChips, shown, offset = {}, {}, {}, 0
-  local empty = Label(listPanel, L["Aucune macro pour cette classe."], 10, -34, "GameFontDisableSmall")
+  local entryRows, classChips, catChips, shown, offset = {}, {}, {}, {}, 0
+  local currentClass, category, query
+  local empty = Label(listPanel, "", 10, -80, "GameFontDisableSmall")
   local range = listPanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   range:SetPoint("RIGHT", listPanel.band, "RIGHT", -6, 0)
 
@@ -846,6 +905,7 @@ local function BuildLibrary(parent, showEditor)
     desc:SetText(LibraryDesc(current) or "")
     body:SetText(LibraryBody(current))
     source:SetText(current.source and L["Source : %s"]:format(current.source) or "")
+    favButton:SetText(ns.db.favorites[FavKey(current)] and L["Retirer des favoris"] or L["Ajouter aux favoris"])
   end
 
   local function Render()
@@ -855,7 +915,8 @@ local function BuildLibrary(parent, showEditor)
       local entry = shown[offset + i]
       row:SetShown(entry ~= nil)
       if entry then
-        row.text:SetText(("[%s] %s"):format(CATEGORY_LABEL[entry.category] or entry.category or "?", entry.name))
+        row.text:SetText((ns.db.favorites[FavKey(entry)] and "|A:PetJournal-FavoritesIcon:12:12|a" or "")
+          .. ("[%s] %s"):format(CATEGORY_LABEL[entry.category] or entry.category or "?", entry.name))
         local c = entry.usable and 1 or 0.5 -- grise : un sort de la macro n'est pas connu du personnage
         row.text:SetTextColor(c, c, c)
         Tint(row, CATEGORY_COLOR[entry.category] or GREY, entry == current and 1 or 0.45)
@@ -867,14 +928,38 @@ local function BuildLibrary(parent, showEditor)
       and L["%d-%d / %d  (molette)"]:format(offset + 1, math.min(offset + MAX_LIB_ROWS, #shown), #shown) or "")
   end
 
+  -- Recherche et categories au-dessus de la liste ; 18 lignes depuis -74 finissent a -540 (panneau : 566)
+  local search = Edit(listPanel, 272, function(text)
+    query = ns.trim(text):lower()
+    ShowClass()
+  end)
+  search:SetPoint("TOPLEFT", 14, -28)
+  local searchHint = Label(search, L["Rechercher..."], 2, -4, "GameFontDisableSmall")
+  search:HookScript("OnTextChanged", function(self) searchHint:SetShown(self:GetText() == "") end)
+  Tip(search, function() return L["Rechercher"], L["Nom, description ou texte de la macro."] end)
+  local x = 8
+  for i, cat in ipairs({ false, "PvE", "PvP", "Pet", "Utility" }) do
+    local w = ({ 52, 44, 44, 64, 72 })[i]
+    local chip = Chip(listPanel, w, 18)
+    chip:SetPoint("TOPLEFT", x, -52)
+    chip.text:SetText(cat and (CATEGORY_LABEL[cat] or cat) or L["Toutes"])
+    chip:SetScript("OnClick", function()
+      category = cat or nil
+      ShowClass()
+    end)
+    catChips[cat] = chip
+    x = x + w + 2
+  end
+
   for i = 1, MAX_LIB_ROWS do
     local row = Chip(listPanel, 284, 24)
-    row:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 26)
+    row:SetPoint("TOPLEFT", 8, -74 - (i - 1) * 26)
     row.mark = SideBar(row, GOLD)
     row:SetScript("OnClick", function()
       current = shown[offset + i]
       ShowDetail()
       open:Enable()
+      favButton:Enable()
       Render()
     end)
     Tip(row, function()
@@ -889,27 +974,48 @@ local function BuildLibrary(parent, showEditor)
     Render()
   end)
 
-  local function ShowClass(class)
-    shown, offset = {}, 0
-    ns.db.lastClass = class
+  -- recherche en texte simple (find sans motif) sur ce qui est affiche
+  local function Matches(entry)
+    if category and entry.category ~= category then return false end
+    if not query or query == "" then return true end
+    local text = entry.name .. "\n" .. (LibraryDesc(entry) or "") .. "\n" .. LibraryBody(entry)
+    return text:lower():find(query, 1, true) ~= nil
+  end
+
+  -- sans argument : reapplique les filtres a la classe affichee
+  function ShowClass(class, keepOffset)
+    currentClass = class or currentClass
+    shown = {}
+    if not keepOffset then offset = 0 end
+    if currentClass ~= FAV then ns.db.lastClass = currentClass end
     local getName = (C_Spell and C_Spell.GetSpellName) or GetSpellInfo
     for _, entry in ipairs(ns.Library or {}) do
-      if entry.class == class then
+      local inList = currentClass == FAV and ns.db.favorites[FavKey(entry)] or entry.class == currentClass
+      if inList and Matches(entry) then
         -- noms dans la langue du client, meme si l'affichage traduit est coupe
         entry.usable = #UnknownSpells(ns.Parse(ns.Localize(entry.body, getName, RANK))) == 0
         if entry.usable or not ns.db.onlyKnown then shown[#shown + 1] = entry end
       end
     end
+    empty:SetText((category or (query and query ~= "")) and L["Aucune macro ne correspond."]
+      or currentClass == FAV and L["Aucun favori : ajoute-en depuis le détail d'une macro."]
+      or L["Aucune macro pour cette classe."])
     Render()
+    ShowDetail()
     for token, chip in pairs(classChips) do
-      Tint(chip, token == class and GOLD or GREY, token == class and 0.95 or 0.7)
+      Tint(chip, token == currentClass and GOLD or GREY, token == currentClass and 0.95 or 0.7)
+    end
+    for cat, chip in pairs(catChips) do
+      local on = (category or false) == cat
+      Tint(chip, on and GOLD or (CATEGORY_COLOR[cat] or GREY), on and 0.95 or 0.6)
     end
   end
 
   for i, token in ipairs(CLASS_ORDER) do
     local chip = Chip(classPanel, 160, 22)
     chip:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 24)
-    chip.text:SetText(token == "ALL" and L["Toutes classes"]
+    chip.text:SetText(token == FAV and ("|A:PetJournal-FavoritesIcon:12:12|a" .. L["Favoris"])
+      or token == "ALL" and L["Toutes classes"]
       or (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[token]) or token)
     chip:SetScript("OnClick", function() ShowClass(token) end)
     classChips[token] = chip
@@ -920,7 +1026,7 @@ local function BuildLibrary(parent, showEditor)
   onlyKnown:SetChecked(ns.db.onlyKnown)
   onlyKnown:SetScript("OnClick", function(self)
     ns.db.onlyKnown = self:GetChecked() and true or false
-    ShowClass(ns.db.lastClass)
+    ShowClass()
   end)
   local onlyKnownText = Label(classPanel, L["Mes sorts seulement"], 0, 0, "GameFontHighlightSmall")
   onlyKnownText:ClearAllPoints()

@@ -15,6 +15,7 @@ ns.DEFAULTS = {
   libraryClass = "player", -- "player" (ma classe) ou "last" (derniere consultee)
   lastClass = false,
   helpTooltips = true,
+  favorites = {},          -- [classe .. "/" .. nom] = true (bibliotheque)
 }
 ns.SCALE_MIN, ns.SCALE_MAX, ns.SCALE_STEP = 0.6, 1.5, 0.05
 
@@ -65,7 +66,9 @@ function ns.ApplySettings()
 end
 
 function ns.ResetDB()
+  local favorites = BlockForgeDB.favorites -- les favoris ne sont pas un reglage : la reinitialisation les garde
   for k in pairs(BlockForgeDB) do BlockForgeDB[k] = nil end
+  BlockForgeDB.favorites = favorites
   ns.InitDB()
   ns.ApplySettings()
 end

@@ -24,6 +24,9 @@ ns.BlockDefs = {
   { id = "petattack",    label = L["Familier : attaque"],  cmd = "/petattack",    clauses = true, color = { 0.85, 0.70, 0.20 } },
   { id = "petfollow",    label = L["Familier : suivre"],   cmd = "/petfollow",    clauses = true, color = { 0.85, 0.70, 0.20 } },
   { id = "petpassive",   label = L["Familier : passif"],   cmd = "/petpassive",   clauses = true, color = { 0.85, 0.70, 0.20 } },
+  { id = "petstay",      label = L["Familier : rester"],   cmd = "/petstay",      clauses = true, color = { 0.85, 0.70, 0.20 } },
+  { id = "petdefensive", label = L["Familier : défensif"], cmd = "/petdefensive", clauses = true, color = { 0.85, 0.70, 0.20 } },
+  { id = "petaggressive", label = L["Familier : agressif"], cmd = "/petaggressive", clauses = true, color = { 0.85, 0.70, 0.20 } },
   { id = "cancelaura",   label = L["Annuler un buff"],     cmd = "/cancelaura",   arg = L["nom du buff"], clauses = true, color = { 0.80, 0.40, 0.70 } },
   { id = "target",       label = L["Cibler"],              cmd = "/target",       arg = L["nom ou unité"], clauses = true, color = { 0.35, 0.75, 0.80 } },
   { id = "targetenemy",  label = L["Cibler ennemi proche"], cmd = "/targetenemy", clauses = true, color = { 0.35, 0.75, 0.80 } },
@@ -48,6 +51,9 @@ local CMD_ALIASES = {
   ["/petattack"] = "petattack",
   ["/petfollow"] = "petfollow",
   ["/petpassive"] = "petpassive",
+  ["/petstay"] = "petstay",
+  ["/petdefensive"] = "petdefensive",
+  ["/petaggressive"] = "petaggressive",
   ["/cancelaura"] = "cancelaura",
   ["/target"] = "target", ["/tar"] = "target",
   ["/targetenemy"] = "targetenemy",
@@ -79,7 +85,15 @@ ns.ConditionGroups = {
       { "nostealth", L["Pas camouflé"] }, { "mounted", L["Monté"] }, { "pet", L["Familier sorti"] },
       { "nopet", L["Pas de familier"] }, { "channeling", L["Canalise"] }, { "nochanneling", L["Ne canalise pas"] },
   } },
+  { label = L["Situation"], items = {
+      { "spec:1", L["Spé 1"] }, { "spec:2", L["Spé 2"] }, { "pvpcombat", L["Talents JcJ"] },
+      { "indoors", L["Intérieur"] }, { "outdoors", L["Extérieur"] }, { "swimming", L["Nage"] },
+      { "group", L["En groupe"] }, { "group:raid", L["En raid"] }, { "resting", L["Repos"] },
+  } },
 }
+
+-- paires qui s'excluent dans un groupe non exclusif : activer l'une retire l'autre
+local OPPOSITE = { ["spec:1"] = "spec:2", ["spec:2"] = "spec:1", indoors = "outdoors", outdoors = "indoors" }
 
 ns.KnownConditions = {}
 for _, group in ipairs(ns.ConditionGroups) do
@@ -120,6 +134,8 @@ function ns.ToggleCond(clause, cond)
     end
     table.insert(clause.conds, 1, cond) -- la cible se lit mieux en premier
   else
+    local other = OPPOSITE[cond] and ns.HasCond(clause, OPPOSITE[cond])
+    if other then table.remove(clause.conds, other) end
     clause.conds[#clause.conds + 1] = cond
   end
   return true
@@ -297,6 +313,27 @@ function ns.Localize(body, getName, rankWord)
 end
 
 ---------------------------------------------------------------------------
+-- Modeles de l'editeur : les sorts sont laisses vides, l'editeur les marque "(argument ?)"
+---------------------------------------------------------------------------
+ns.Templates = {
+  { label = L["Familier : attaque + sort"],
+    desc = L["Le familier attaque l'ennemi survolé, sinon ta cible, puis tu lances un sort sur lui."],
+    body = "#showtooltip\n/petattack [@mouseover,harm,nodead][]\n/cast [@mouseover,harm,nodead][]" },
+  { label = L["Familier : modes sur touches"],
+    desc = L["Sans touche : attaque. Maj : suivre et passif. Ctrl : défensif."],
+    body = "/petattack [nomod]\n/petfollow [mod:shift]\n/petpassive [mod:shift]\n/petdefensive [mod:ctrl]" },
+  { label = L["PvP : interruption sur focus"],
+    desc = L["Arrête ton incantation, puis lance le sort sur le focus s'il existe et est hostile, sinon sur ta cible."],
+    body = "#showtooltip\n/stopcasting\n/cast [@focus,exists,harm,nodead][]" },
+  { label = L["PvP : contrôle sur survol"],
+    desc = L["Lance le sort sur l'ennemi survolé, sinon sur ta cible. Avec Maj : sur le focus."],
+    body = "#showtooltip\n/cast [@focus,mod:shift,harm,nodead][@mouseover,harm,nodead][]" },
+  { label = L["PvP : bijou puis sort"],
+    desc = L["Utilise le bijou du haut (emplacement 13), puis lance le sort."],
+    body = "#showtooltip\n/use 13\n/cast" },
+}
+
+---------------------------------------------------------------------------
 -- Diagnostics affiches sous l'apercu
 ---------------------------------------------------------------------------
 -- techniques de familier lancees par /cast (noms en minuscules ; UI.lua ajoute les noms traduits)
@@ -340,11 +377,11 @@ function ns.Diagnose(blocks)
       for _, cond in ipairs(clause.conds) do has[cond] = true end
       if has.harm and has.help then clash = true end
       for cond in pairs(has) do
-        if has["no" .. cond] then clash = true end
+        if has["no" .. cond] or has[OPPOSITE[cond]] then clash = true end
       end
     end
     if t == "dismount" then dismount = true end
-    if t == "petattack" or t == "petfollow" or t == "petpassive" then pet = true end
+    if t:find("^pet") then pet = true end
     if t == "cast" or t == "use" or t == "castsequence" then
       local hasArg, plain = false, true
       for _, clause in ipairs(block.clauses or {}) do

@@ -276,15 +276,15 @@ for _, def in ipairs(ns.BlockDefs) do palette[def.id] = byText(def.label, BlockF
 local canvas = find(function(w) return w._scripts.OnReceiveDrag and w._type == "Frame" end)
 assert(canvas, "zone de construction introuvable")
 local rows = {}
-for _, c in ipairs(canvas._children) do if c._type == "Button" then rows[#rows + 1] = c end end
+for _, c in ipairs(canvas._children) do if c.pills then rows[#rows + 1] = c end end
 assert(#rows == 12, "lignes : " .. #rows)
 local function delButton(row)
   for _, c in ipairs(row._children) do if c._template == "UIPanelButtonTemplate" then return c end end
 end
 local edits = {}
 for _, w in ipairs(ALL) do if w._type == "EditBox" then edits[#edits + 1] = w end end
-local argBox, resetBox, custom, nameBox = edits[1], edits[2], edits[3], edits[4]
-assert(#edits == 4, "champs : " .. #edits)
+local argBox, resetBox, custom, nameBox, search = edits[1], edits[2], edits[3], edits[4], edits[5]
+assert(#edits == 5, "champs : " .. #edits)
 local perChar = find(function(w) return w._template == "UICheckButtonTemplate" and w._parent == nameBox._parent end)
 assert(perChar)
 local condButtons = {}
@@ -296,7 +296,7 @@ local plus, minus = byText("+", box), byText("-", box)
 local clear = byText("Tout effacer")
 local saveBtn = byText("Créer / mettre à jour")
 
--- 1. clic sur chaque bloc : 18 blocs, 12 acceptes puis message
+-- 1. clic sur chaque bloc : 21 blocs, 12 acceptes puis message
 for _, def in ipairs(ns.BlockDefs) do fire(palette[def.id], "OnClick", "LeftButton") end
 assert(lastLine():find("Maximum"), "pas de message de limite")
 fire(clear, "OnClick")
@@ -433,8 +433,8 @@ local listPanel
 for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel then listPanel = w end end
 assert(listPanel, "liste sans molette")
 local libRows = {}
-for _, c in ipairs(listPanel._children) do if c._type == "Button" then libRows[#libRows + 1] = c end end
-assert(#libRows == 20)
+for _, c in ipairs(listPanel._children) do if c.mark then libRows[#libRows + 1] = c end end
+assert(#libRows == 18)
 local opened = 0
 for _, token in ipairs({ "ALL", "WARLOCK", "HUNTER", "ROGUE", "MAGE", "PRIEST", "DRUID", "WARRIOR", "PALADIN", "SHAMAN" }) do
   fire(byText(token == "ALL" and "Toutes classes" or LOCALIZED_CLASS_NAMES_MALE[token]), "OnClick")
@@ -462,7 +462,7 @@ fire(byText("Mage"), "OnClick")
 for _ = 1, 30 do fire(listPanel, "OnMouseWheel", -1) end
 local last
 for _, r in ipairs(libRows) do if r:IsShown() then last = r end end
-assert(last == libRows[20], "la derniere page doit rester pleine")
+assert(last == libRows[18], "la derniere page doit rester pleine")
 fire(last, "OnClick")
 fire(byText("Ouvrir dans l'éditeur"), "OnClick")
 for i = #ns.Library, 1, -1 do if ns.Library[i].class == "SHAMAN" then table.remove(ns.Library, i) end end
@@ -470,6 +470,66 @@ fire(byText("Bibliothèque"), "OnClick")
 fire(byText("Chaman"), "OnClick")
 assert(not libRows[1]:IsShown(), "classe vide : aucune ligne")
 assert(db.lastClass == "SHAMAN", "derniere classe non memorisee")
+
+-- 7b. recherche + categorie + favoris
+local function visibleRows()
+  local list = {}
+  for _, r in ipairs(libRows) do if r:IsShown() then list[#list + 1] = r end end
+  return list
+end
+local function rowOf(name)
+  for _, r in ipairs(visibleRows()) do if r.text._text:find(name, 1, true) then return r end end
+end
+local pet
+for _, e in ipairs(ns.Library) do if e.class == "WARLOCK" and e.category == "Pet" then pet = e break end end
+fire(byText("Démoniste"), "OnClick")
+search._text = pet.name:upper() -- insensible a la casse
+fire(search, "OnTextChanged", true)
+assert(rowOf(pet.name), "recherche : macro absente")
+fire(byText("PvP", listPanel), "OnClick")
+assert(not rowOf(pet.name), "categorie PvP : macro Familier affichee")
+fire(byText("Familier", listPanel), "OnClick")
+fire(rowOf(pet.name), "OnClick")
+fire(byText("Ajouter aux favoris"), "OnClick")
+assert(db.favorites["WARLOCK/" .. pet.name] == true, "favori non enregistre")
+assert(rowOf(pet.name).text._text:find("FavoritesIcon"), "marque de favori absente")
+search._text = "aucune macro ne contient ce texte"
+fire(search, "OnTextChanged", true)
+assert(#visibleRows() == 0)
+search._text = ""
+fire(search, "OnTextChanged", true)
+fire(byText("Toutes", listPanel), "OnClick")
+local favChip = find(function(w) return w.text and w.text._text and w.text._text:find("Favoris$") end)
+fire(favChip, "OnClick")
+assert(#visibleRows() == 1 and rowOf(pet.name), "liste des favoris")
+assert(db.lastClass == "WARLOCK", "Favoris memorise comme derniere classe")
+local onlyKnownBox = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, listPanel._parent) and w ~= perChar end)
+click(onlyKnownBox, false) -- la case garde la liste des favoris
+assert(#visibleRows() == 1)
+fire(byText("Retirer des favoris"), "OnClick")
+assert(db.favorites["WARLOCK/" .. pet.name] == nil and #visibleRows() == 0, "favori non retire")
+fire(byText("Démoniste"), "OnClick")
+
+-- 7c. modele charge dans l'editeur
+fire(byText("Éditeur"), "OnClick")
+fire(clear, "OnClick")
+fire(byText("Modèles"), "OnClick")
+fire(byText(ns.Templates[1].label), "OnClick") -- editeur vide : pas de confirmation
+assert(rows[3].full == "/cast [@mouseover,harm,nodead][]", rows[3].full)
+local marked
+for _, t in ipairs(rows[3].texts) do if t:IsShown() and t._text == "(argument ?)" then marked = true end end
+assert(marked, "emplacement vide non signale")
+CURSOR = { "spell", 3, "spell", 172 }
+fire(rows[3], "OnReceiveDrag") -- le sort remplit l'emplacement au lieu d'ajouter un bloc
+assert(rows[3].full == "/cast [@mouseover,harm,nodead][] Corruption" and not rows[4]:IsShown(), rows[3].full)
+local popupsBefore = #POPUPS
+fire(byText(ns.Templates[5].label), "OnClick")
+assert(#POPUPS == popupsBefore + 1 and POPUPS[#POPUPS].which == "BLOCKFORGE_TEMPLATE", "confirmation attendue")
+assert(rows[3].full:find("Corruption"), "modele charge avant confirmation")
+StaticPopupDialogs.BLOCKFORGE_TEMPLATE.OnAccept({}, POPUPS[#POPUPS].data)
+assert(rows[2].full == "/use 13" and rows[3].full == "/cast", "modele non charge")
+fire(clear, "OnClick")
+fire(byText("Bibliothèque"), "OnClick")
 
 -- 8. parametres : onglet de la fenetre
 fire(byText("Paramètres", BlockForgeFrame), "OnClick")
@@ -653,7 +713,7 @@ fire(byText("Bibliothèque"), "OnClick")
 local listPanel
 for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel then listPanel = w end end
 local first
-for _, c in ipairs(listPanel._children) do if c._type == "Button" and c:IsShown() then first = c break end end
+for _, c in ipairs(listPanel._children) do if c.mark and c:IsShown() then first = c break end end
 local mage
 for _, e in ipairs(NS.Library) do if e.class == "MAGE" then mage = e break end end
 assert(first and first.text._text:find(mage.name, 1, true), "bibliotheque non ouverte sur la derniere classe")
@@ -697,7 +757,7 @@ fire(byText("Library"), "OnClick")
 fire(byText("All classes"), "OnClick")
 local listPanel
 for _, w in ipairs(ALL) do if w._scripts.OnMouseWheel then listPanel = w end end
-for _, c in ipairs(listPanel._children) do if c._type == "Button" and c:IsShown() then fire(c, "OnClick") break end end
+for _, c in ipairs(listPanel._children) do if c.mark and c:IsShown() then fire(c, "OnClick") break end end
 assert(find(function(w) return w._type == "FontString" and descs[w._text] end), "descEN non affichee")
 fire(byText("Settings", BlockForgeFrame), "OnClick")
 for _, w in ipairs(ALL) do
