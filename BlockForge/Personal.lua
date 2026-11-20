@@ -57,6 +57,26 @@ function ns.AddPersonal(name, body, icon, note)
   return true
 end
 
+-- Archive sans question (bilan de sante) : renvoie le nom sous lequel le modele est range, nil si la bibliotheque est pleine.
+-- Un modele de meme nom n'est jamais ecrase : meme texte, il sert d'archive ; texte different, le nom recoit un suffixe.
+function ns.ArchivePersonal(name, body, icon)
+  local base = ns.trim((name or ""):gsub("[|%c]", ""))
+  if base == "" then base = "?" end
+  local stored, n = base, 1
+  while true do
+    local _, old = Find(stored)
+    if not old then break end
+    if old.body == body then return stored end
+    n = n + 1
+    stored = ns.MacroName(base, 13) .. " ~" .. n
+  end
+  if #ns.db.personal >= MAX_PERSONAL then return nil end
+  if type(icon) ~= "string" and type(icon) ~= "number" then icon = nil end
+  ns.db.personal[#ns.db.personal + 1] = { name = stored, body = body or "", icon = icon, note = L["Archivée par le bilan de santé."] }
+  Changed()
+  return stored
+end
+
 if StaticPopupDialogs then
   StaticPopupDialogs.BLOCKFORGE_REPLACE_PERSONAL = {
     text = L["Le modèle « %s » existe déjà dans ta bibliothèque. Le remplacer ?"],

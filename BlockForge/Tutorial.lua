@@ -5,10 +5,14 @@ local T = ns.Theme
 
 local function W(key) return function() return ns.ed.w[key] end end
 
--- Etapes : onglet, widget explique, position du panneau { son point, point du widget, x, y }, titre, texte.
+-- Etapes : onglet, fonction (facultatif : l'etape est sautee si le joueur l'a coupee), widget explique, position du panneau { son point, point du widget, x, y }, titre, texte.
 -- Le panneau fait 320 x 140. Positions calculees dans la page de 884 x 570 (fenetre de 900 x 640) :
 --   blocs 0-160, zone 166-582, reglages 588-884 (hauteur 430) ; apercu en dessous, de -436 a -566.
 ns.TutorialSteps = {
+  -- accueil : les entrees sont un panneau de 884 x 150 a -102 ; la visite se pose dessous, a gauche
+  { tab = "home", feature = "home", anchor = W("homeActions"), at = { "TOPLEFT", "BOTTOMLEFT", 8, -8 }, -- 8 a 328, -260 a -400
+    title = L["L'accueil"],
+    text = L["BlockForge s'ouvre ici. « Améliorer ma barre » remplace un sort de ta barre par sa macro, à la même place. En bas, le bilan de santé repère tes macros cassées, en double ou jamais utilisées, à côté de macros suggérées pour ton personnage."] },
   { tab = "editor", anchor = W("palette"), at = { "TOPLEFT", "TOPRIGHT", 8, -40 }, -- 168 a 488, -40 a -180
     title = L["Les blocs"],
     text = L["Chaque bloc est une ligne de macro : lancer un sort, utiliser un objet, donner un ordre au familier… Clique sur un bloc pour l'ajouter à ta macro, ou glisse-le à l'endroit voulu."] },
@@ -21,20 +25,17 @@ ns.TutorialSteps = {
   { tab = "editor", anchor = W("preview"), at = { "BOTTOMLEFT", "TOPLEFT", 0, 40 }, -- 10 a 330, -294 a -434
     title = L["Aperçu et simulateur"],
     text = L["Le texte de la macro s'écrit tout seul, avec son compteur : 255 caractères au plus. « Simuler » montre quelle ligne partirait ; « Éditer le texte » te laisse taper la macro à la main."] },
-  { tab = "editor", anchor = W("action"), at = { "BOTTOMLEFT", "TOPLEFT", 0, 42 }, -- 386 a 706, -294 a -434
-    title = L["Le bouton d'action"],
-    text = L["Voici l'icône et le nom qu'aura la macro sur une barre d'action. Clique dessus pour choisir une autre icône, ou laisse le jeu la choisir."] },
   { tab = "editor", anchor = W("save"), at = { "BOTTOMLEFT", "TOPLEFT", 0, 60 }, -- 450 a 770, -294 a -434
     title = L["Nommer et enregistrer"],
-    text = L["Donne un nom (16 caractères au plus), puis « Créer / mettre à jour » : c'est une vraie macro du jeu, qui vient sous ton curseur. Pose-la sur une barre d'action. « Plus… » la garde dans ta bibliothèque ou l'envoie à un joueur."] },
+    text = L["Donne un nom (16 caractères au plus), puis « Créer / mettre à jour » : c'est une vraie macro du jeu, à poser sur une barre d'action. À gauche, le bouton montre son icône : clique dessus pour la changer. « Plus… » la garde dans ta bibliothèque ou l'envoie à un joueur."] },
   { tab = "editor", anchor = W("templates"), at = { "BOTTOMLEFT", "TOPRIGHT", 126, 8 }, -- 400 a 720, -252 a -392
     title = L["Les modèles"],
     text = L["Pas d'idée ? Pars d'un modèle (familier, PvP), puis glisse tes sorts sur les blocs marqués « (argument ?) ». À côté, « Annuler » et « Rétablir » reviennent sur tes dernières modifications."] },
   -- boutons sur la ligne des onglets, de +25 a +3 au-dessus de la page : le panneau se pose dessous, aligne a droite
-  { tab = "editor", anchor = W("grimoireButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 438 a 758, -5 a -145
+  { tab = "editor", feature = "grimoire", anchor = W("grimoireButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 438 a 758, -5 a -145
     title = L["Mon grimoire"],
     text = L["Tes sorts, les techniques de ton familier et les objets utilisables de tes sacs, en icônes. Un clic ajoute le sort à ta macro, ou remplit le bloc choisi s'il attend un sort. Maj+clic ouvre l'Assistant pour ce sort."] },
-  { tab = "editor", anchor = W("assistantButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 564 a 884, -5 a -145
+  { tab = "editor", feature = "assistant", anchor = W("assistantButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 564 a 884, -5 a -145
     title = L["L'Assistant"],
     text = L["Une bonne macro en deux clics : choisis un sort, l'Assistant propose des macros toutes faites (survol, focus, interruption, familier, bijoux…). « Créer la macro » l'enregistre, « Ouvrir dans l'éditeur » te laisse la retoucher."] },
   { tab = "library", anchor = W("libraryList"), at = { "TOPLEFT", "TOPRIGHT", 8, -40 }, -- 490 a 810, -40 a -180
@@ -53,7 +54,7 @@ ns.Tutorial = Tutorial
 local coach, frame, switching
 
 local function Show(i)
-  local steps = ns.TutorialSteps
+  local steps = Tutorial.steps
   local s = steps[i]
   switching = true
   ns.ed.ShowTab(s.tab)
@@ -89,7 +90,7 @@ local function Build()
   coach.count = coach:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   coach.count:SetPoint("BOTTOMLEFT", 100, 13)
   coach.next = ui.Button(coach, L["Suivant"], 84, function()
-    if Tutorial.step >= #ns.TutorialSteps then Tutorial.Stop() else Show(Tutorial.step + 1) end
+    if Tutorial.step >= #Tutorial.steps then Tutorial.Stop() else Show(Tutorial.step + 1) end
   end)
   coach.next:SetPoint("BOTTOMRIGHT", -8, 8)
   coach.skip = ui.Button(coach, L["Passer"], 70, function() Tutorial.Stop() end)
@@ -123,8 +124,14 @@ function Tutorial.Start(manual)
   -- le grimoire couvrirait la palette, l'Assistant tout l'editeur
   if ns.HideGrimoire then ns.HideGrimoire() end
   if ns.assistant then ns.assistant:Hide() end
+  if ns.wand then ns.wand:Hide() end
+  if ns.health then ns.health:Hide() end
   if not coach then Build() end
   ns.db.tutorialSeen = true
+  Tutorial.steps = {}
+  for _, s in ipairs(ns.TutorialSteps) do
+    if not s.feature or ns.Enabled(s.feature) then Tutorial.steps[#Tutorial.steps + 1] = s end
+  end
   Show(1)
 end
 
@@ -138,6 +145,6 @@ end
 
 -- appele par UI.lua a chaque changement d'onglet demande
 function Tutorial.OnTab(tab)
-  local s = Tutorial.step and ns.TutorialSteps[Tutorial.step]
+  local s = Tutorial.step and Tutorial.steps[Tutorial.step]
   if s and not switching and tab ~= s.tab then Tutorial.Stop() end
 end

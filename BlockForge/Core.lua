@@ -865,10 +865,186 @@ ns.Recipes = {
     build = function(name, o) return recipeText(o, { "/use " .. name, "/cast " .. L["Sort de secours"] }) end },
 }
 
--- nom de macro tire d'un nom de sort : 16 octets au plus, sans couper un caractere UTF-8
-function ns.MacroName(name)
+-- nom de macro tire d'un nom de sort : 16 octets au plus (max : moins, pour laisser la place a un suffixe), sans couper un caractere UTF-8
+function ns.MacroName(name, max)
   name = trim(name)
-  local last = math.min(#name, 16)
+  local last = math.min(#name, max or 16)
   while last > 0 and last < #name and name:byte(last + 1) >= 128 and name:byte(last + 1) < 192 do last = last - 1 end
   return trim(name:sub(1, last))
+end
+
+---------------------------------------------------------------------------
+-- V1 lot A : barres d'action, bilan de sante, jauge, suggestions. Logique pure : les API du jeu sont injectees (env).
+---------------------------------------------------------------------------
+-- texte de macro compare sans tenir compte des espaces : lignes rognees, espaces reduits, lignes vides retirees
+function ns.NormBody(body)
+  local lines = {}
+  for line in ((body or "") .. "\n"):gmatch("(.-)\r?\n") do
+    line = trim((line:gsub("%s+", " ")))
+    if line ~= "" then lines[#lines + 1] = line end
+  end
+  return table.concat(lines, "\n")
+end
+
+-- nom de raccourci du bouton d'un emplacement ; nil pour la page 2 et les postures, qui prennent les touches de la barre principale
+local BAR_BINDINGS = { [0] = "ACTIONBUTTON", [2] = "MULTIACTIONBAR3BUTTON", [3] = "MULTIACTIONBAR4BUTTON", [4] = "MULTIACTIONBAR2BUTTON",
+  [5] = "MULTIACTIONBAR1BUTTON", [12] = "MULTIACTIONBAR5BUTTON", [13] = "MULTIACTIONBAR6BUTTON", [14] = "MULTIACTIONBAR7BUTTON" }
+function ns.SlotBinding(slot)
+  local prefix = BAR_BINDINGS[math.floor((slot - 1) / 12)]
+  return prefix and (prefix .. ((slot - 1) % 12 + 1)) or nil
+end
+
+-- Quelle macro du jeu est dans un emplacement ? Selon le client, l'identifiant rendu est l'index de la macro, ou autre
+-- chose (le sort qu'elle lancerait). text : nom affiche sur le bouton ; macros : { index, name, body } ; env.spellName(id).
+-- Renvoie la macro et la methode ("index", "name", "body"), ou nil et "none".
+-- shortcut: deux macros de meme nom (generale et personnage) sont confondues, a departager par l'index si la sonde de /bf test le permet
+function ns.ResolveMacro(id, sub, text, macros, env)
+  local byIndex, byName
+  for _, m in ipairs(macros) do
+    if m.index == id then byIndex = m end
+    if text and text ~= "" and m.name == text and (not byName or m.index == id) then byName = m end
+  end
+  if byName then return byName, byName == byIndex and "index" or "name" end
+  if byIndex and (sub == nil or sub == "" or sub == "macro") then return byIndex, "index" end
+  local spell = sub == "spell" and env and env.spellName and env.spellName(id)
+  if spell then
+    local found, n = nil, 0
+    for _, m in ipairs(macros) do
+      if (m.body or ""):find(spell, 1, true) then found, n = m, n + 1 end
+    end
+    if n == 1 then return found, "body" end
+  end
+  return nil, "none"
+end
+
+-- env.slots, env.macros, env.action(slot) -> type, id, sous-type ; env.name(type, id) -> nom, icone ; facultatifs :
+-- env.text(slot), env.texture(slot), env.key(slot, nomDeMacro), env.spellName(id).
+-- Renvoie la liste { slot, kind, id, name, icon, macroName, macroIndex, key, how } et des comptes.
+-- kind : "spell", "item", "macro", "empty", ou "other" (monture, ensemble, familier... : jamais touche).
+function ns.ScanBars(env)
+  local list, stats = {}, { content = 0, spells = 0, items = 0, macros = 0, other = 0, unresolved = 0 }
+  for _, slot in ipairs(env.slots) do
+    local kind, id, sub = env.action(slot)
+    local e = { slot = slot, kind = "empty" }
+    if kind == "spell" or kind == "item" then
+      e.id = id
+      e.name, e.icon = env.name(kind, id)
+      e.kind = e.name and kind or "other" -- sans nom, pas de macro possible
+    elseif kind == "macro" then
+      e.kind, e.id, e.sub = "macro", id, sub
+      local m, how = ns.ResolveMacro(id, sub, env.text and env.text(slot), env.macros, env)
+      e.how = how
+      if m then
+        e.macroName, e.macroIndex, e.name, e.icon = m.name, m.index, m.name, m.icon
+      else
+        stats.unresolved = stats.unresolved + 1
+      end
+    elseif kind then
+      e.kind, e.id, e.raw = "other", id, kind
+    end
+    if e.kind ~= "empty" then
+      stats.content = stats.content + 1
+      local count = e.kind == "other" and "other" or (e.kind .. "s")
+      stats[count] = stats[count] + 1
+      e.icon = e.icon or (env.texture and env.texture(slot)) or nil
+    end
+    e.key = env.key and env.key(slot, e.macroName) or nil
+    list[#list + 1] = e
+  end
+  return list, stats
+end
+
+-- Conversion en masse : chaque sort des barres du type voulu ("help" ou "harm") recoit la macro de env.build.
+-- env.kind(nom) ; env.build(nom a lancer) -> texte ; env.cast(entree) -> nom a lancer, suffixe du nom de macro (rang).
+-- items : { slot, spell, macroName, body, create | reuse } ; skipped : meme forme avec skip = "name" (une autre macro
+-- porte ce nom) ou "long" ; need : macros a creer. Une macro du meme nom n'est jamais ecrasee en masse.
+function ns.BulkPlan(scan, want, macros, env)
+  local plan, byName, made = { items = {}, skipped = {}, need = 0 }, {}, {}
+  for _, m in ipairs(macros) do byName[m.name] = byName[m.name] or m end
+  for _, e in ipairs(scan) do
+    if e.kind == "spell" and env.kind(e.name) == want then
+      local cast, tag = e.name, ""
+      if env.cast then cast, tag = env.cast(e) end
+      local item = { slot = e.slot, spell = cast, icon = e.icon, macroName = ns.MacroName(e.name, 16 - #tag) .. tag, body = env.build(cast) }
+      local key, have = ns.NormBody(item.body), byName[item.macroName]
+      if #item.body > ns.MAX_CHARS then
+        item.skip = "long"
+      elseif made[item.macroName] then
+        if made[item.macroName] == key then item.reuse = true else item.skip = "name" end
+      elseif have then
+        if ns.NormBody(have.body) == key then item.reuse, made[item.macroName] = true, key else item.skip = "name" end
+      else
+        item.create, made[item.macroName] = true, key
+        plan.need = plan.need + 1
+      end
+      local into = item.skip and plan.skipped or plan.items
+      into[#into + 1] = item
+    end
+  end
+  return plan
+end
+
+-- remplace un nom de sort par un autre dans un texte de macro, mot entier seulement
+function ns.FixSpell(body, old, new)
+  local out, from = {}, 1
+  while old ~= "" do
+    local s, e = body:find(old, from, true)
+    if not s then break end
+    local whole = not isWordChar(body:sub(s - 1, s - 1)) and not isWordChar(body:sub(e + 1, e + 1))
+    out[#out + 1] = body:sub(from, s - 1) .. (whole and new or old)
+    from = e + 1
+  end
+  out[#out + 1] = body:sub(from)
+  return table.concat(out)
+end
+
+-- Bilan de sante des macros du jeu. macros : { name, body, ... }.
+-- env.unknown(corps) -> noms de sorts inconnus ; env.nearest(nom) -> nom proche du grimoire ou nil ;
+-- env.used(macro) -> posee sur une barre ou liee a une touche ; env.orphans == false : barres illisibles, groupe laisse vide.
+-- Chaque groupe liste des { macro = m, ... } : broken (fix = { faux, juste }, ou maybe = nom que rien n'explique),
+-- duplicates (of = la premiere macro de meme texte), orphans, risky (warning = premier avertissement de ns.Diagnose).
+function ns.HealthCheck(macros, env)
+  local report = { broken = {}, duplicates = {}, orphans = {}, risky = {}, total = #macros }
+  local first = {}
+  for _, m in ipairs(macros) do
+    local fix, maybe
+    for _, name in ipairs(env.unknown(m.body)) do
+      local near = env.nearest(name)
+      if near then fix = fix or { name, near } else maybe = maybe or name end
+    end
+    if fix or maybe then report.broken[#report.broken + 1] = { macro = m, fix = fix, maybe = not fix and maybe or nil } end
+    local key = ns.NormBody(m.body)
+    if key ~= "" then
+      if first[key] then report.duplicates[#report.duplicates + 1] = { macro = m, of = first[key] } else first[key] = m end
+    end
+    if env.orphans ~= false and not env.used(m) then report.orphans[#report.orphans + 1] = { macro = m } end
+    local _, warnings = ns.Diagnose(ns.Parse(m.body or ""))
+    if #warnings > 0 then report.risky[#report.risky + 1] = { macro = m, warning = warnings[1] } end
+  end
+  return report
+end
+
+-- jauge des emplacements de macro : texte court et niveau ("ok", "warn" a partir de 85 %, "full")
+function ns.Gauge(account, maxAccount, char, maxChar)
+  local worst = math.max(account / maxAccount, char / maxChar)
+  return ("%d / %d · %d / %d"):format(account, maxAccount, char, maxChar), worst >= 1 and "full" or worst >= 0.85 and "warn" or "ok"
+end
+
+-- Suggestions de l'accueil : parmi candidates ({ name, body, ... }, deja filtrees par classe et sorts connus),
+-- celles que le joueur n'a pas (ni le nom, ni le texte aux espaces pres), max au plus.
+function ns.Suggestions(candidates, macros, max)
+  local names, bodies, out = {}, {}, {}
+  for _, m in ipairs(macros) do
+    names[ns.Fold(m.name)] = true
+    bodies[ns.NormBody(m.body)] = true
+  end
+  for _, c in ipairs(candidates) do
+    if #out >= (max or 5) then break end
+    local key = ns.NormBody(c.body)
+    if not names[ns.Fold(c.name)] and not names[ns.Fold(ns.MacroName(c.name))] and not bodies[key] then
+      out[#out + 1] = c
+      bodies[key] = true -- pas deux fois la meme macro
+    end
+  end
+  return out
 end

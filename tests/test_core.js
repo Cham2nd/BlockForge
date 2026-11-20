@@ -453,3 +453,128 @@ assert(ns.BlockById.cast.label == "Lancer un sort" and ns.ConditionGroups[1].ite
 assert(w[1] == "« Lancer un sort » n'a pas d'argument." and w2[1]:find("^Trop long : "), w[1])
 print("test_core francais OK")
 `), "fr");
+
+// V1 lot A : barres d'action, bilan de sante, jauge, suggestions (logique pure de Core.lua)
+run(to_luastring(String.raw`
+local ns = NS
+-- texte compare aux espaces pres
+assert(ns.NormBody("  /cast   A \r\n\n/use 13  ") == "/cast A\n/use 13" and ns.NormBody(nil) == "")
+-- nom de macro avec place pour un suffixe, sans couper un caractere
+assert(ns.MacroName("Soins rapides superieurs") == "Soins rapides su" and ns.MacroName("Soins rapides superieurs", 14) == "Soins rapides")
+assert(ns.MacroName("Abcdefghijklé", 13) == "Abcdefghijkl")
+-- raccourci du bouton d'un emplacement
+assert(ns.SlotBinding(1) == "ACTIONBUTTON1" and ns.SlotBinding(12) == "ACTIONBUTTON12" and ns.SlotBinding(13) == nil)
+assert(ns.SlotBinding(25) == "MULTIACTIONBAR3BUTTON1" and ns.SlotBinding(48) == "MULTIACTIONBAR4BUTTON12" and ns.SlotBinding(49) == "MULTIACTIONBAR2BUTTON1")
+assert(ns.SlotBinding(72) == "MULTIACTIONBAR1BUTTON12" and ns.SlotBinding(100) == nil and ns.SlotBinding(145) == "MULTIACTIONBAR5BUTTON1" and ns.SlotBinding(180) == "MULTIACTIONBAR7BUTTON12")
+
+-- quelle macro dans un emplacement : les deux conventions de GetActionInfo
+local macros = { { index = 1, name = "Alpha", body = "/cast Peur" }, { index = 2, name = "Beta", body = "/cast Corruption" },
+                 { index = 121, name = "Perso", body = "/use 13" } }
+local env = { spellName = function(id) return id == 172 and "Corruption" or nil end }
+local function resolve(id, sub, text)
+  local m, how = ns.ResolveMacro(id, sub, text, macros, env)
+  return (m and m.name or "nil") .. "/" .. how
+end
+assert(resolve(2, nil, "Beta") == "Beta/index", resolve(2, nil, "Beta"))        -- l'identifiant est l'index, le nom le confirme
+assert(resolve(121, "", nil) == "Perso/index")                                   -- index seul, sans nom affiche
+assert(resolve(172, "spell", "Beta") == "Beta/name")                             -- l'identifiant est le sort : le nom tranche
+assert(resolve(1, "spell", "Beta") == "Beta/name")                               -- un identifiant de sort qui ressemble a un index
+assert(resolve(172, "spell", nil) == "Beta/body")                                -- ni index ni nom : la seule macro qui lance ce sort
+assert(resolve(1, "spell", nil) == "nil/none" and resolve(999, "spell", "Inconnue") == "nil/none")
+macros[4] = { index = 3, name = "Gamma", body = "/cast [mod] Corruption" }
+assert(resolve(172, "spell", nil) == "nil/none", "deux macros lancent ce sort : pas de devinette")
+macros[4] = nil
+-- deux macros de meme nom : celle dont l'index correspond
+macros[4] = { index = 122, name = "Beta", body = "/use 14" }
+assert(ns.ResolveMacro(122, nil, "Beta", macros, env).index == 122 and ns.ResolveMacro(2, nil, "Beta", macros, env).index == 2)
+macros[4] = nil
+
+-- releve des barres avec de faux emplacements
+local actions = { [1] = { "spell", 172 }, [2] = { "item", 5512 }, [3] = { "macro", 2 }, [4] = { "companion", 7 },
+                  [6] = { "macro", 172, "spell" }, [7] = { "spell", 999 }, [8] = { "macro", 140 } }
+local list, stats = ns.ScanBars({
+  slots = { 1, 2, 3, 4, 5, 6, 7, 8 }, macros = macros, spellName = env.spellName,
+  action = function(slot) local a = actions[slot] if a then return a[1], a[2], a[3] end end,
+  name = function(kind, id)
+    if kind == "spell" then return env.spellName(id), id == 172 and 136118 or nil end
+    return "Pierre de soins", 135230
+  end,
+  text = function(slot) return slot == 3 and "Beta" or nil end,
+  texture = function() return 134400 end,
+  key = function(slot, macroName) return slot == 1 and "1" or macroName and "F5" or nil end,
+})
+assert(#list == 8 and list[1].kind == "spell" and list[1].name == "Corruption" and list[1].id == 172 and list[1].icon == 136118 and list[1].key == "1")
+assert(list[2].kind == "item" and list[2].name == "Pierre de soins" and list[2].icon == 135230)
+assert(list[3].kind == "macro" and list[3].macroName == "Beta" and list[3].macroIndex == 2 and list[3].how == "index" and list[3].key == "F5")
+assert(list[4].kind == "other" and list[4].raw == "companion" and list[4].icon == 134400)
+assert(list[5].kind == "empty" and list[5].icon == nil and list[5].slot == 5)
+assert(list[6].kind == "macro" and list[6].macroName == "Beta" and list[6].how == "body")
+assert(list[7].kind == "other", "un sort sans nom n'est pas convertible")
+assert(list[8].kind == "macro" and list[8].macroName == nil and list[8].how == "none")
+assert(stats.content == 7 and stats.spells == 1 and stats.items == 1 and stats.macros == 3 and stats.other == 2 and stats.unresolved == 1)
+
+-- conversion en masse : memes sorts regroupes, macro existante reprise ou respectee, rang garde
+local scan = { { slot = 1, kind = "spell", name = "Soin", id = 1 }, { slot = 2, kind = "spell", name = "Soin", id = 1 },
+  { slot = 3, kind = "spell", name = "Peur" }, { slot = 4, kind = "spell", name = "Rapide" }, { slot = 5, kind = "spell", name = "Pris" },
+  { slot = 6, kind = "item", name = "Soin" }, { slot = 7, kind = "spell", name = "Soin", id = 2 }, { slot = 8, kind = "macro", name = "Soin" },
+  { slot = 9, kind = "spell", name = "Long" } }
+local have = { { name = "Rapide", body = "#showtooltip\n/cast   [@mouseover,help][] Rapide " }, { name = "Pris", body = "/cast Autre" } }
+local plan = ns.BulkPlan(scan, "help", have, {
+  kind = function(name) return name == "Peur" and "harm" or "help" end,
+  build = function(name) return name == "Long" and string.rep("x", 256) or ("#showtooltip\n/cast [@mouseover,help][] " .. name) end,
+  cast = function(e) if e.id == 2 then return e.name .. "(Rang 1)", " 1" end return e.name, "" end,
+})
+local function line(item) return item.slot .. ":" .. item.macroName .. ":" .. (item.create and "create" or item.reuse and "reuse" or item.skip) end
+local got = {}
+for _, item in ipairs(plan.items) do got[#got + 1] = line(item) end
+assert(table.concat(got, " ") == "1:Soin:create 2:Soin:reuse 4:Rapide:reuse 7:Soin 1:create", table.concat(got, " "))
+assert(plan.need == 2 and #plan.skipped == 2 and line(plan.skipped[1]) == "5:Pris:name" and line(plan.skipped[2]) == "9:Long:long")
+assert(plan.items[4].body == "#showtooltip\n/cast [@mouseover,help][] Soin(Rang 1)" and plan.items[4].spell == "Soin(Rang 1)")
+assert(#ns.BulkPlan(scan, "harm", have, { kind = function(name) return name == "Peur" and "harm" or "help" end, build = function(n) return "/cast " .. n end }).items == 1)
+
+-- reparation : mot entier seulement
+assert(ns.FixSpell("#showtooltip Peurr\n/cast [mod] Peurr; SuperPeurr", "Peurr", "Peur") == "#showtooltip Peur\n/cast [mod] Peur; SuperPeurr")
+assert(ns.FixSpell("/cast A", "", "B") == "/cast A" and ns.FixSpell("/cast A", "Z", "B") == "/cast A")
+
+-- bilan de sante
+local list = { { name = "A", body = "/cast Peurr" }, { name = "B", body = "/cast Peur" }, { name = "C", body = " /cast  Peur \n" },
+               { name = "D", body = "/cast Zzzzzz" }, { name = "E", body = "/cast [combat,nocombat] Peur" }, { name = "F", body = "" },
+               { name = "G", body = "/use Pierre de soins" } }
+local henv = {
+  unknown = function(body)
+    local out = {}
+    for _, name in ipairs(ns.SpellsOf(ns.Parse(body))) do if name ~= "Peur" then out[#out + 1] = name end end
+    return out
+  end,
+  nearest = function(name) return ns.Nearest(name, { "Peur" }) end,
+  used = function(m) return m.name ~= "B" and m.name ~= "F" end,
+}
+local r = ns.HealthCheck(list, henv)
+assert(r.total == 7 and #r.broken == 2 and r.broken[1].macro.name == "A" and r.broken[1].fix[1] == "Peurr" and r.broken[1].fix[2] == "Peur" and r.broken[1].maybe == nil)
+assert(r.broken[2].macro.name == "D" and r.broken[2].fix == nil and r.broken[2].maybe == "Zzzzzz", "nom que rien n'explique : peut-etre")
+assert(#r.duplicates == 1 and r.duplicates[1].macro.name == "C" and r.duplicates[1].of.name == "B", "doublon aux espaces pres ; une macro vide n'est pas un doublon")
+assert(#r.orphans == 2 and r.orphans[1].macro.name == "B" and r.orphans[2].macro.name == "F")
+assert(#r.risky == 1 and r.risky[1].macro.name == "E" and r.risky[1].warning:find("contradictoires"))
+-- un objet absent des sacs n'est pas « casse » : /use n'est pas controle
+for _, item in ipairs(r.broken) do assert(item.macro.name ~= "G") end
+henv.orphans = false
+assert(#ns.HealthCheck(list, henv).orphans == 0, "barres illisibles : aucune orpheline annoncee")
+
+-- jauge
+local text, level = ns.Gauge(87, 120, 12, 30)
+assert(text == "87 / 120 · 12 / 30" and level == "ok", text)
+assert(select(2, ns.Gauge(101, 120, 0, 30)) == "ok" and select(2, ns.Gauge(102, 120, 0, 30)) == "warn" and select(2, ns.Gauge(10, 120, 26, 30)) == "warn")
+assert(select(2, ns.Gauge(120, 120, 0, 30)) == "full" and select(2, ns.Gauge(0, 120, 30, 30)) == "full")
+
+-- suggestions : ni le nom (meme coupe a 16 octets, sans accents ni casse), ni le texte deja possede ; cinq au plus
+local cands = { { name = "Feu", body = "/cast Feu" }, { name = "Glace", body = "/cast Glace" }, { name = "Terre", body = "/cast  Terre" },
+  { name = "Un nom vraiment long", body = "/cast Long" }, { name = "Glace bis", body = "/cast Glace " } }
+for i = 1, 6 do cands[#cands + 1] = { name = "Autre" .. i, body = "/cast Autre" .. i } end
+local owned = { { name = "FEU", body = "/x" }, { name = "Autre", body = "/cast Terre" }, { name = "un nom vraiment", body = "/y" } }
+local s = ns.Suggestions(cands, owned, 5)
+local names = {}
+for i, c in ipairs(s) do names[i] = c.name end
+assert(table.concat(names, ",") == "Glace,Autre1,Autre2,Autre3,Autre4", table.concat(names, ","))
+assert(#ns.Suggestions(cands, {}) == 5 and #ns.Suggestions({}, owned) == 0)
+print("test_core V1 lot A OK")
+`), "v1a");

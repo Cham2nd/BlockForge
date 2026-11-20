@@ -26,6 +26,12 @@ For WoW Forever. Interface in English and French, following the game client lang
 - **Built-in spellbook.** A grid of your spells, your pet's abilities and the usable items in your bags, with a search box. One click adds the spell to your macro or fills the selected block.
 - **Assistant.** Pick a spell and get ready-made macros for it (mouseover, focus with a modifier key, interrupt on focus, nearest enemy, self-cast with Alt, pet attack, trinkets, cast sequence), with three options. Create the macro in one click, or open it in the editor.
 - **Guided tour.** A short tutorial walks through the window the first time you open it; `/bf tuto` replays it.
+- **Home tab.** The window opens on a dashboard: your macro slot counts, a health summary, the main entries and up to five library macros your character can cast and does not have yet.
+- **Upgrade my bar.** BlockForge shows your action bars slot by slot. Click a spell or an item, pick one of the Assistant's macros, and it is created and placed in that same slot. Two bulk buttons turn all your helpful or harmful spells into mouseover macros, with a before/after preview.
+- **Undo.** The last change to your bars or macros is reverted in one click, even after a `/reload`. If the game does not confirm a placement, the macro stays on your cursor and a message names the slot.
+- **Health check.** Sorts your game macros into broken, duplicates, orphans (on no bar, bound to no key) and at risk. Open, repair with the closest spellbook name, or archive: the macro is copied to My templates before it is deleted, after a confirmation.
+- **Macro slot gauge.** General and character macro counts (for example 87 / 120 · 12 / 30) stay visible in the title bar and change color near the limit.
+- **Feature switches.** Every feature above the editor core (home tab, bar upgrade, health check, suggestions, gauge, Assistant, spellbook, macro exchange, automatic tour, colored preview) can be turned off in the settings, without reloading.
 - **Settings.** Window scale, minimap button, per-character macros by default, confirmation before overwrite, accent color (your class color or gold).
 
 ## How to use it
@@ -34,12 +40,14 @@ For WoW Forever. Interface in English and French, following the game client lang
 - `/bf options` opens the settings.
 - `/bf tuto` replays the guided tour.
 - `/bf assistant` opens the macro assistant.
+- `/bf barre` (or `/bf bars`) opens "Upgrade my bar"; `/bf bilan` (or `/bf health`) opens the health check.
 - `/bf test` runs a self-check of the add-on in game.
 - Save creates a real game macro. Drag it to your action bar.
 
 ## Limits
 
-- Macros cannot be created or edited in combat. This is a game rule.
+- Macros cannot be created or edited in combat, and action bars cannot be changed in combat. This is a game rule.
+- The health check only sees the bars and key bindings of the character you are playing: a general macro used by another character, by `/click` or by another add-on looks orphaned. That is why macros are archived, not just deleted.
 - The add-on does not cast spells and does not read cooldowns. It only writes standard macros.
 - A few library macros contain a placeholder to replace with your own item (mount name, weapon and shield names).
 - Some library macros are not yet tested in game.
@@ -74,6 +82,12 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 - **Grimoire intégré.** Une grille de vos sorts, des techniques de votre familier et des objets utilisables de vos sacs, avec un champ de recherche. Un clic ajoute le sort à la macro ou remplit le bloc choisi.
 - **Assistant.** Choisissez un sort et obtenez des macros toutes faites pour lui (survol, focus avec touche de modification, interruption sur focus, ennemi le plus proche, sur soi avec Alt, attaque du familier, bijoux, séquence), avec trois options. Créez la macro en un clic, ou ouvrez-la dans l'éditeur.
 - **Visite guidée.** Un court tutoriel présente la fenêtre à la première ouverture ; `/bf tuto` le relance.
+- **Onglet Accueil.** La fenêtre s'ouvre sur un tableau de bord : le compte de vos macros, le bilan de santé en bref, les grandes entrées et jusqu'à cinq macros de la bibliothèque que votre personnage peut lancer et que vous n'avez pas encore.
+- **Améliorer ma barre.** BlockForge affiche vos barres d'action emplacement par emplacement. Cliquez sur un sort ou un objet, choisissez une macro de l'Assistant : elle est créée et posée au même endroit. Deux boutons passent d'un coup tous vos sorts d'aide ou offensifs au survol, avec un aperçu avant/après.
+- **Annuler.** La dernière modification de vos barres ou de vos macros se défait d'un clic, même après un `/reload`. Si le jeu ne confirme pas une pose, la macro reste sous votre curseur et un message indique l'emplacement.
+- **Bilan de santé.** Classe vos macros du jeu en cassées, doublons, orphelines (sur aucune barre, liées à aucune touche) et à risque. Ouvrez, réparez avec le nom le plus proche du grimoire, ou archivez : la macro est copiée dans Mes modèles avant d'être supprimée, après confirmation.
+- **Jauge des macros.** Le nombre de macros générales et du personnage (par exemple 87 / 120 · 12 / 30) reste affiché en haut de la fenêtre et change de couleur près de la limite.
+- **Fonctions désactivables.** Chaque fonction autour de l'éditeur (onglet Accueil, amélioration de la barre, bilan de santé, suggestions, jauge, Assistant, grimoire, échange de macros, visite automatique, aperçu coloré) se coupe dans les paramètres, sans recharger.
 - **Paramètres.** Échelle de la fenêtre, bouton de minicarte, macros par personnage par défaut, confirmation avant écrasement, couleur d'accent (celle de votre classe ou or).
 
 ## Utilisation
@@ -82,12 +96,14 @@ Pour WoW Forever. Interface en français et en anglais, selon la langue du clien
 - `/bf options` ouvre les paramètres.
 - `/bf tuto` relance la visite guidée.
 - `/bf assistant` ouvre l'assistant de macros.
+- `/bf barre` (ou `/bf bars`) ouvre « Améliorer ma barre » ; `/bf bilan` (ou `/bf health`) ouvre le bilan de santé.
 - `/bf test` lance un contrôle de l'add-on dans le jeu.
 - Enregistrer crée une vraie macro du jeu. Glissez-la dans votre barre d'action.
 
 ## Limites
 
-- Impossible de créer ou modifier une macro en combat. C'est une règle du jeu.
+- Impossible de créer ou modifier une macro en combat, ni de changer une barre d'action en combat. C'est une règle du jeu.
+- Le bilan de santé ne voit que les barres et les raccourcis du personnage en jeu : une macro générale utilisée par un autre personnage, par `/click` ou par un autre add-on paraît orpheline. C'est pourquoi les macros sont archivées, pas seulement supprimées.
 - L'add-on ne lance aucun sort et ne lit pas les temps de recharge. Il écrit seulement des macros standard.
 - Quelques macros de la bibliothèque contiennent un nom à remplacer par le vôtre (monture, arme, bouclier).
 - Certaines macros de la bibliothèque ne sont pas encore testées en jeu.

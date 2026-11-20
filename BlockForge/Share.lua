@@ -52,6 +52,7 @@ local function FriendlyTarget()
 end
 
 function ns.SendPrompt(name, body)
+  if ns.Off("share") then return end
   if InCombatLockdown() then return ns.Msg(COMBAT) end
   name = ns.trim(name or "")
   if name == "" then return ns.Msg(L["Donne un nom à la macro."]) end
@@ -127,6 +128,7 @@ end
 
 if available then
   local events = CreateFrame("Frame")
-  events:RegisterEvent("CHAT_MSG_ADDON")
   events:SetScript("OnEvent", function(_, _, ...) ns.OnShareMessage(...) end)
+  -- echange coupe dans les Parametres : plus aucune ecoute ; rappele par ns.InitDB une fois BlockForgeDB lue
+  ns.OnFeatures(function() ns.Listen(events, ns.Enabled("share"), "CHAT_MSG_ADDON") end, true)
 end

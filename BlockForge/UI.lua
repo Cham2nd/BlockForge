@@ -189,7 +189,7 @@ local function TabOrder(boxes)
 end
 
 -- partages avec Settings.lua
-ns.ui = { Panel = Panel, Label = Label, Button = Button, Tip = Tip, IconButton = IconButton, Chip = Chip, Tint = Tint, Edit = Edit }
+ns.ui = { Panel = Panel, Label = Label, Button = Button, Tip = Tip, IconButton = IconButton, Chip = Chip, Tint = Tint, Edit = Edit, SideBar = SideBar }
 
 -- police du code : le client n'a pas de police a chasse fixe, ARIALN (etroite) est la plus lisible
 local codeFont = CreateFont("BlockForgeCodeFont")
@@ -676,7 +676,7 @@ function Refresh()
   fixButton.fix = fix
   fixButton:SetShown(fix ~= nil)
   if fix then fixButton.text:SetText(L["Remplacer par « %s »"]:format(fix[2])) end
-  preview:SetText(text ~= "" and (simOn and SimulatedText() or ns.Colorize(text, T.code))
+  preview:SetText(text ~= "" and (simOn and SimulatedText() or ns.Code(text))
     or "|cff777777" .. L["(la macro compilée s'affiche ici)"] .. "|r")
   view.Sync()
   view.Count(#text)
@@ -1322,7 +1322,7 @@ local function BuildLibrary(parent, showEditor)
     if not current then return end
     title:SetText(current.name)
     desc:SetText(LibraryDesc(current) or "")
-    body:SetText(ns.Colorize(LibraryBody(current), T.code))
+    body:SetText(ns.Code(LibraryBody(current)))
     source:SetText(current.source and L["Source : %s"]:format(current.source) or "")
     favButton:SetText(ns.db.favorites[FavKey(current)] and L["Retirer des favoris"] or L["Ajouter aux favoris"])
   end
@@ -1515,7 +1515,7 @@ local function ReadMacros()
   for i = 1, numAccount + numChar do
     local index = i <= numAccount and i or MAX_ACCOUNT + i - numAccount -- macros du personnage : 121 a 150
     local name, icon, body = GetMacroInfo(index)
-    if name then list[#list + 1] = { name = name, icon = icon, body = body or "", char = i > numAccount } end
+    if name then list[#list + 1] = { name = name, icon = icon, body = body or "", char = i > numAccount, index = index } end
   end
   return list
 end
@@ -1528,6 +1528,9 @@ local function FindMacro(name, char)
     if GetMacroInfo(index) == name then return index end
   end
 end
+-- pour Bars.lua, Health.lua et Home.lua
+ns.ReadMacros, ns.FindMacro, ns.UnknownSpells, ns.LibraryBody, ns.LibraryDesc = ReadMacros, FindMacro, UnknownSpells, LibraryBody, LibraryDesc
+function ns.MacroLimits() return MAX_ACCOUNT, MAX_CHARACTER end
 
 local function RestoreSet(setName)
   if InCombatLockdown() then return Msg(L["Impossible de modifier une macro en combat."]) end
@@ -1622,7 +1625,7 @@ local function BuildMacros(parent, showEditor)
     local key = GetBindingKey("MACRO " .. current.name)
     info:SetText((current.char and L["Macro du personnage"] or L["Macro générale"]) .. "  ·  "
       .. (key and L["Raccourci : %s"]:format(key) or L["Aucun raccourci"]))
-    body:SetText(ns.Colorize(current.body, T.code))
+    body:SetText(ns.Code(current.body))
   end
 
   local open = Button(detail, L["Ouvrir dans l'éditeur"], 180, function()
@@ -1691,6 +1694,7 @@ local function BuildMacros(parent, showEditor)
       if current then ns.SendPrompt(current.name, current.body) end
     end)
     send:SetPoint("LEFT", import, "RIGHT", 6, 0)
+    view.w.send = send
     Tip(send, function() return L["Envoyer à…"], L["Envoie cette macro à un autre joueur qui a BlockForge. Il choisit de l'ouvrir ou non ; rien n'est enregistré chez lui sans son accord."] end)
     actions[#actions + 1] = send
   end
@@ -1907,10 +1911,12 @@ local function BuildHeader()
   Tint(close, T.close, 0.9)
   close:SetScript("OnClick", function() main:Hide() end)
   local version = ns.Version and ns.Version() or "?"
+  view.w.headerRight = close -- la jauge des macros (Home.lua) se pose a gauche de ce repere
   if version ~= "?" then
     local v = main:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     v:SetPoint("RIGHT", close, "LEFT", -8, 0)
     v:SetText("v" .. version)
+    view.w.headerRight = v
   end
 
   -- fondu a l'ouverture : une animation ne touche pas a l'alpha reel, la fenetre ne peut pas rester a moitie transparente
@@ -1947,15 +1953,16 @@ local function Build()
   tinsert(UISpecialFrames, "BlockForgeFrame")
 
   local pages = {}
-  for _, key in ipairs({ "editor", "library", "macros", "settings" }) do
+  for _, key in ipairs({ "home", "editor", "library", "macros", "settings" }) do
     pages[key] = CreateFrame("Frame", nil, main)
     pages[key]:SetPoint("TOPLEFT", 8, -58)
     pages[key]:SetSize(884, 570)
   end
   editor, library, settingsTab = pages.editor, pages.library, pages.settings
 
-  -- Onglets de 124 x 22 de -33 a -55 (pages a -58) ; l'actif est teinte et souligne a la couleur d'accent
-  local tabs, shownTab = {}, "editor"
+  -- Cinq onglets de 118 x 22 tous les 122, de 10 a 616 (608 dans la page : les boutons de l'editeur commencent a 638),
+  -- de -33 a -55 (pages a -58) ; l'actif est teinte et souligne a la couleur d'accent
+  local tabs, shownTab = {}, "home"
   function ShowTab(which)
     -- le joueur change d'onglet pendant la visite guidee : elle s'arrete
     if which and ns.Tutorial and ns.Tutorial.OnTab then ns.Tutorial.OnTab(which) end
@@ -1967,10 +1974,11 @@ local function Build()
       tabs[key].line:SetShown(on)
     end
   end
-  for i, spec in ipairs({ { "editor", L["Éditeur"] }, { "library", L["Bibliothèque"] },
-                          { "macros", L["Mes macros"] }, { "settings", L["Paramètres"] } }) do
-    local tab = Chip(main, 124, 22)
-    tab:SetPoint("TOPLEFT", 10 + (i - 1) * 128, -33)
+  local order = { { "home", L["Accueil"] }, { "editor", L["Éditeur"] }, { "library", L["Bibliothèque"] },
+                  { "macros", L["Mes macros"] }, { "settings", L["Paramètres"] } }
+  for i, spec in ipairs(order) do
+    local tab = Chip(main, 118, 22)
+    tab:SetPoint("TOPLEFT", 10 + (i - 1) * 122, -33)
     tab.text:SetFontObject(GameFontHighlight)
     tab.text:SetJustifyH("CENTER")
     tab.text:SetText(spec[2])
@@ -1993,8 +2001,29 @@ local function Build()
     ns.BuildSettingsPage(settingsPanel)
     view.w.settings = settingsPanel
   end)
-  ShowTab("editor")
   view.w.main, view.ShowTab = main, ShowTab
+  -- l'accueil en dernier : il lit la bibliotheque et les macros ; sans lui (erreur), la fenetre s'ouvre sur l'editeur
+  TryBuild("home", function() ns.BuildHome(pages.home) end)
+  -- fonctions coupees dans les Parametres : l'onglet Accueil disparait et les suivants se resserrent a gauche
+  ns.OnFeatures(function()
+    local x, home = 10, ns.Enabled("home") and not buildErrors.home
+    for _, spec in ipairs(order) do
+      local tab = tabs[spec[1]]
+      tab:SetShown(spec[1] ~= "home" or home)
+      if tab:IsShown() then
+        tab:ClearAllPoints()
+        tab:SetPoint("TOPLEFT", x, -33)
+        x = x + 122
+      end
+    end
+    if shownTab == "home" and not home then ShowTab("editor") end
+    if view.w.send then view.w.send:SetShown(ns.Enabled("share")) end
+    if not buildErrors.editor then Refresh() end -- apercu colore ou non
+    if ns.RefreshLibrary and not buildErrors.library then ns.RefreshLibrary() end
+    if RefreshMacros and not buildErrors.macros and pages.macros:IsVisible() then RefreshMacros() end
+  end)
+  ShowTab("home")
+  ns.ApplyFeatures()
   main:HookScript("OnHide", function()
     if ns.Tutorial then ns.Tutorial.Stop() end
     if ns.prompt then ns.prompt:Hide() end
@@ -2018,7 +2047,7 @@ end
 function ns.Toggle()
   if not main then Build() else main:SetShown(not main:IsShown()) end
   -- premiere ouverture : visite guidee (une seule fois ; pas en combat, elle attendra la prochaine ouverture)
-  if main:IsShown() and ns.Tutorial and not ns.db.tutorialSeen and not InCombatLockdown() then ns.Tutorial.Start() end
+  if main:IsShown() and ns.Tutorial and not ns.db.tutorialSeen and ns.Enabled("tutorial") and not InCombatLockdown() then ns.Tutorial.Start() end
 end
 
 -- ouvre la fenetre sur un onglet (visite guidee, macro recue)
@@ -2042,5 +2071,7 @@ SlashCmdList.BLOCKFORGE = function(msg)
   if msg == "test" then return ns.SelfTest() end
   if msg == "tuto" or msg == "tutorial" or msg == "help" then return ns.Tutorial.Start(true) end
   if msg == "assistant" then return ns.OpenAssistant() end
+  if msg == "barre" or msg == "bars" then return ns.OpenWand() end
+  if msg == "bilan" or msg == "health" then return ns.OpenHealth() end
   ns.Toggle()
 end

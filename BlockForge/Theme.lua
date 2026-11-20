@@ -32,6 +32,12 @@ for _, def in ipairs(ns.BlockDefs or {}) do
   if def.cmd:sub(1, 1) == "/" then T.code.commands[def.cmd] = T.Hex(T.Light(def.color)) end
 end
 
+-- texte de macro affiche : colore, ou d'une seule couleur si le joueur a coupe la fonction
+function ns.Code(text)
+  if ns.Enabled and not ns.Enabled("colorize") then return ns.Plain(text) end
+  return ns.Colorize(text, T.code)
+end
+
 local watchers = {}
 -- fn peint un element a la couleur d'accent : appelee tout de suite, puis a chaque changement du reglage
 function T.Watch(fn)

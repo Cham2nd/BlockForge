@@ -21,10 +21,12 @@ local SOURCE_OF = { spell = 1, pet = 2, item = 3 }
 
 local panel
 -- entry : sort, technique ou objet choisi ; kind : son type pour les recettes ; recipes : celles qui s'appliquent
+-- slot : emplacement de barre a remplacer (« Ameliorer ma barre »), nil pour une simple creation
 local state = { options = { showtooltip = true, nodead = true, stopattack = false }, recipes = {}, offset = 0 }
 
 local function Render()
   local ui, entry = ns.ui, state.entry
+  panel.title:SetText(state.slot and L["Assistant — emplacement %d de ta barre"]:format(state.slot) or L["Assistant"])
   panel.icon:SetTexture(entry and entry.icon or QUESTION)
   panel.name:SetText(entry and ns.Plain(entry.name) or L["Choisis un sort à gauche."])
   panel.kind:SetText(entry and KIND[state.kind] or "")
@@ -46,8 +48,9 @@ local function Render()
       card.recipe, card.body = recipe, recipe.build(entry.name, options)
       card.title:SetText(recipe.title)
       card.desc:SetText(recipe.desc)
-      card.code:SetText(ns.Colorize(card.body, T.code))
+      card.code:SetText(ns.Code(card.body))
       card.count:SetText(("%d / %d"):format(#card.body, ns.MAX_CHARS))
+      card.create:SetText(state.slot and L["Créer et poser"] or L["Créer la macro"])
       -- un nom reste a remplacer : la macro passe par l'editeur
       if recipe.editorOnly then card.create:Disable() else card.create:Enable() end
     end
@@ -57,9 +60,11 @@ local function Render()
   panel.grid.Render()
 end
 
-local function Pick(entry)
-  state.entry = entry
-  state.kind = entry.kind == "spell" and ns.SpellKind(entry.name) or entry.kind
+-- slot : seulement quand le sort vient d'un emplacement de barre ; un autre sort choisi dans la grille quitte ce mode
+local function Pick(entry, slot)
+  state.entry, state.slot = entry, slot
+  -- base : nom sans rang, le seul que le jeu sait classer
+  state.kind = entry.kind == "spell" and ns.SpellKind(entry.base or entry.name) or entry.kind
   state.recipes, state.offset = {}, 0
   local hasPet = ns.HasPet()
   for _, recipe in ipairs(ns.Recipes) do
@@ -78,10 +83,21 @@ local function BuildCard(deck, i)
   card.title:SetWidth(270)
   card.title:SetWordWrap(false)
   card.create = ui.Button(card, L["Créer la macro"], 120, function()
-    ns.ed.SaveMacro(ns.MacroName(state.entry.name), card.body, ns.db.perCharDefault and true or false, nil, false)
+    local name = state.entry.macroName or ns.MacroName(state.entry.name)
+    if state.slot then
+      -- la macro prend la place du sort ; retour a l'image des barres, ou « Annuler » attend
+      return ns.Bars.Upgrade(state.slot, name, card.body, function()
+        panel:Hide()
+        ns.OpenWand()
+      end)
+    end
+    ns.ed.SaveMacro(name, card.body, ns.db.perCharDefault and true or false, nil, false)
   end)
   card.create:SetPoint("TOPRIGHT", -8, -6)
   ui.Tip(card.create, function()
+    if state.slot then
+      return L["Créer et poser"], L["Crée la macro et la met dans cet emplacement de ta barre, à la place du sort. « Annuler », dans « Améliorer ma barre », remet le sort. Hors combat seulement."]
+    end
     return L["Créer la macro"], L["Crée tout de suite une macro du jeu au nom du sort, avec l'icône automatique. Hors combat seulement."]
   end)
   card.open = ui.Button(card, L["Ouvrir dans l'éditeur"], 150, function()
@@ -115,7 +131,7 @@ local function Build()
   ns.CloseChip(panel)
 
   -- 6 colonnes de 36 px : puces de -28 a -46, recherche de -50 a -70, 12 lignes de -74 a -528, position dessous
-  panel.grid = ns.BuildSpellGrid(panel, 8, -28, 6, 12, 36, Pick)
+  panel.grid = ns.BuildSpellGrid(panel, 8, -28, 6, 12, 36, function(entry) Pick(entry) end)
   panel.grid.tip = L["Clic : affiche les macros possibles pour ce sort."]
   panel.grid.range:SetPoint("TOPRIGHT", panel.grid.frame, "BOTTOMRIGHT", 0, -6)
   local split = panel:CreateTexture(nil, "ARTWORK")
@@ -170,13 +186,26 @@ local function Build()
   panel.intro = ui.Label(panel, L["Choisis à gauche un sort, une technique de ton familier ou un objet : l'Assistant te propose des macros toutes faites. « Créer la macro » l'enregistre tout de suite, « Ouvrir dans l'éditeur » te laisse la retoucher."],
     258, -84, "GameFontHighlight")
   panel.intro:SetWidth(600)
-  panel.deck, panel.state = deck, state
+  -- dans le bandeau, de 700 a 850 (la croix va de 856 a 878) : l'autre entree de « Ameliorer ma barre »
+  local bars = ui.Chip(panel, 150, 16)
+  bars:SetPoint("TOPRIGHT", -34, -5)
+  bars.text:SetJustifyH("CENTER")
+  bars.text:SetText(L["Améliorer ma barre"])
+  T.Watch(function() ui.Tint(bars, T.accent, 0.6) end)
+  bars:SetScript("OnClick", function()
+    panel:Hide()
+    ns.OpenWand()
+  end)
+  ui.Tip(bars, function() return L["Améliorer ma barre"], L["Remplace un sort de ta barre par sa macro, à la même place."] end)
+  ns.OnFeatures(function() bars:SetShown(ns.Enabled("bars")) end, true)
+  panel.deck, panel.state, panel.bars = deck, state, bars
   ns.assistant = panel
   T.OnChange(Render)
 end
 
--- entry (facultatif) : sort choisi dans le grimoire integre (Maj+clic)
-function ns.OpenAssistant(entry)
+-- entry (facultatif) : sort choisi dans le grimoire integre (Maj+clic), ou sort d'un emplacement de barre (slot)
+function ns.OpenAssistant(entry, slot)
+  if ns.Off("assistant") then return end
   if InCombatLockdown() then return ns.Msg(L["Impossible de modifier une macro en combat."]) end
   ns.Open("editor")
   if ns.Tutorial then ns.Tutorial.Stop() end -- le panneau de la visite passerait dessous
@@ -185,6 +214,12 @@ function ns.OpenAssistant(entry)
   ns.HideGrimoire()
   if entry then panel.grid.source = SOURCE_OF[entry.kind] or 1 end
   panel.grid.Fill()
-  if entry then Pick(entry) else Render() end
+  if ns.wand then ns.wand:Hide() end
+  if entry then
+    Pick(entry, slot)
+  else
+    state.slot = nil
+    Render()
+  end
   panel:Show()
 end

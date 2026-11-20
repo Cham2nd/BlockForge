@@ -1,5 +1,18 @@
-# BlockForge 0.9.0
+# BlockForge 1.0.0
 
+- Accueil : la fenêtre s'ouvre sur un nouvel onglet « Accueil », avec le nom de votre personnage, le compte de vos macros, le bilan de santé en bref, les grandes entrées (Assistant, Améliorer ma barre, Bibliothèque, Mes macros) et jusqu'à cinq macros de la bibliothèque que votre personnage peut lancer et que vous n'avez pas encore (« Ouvrir » ou « Créer »).
+- Jauge : le nombre de macros générales et de macros du personnage (par exemple « 87 / 120 · 12 / 30 ») reste affiché en haut de la fenêtre ; il passe à l'orange près de la limite, au rouge quand un onglet est plein.
+- Améliorer ma barre : BlockForge affiche vos barres d'action, emplacement par emplacement, avec les touches. Cliquez sur un sort ou un objet : l'Assistant propose ses macros, et celle que vous choisissez est créée et posée au même endroit, à la place du sort.
+- Conversion en masse : « Passer mes sorts d'aide au survol » et « Passer mes sorts offensifs au survol » transforment d'un coup tous les sorts concernés de vos barres. Une liste avant/après et le nombre de macros à créer s'affichent avant de confirmer ; l'opération est refusée s'il ne reste pas assez de places. Un rang de sort plus bas que votre meilleur rang est conservé dans la macro.
+- Annuler : la dernière opération sur vos barres ou vos macros se défait d'un clic, même après un `/reload` : les sorts reviennent à leur place et les macros créées sont supprimées. Un emplacement que vous avez changé entre-temps n'est pas touché.
+- Si le jeu ne confirme pas la pose d'une macro, elle reste sous votre curseur et un message indique sur quel emplacement la déposer.
+- Bilan de santé : toutes vos macros sont classées en quatre groupes : cassées (sort inconnu, avec le nom le plus proche de votre grimoire), doublons, orphelines (sur aucune barre et liées à aucune touche) et à risque (avertissements de l'éditeur). Pour chaque macro : « Ouvrir », « Réparer », « Archiver ».
+- Archiver : la macro est d'abord copiée dans « Mes modèles », puis supprimée du jeu après une confirmation qui indique le nombre de macros ; « Annuler » la recrée. « Archiver les orphelines… » le fait pour tout le groupe.
+- Fonctions : dans l'onglet Paramètres, une case par fonction permet de la désactiver sans recharger l'interface : onglet Accueil, Améliorer ma barre, Bilan de santé, suggestions, jauge, Assistant, Mon grimoire, échange de macros entre joueurs, visite guidée automatique, aperçu coloré. Une fonction désactivée n'a plus ni bouton ni commande, et ne fait plus rien en arrière-plan.
+- L'ancien réglage « Accepter les macros envoyées par d'autres joueurs » devient la fonction « Échange de macros entre joueurs » : décochée, elle coupe aussi l'envoi.
+- Nouvelles commandes : `/bf barre` et `/bf bilan`.
+- Tutoriel : la visite commence par l'accueil (12 étapes) et saute les fonctions désactivées.
+- `/bf test` relève aussi, en lecture seule, ce que le jeu répond sur les barres d'action, les raccourcis, les spécialisations et quelques fonctions prévues pour la suite, ainsi que l'état de chaque fonction.
 - Mon grimoire : le bouton « Mon grimoire » de l'éditeur ouvre, à la place de la liste des blocs, une grille de vos sorts (sans les passifs), des techniques de votre familier et des objets utilisables de vos sacs et de vos deux emplacements de bijou, avec un champ de recherche.
 - Un clic sur une icône ajoute le bloc « Lancer un sort » ou « Utiliser un objet » en bas de la macro, ou remplit le bloc choisi s'il attend encore son sort. Maj+clic ouvre l'Assistant pour ce sort.
 - Assistant : choisissez un sort, une technique de familier ou un objet, et l'Assistant propose des macros toutes faites adaptées (sort offensif ou d'aide) : survol puis cible, focus avec Maj, interruption sur le focus, ennemi le plus proche, sur soi avec Alt, avec le familier, bijoux puis sort, annuler l'incantation en cours, séquence, objet puis sort.

@@ -356,7 +356,11 @@ assert(ns.fade._plays == 2)
 local T = ns.Theme
 assert(db.accent == "class" and T.accent[1] == 0.53 and T.accent[3] == 0.93, "accent de classe : " .. T.accent[1])
 assert(BlockForgeFrame.TitleText._textColor[1] == 0.53, "titre sans la couleur d'accent")
-local tabEditor, tabLibrary = byText("Éditeur"), byText("Bibliothèque")
+-- V1 : la fenetre s'ouvre sur l'accueil
+local tabHome, tabEditor, tabLibrary = byText("Accueil"), byText("Éditeur"), byText("Bibliothèque")
+assert(tabHome.line:IsShown() and not tabEditor.line:IsShown() and tabHome._border[1] == 0.53, "la fenetre ne s'ouvre pas sur l'accueil")
+fire(tabEditor, "OnClick")
+assert(not tabHome.line:IsShown(), "accueil encore marque")
 assert(tabEditor.line:IsShown() and not tabLibrary.line:IsShown() and tabEditor._border[1] == 0.53 and tabLibrary._border[1] ~= 0.53, "onglet actif non marque")
 
 -- reperes
@@ -796,7 +800,7 @@ fire(byText("Paramètres", BlockForgeFrame), "OnClick")
 local settingsPanel = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, BlockForgeFrame) and w ~= perChar and w:IsVisible() end)._parent
 assert(settingsPanel:IsVisible(), "onglet Parametres non affiche")
 local checks = checkboxes(settingsPanel)
-assert(#checks == 12, "cases : " .. #checks) -- 8 reglages + 2 choix de classe + 2 couleurs d'accent
+assert(#checks == 21, "cases : " .. #checks) -- 7 reglages + 2 choix de classe + 2 couleurs d'accent + 10 fonctions
 for _, c in ipairs(checks) do assert(c.label, "case sans libelle") end
 local function cb(fragment)
   for _, c in ipairs(checks) do if c.label:find(fragment, 1, true) then return c.box end end
@@ -946,7 +950,7 @@ local gamePanel
 for _, w in ipairs(ALL) do if w.name == "BlockForge" and not w._parent then gamePanel = w end end
 assert(gamePanel, "panneau des options du jeu absent")
 local gameChecks = checkboxes(gamePanel)
-assert(#gameChecks == 12)
+assert(#gameChecks == 11) -- sans la colonne des fonctions
 click(gameChecks[1].box, false)
 fire(settingsPanel, "OnShow")
 assert(cb("minicarte")._checked == false, "les deux pages ne sont pas synchronisees")
@@ -1246,7 +1250,7 @@ SlashCmdList.BLOCKFORGE("")
 assert(BlockForgeFrame.TitleText._text == "BlockForge — block-based macro editor")
 -- visite guidee en anglais : lancee a la premiere ouverture, aucun texte reste en francais
 local coach = NS.Tutorial.coach
-assert(NS.Tutorial.step == 1 and coach.title._text == "Blocks" and coach.next._text == "Next" and coach.skip._text == "Skip", coach.title._text)
+assert(NS.Tutorial.step == 1 and coach.title._text == "The home tab" and coach.next._text == "Next" and coach.skip._text == "Skip", coach.title._text)
 for _, s in ipairs(NS.TutorialSteps) do
   for _, c in ipairs({ "é", "è", "ê", "à", "ù", "ç", "«", "»", " :", " ;", " ?" }) do
     assert(not (s.title .. s.text):find(c, 1, true), "etape en francais : " .. s.title)
@@ -1294,7 +1298,7 @@ local coach = tour.coach
 assert(db.tutorialSeen == true and tour.step == 1 and coach and coach:IsShown() and tour.frame:IsShown(), "visite non lancee")
 assert(#steps >= 8 and #steps <= 12, #steps)
 assert(coach._parent == BlockForgeFrame and coach._w == 320 and coach._h == 140)
-local tabs = { editor = byText("Éditeur"), library = byText("Bibliothèque"), macros = byText("Mes macros", BlockForgeFrame), settings = byText("Paramètres", BlockForgeFrame) }
+local tabs = { home = byText("Accueil"), editor = byText("Éditeur"), library = byText("Bibliothèque"), macros = byText("Mes macros", BlockForgeFrame), settings = byText("Paramètres", BlockForgeFrame) }
 local seenTabs = {}
 for i, s in ipairs(steps) do
   assert(tour.step == i, "etape " .. i)
@@ -1322,7 +1326,7 @@ SlashCmdList.BLOCKFORGE("")
 assert(BlockForgeFrame:IsShown() and tour.step == nil, "visite relancee a la 2e ouverture")
 for _, cmd in ipairs({ "tuto", "tutorial", "help", " TUTO " }) do
   SlashCmdList.BLOCKFORGE(cmd)
-  assert(tour.step == 1 and coach:IsShown() and tabs.editor.line:IsShown(), cmd)
+  assert(tour.step == 1 and coach:IsShown() and tabs.home.line:IsShown(), cmd)
   fire(coach.skip, "OnClick") -- « Passer »
   assert(tour.step == nil and not coach:IsShown(), "passer")
 end
@@ -1339,7 +1343,7 @@ assert(tour.step == nil and not coach:IsShown(), "visite encore la en combat")
 -- bouton des parametres
 fire(tabs.settings, "OnClick")
 fire(byText("Revoir le tutoriel", BlockForgeFrame), "OnClick")
-assert(tour.step == 1 and tabs.editor.line:IsShown())
+assert(tour.step == 1 and tabs.home.line:IsShown())
 fire(coach.skip, "OnClick")
 
 -- reperes de l'editeur
@@ -1870,6 +1874,7 @@ local function created()
   return n, last
 end
 SlashCmdList.BLOCKFORGE("")
+ns.Open("editor") -- la fenetre s'ouvre sur l'accueil
 local w = ns.ed.w
 local bookButton, assistantButton = w.grimoireButton, w.assistantButton
 assert(bookButton._text == "Mon grimoire" and assistantButton._text == "Assistant", "boutons de l'editeur absents")
@@ -2150,4 +2155,745 @@ for _, x in ipairs(ALL) do
 end
 `, "=grimoire sans api");
 
-console.log("test_ui.js : OK (9 scenarios)");
+// ---------------------------------------------------------------- 10. V1 lot A : accueil, barres d'action, bilan de sante
+// Faux emplacements d'action : SLOTS[slot] = { type, id }. Le curseur porte { type, id } ; PlaceAction echange comme le jeu.
+const BARS = String.raw`
+SLOTS = {}
+PLACE_OK = true     -- false : le jeu ignore PlaceAction (pose refusee)
+RELATED = false     -- true : GetActionInfo rend pour une macro un identifiant qui n'est pas son index
+PLACES = 0
+local function valid(slot) assert(type(slot) == "number" and ((slot >= 1 and slot <= 120) or (slot >= 145 and slot <= 180)), "emplacement invalide : " .. tostring(slot)) end
+function GetActionInfo(slot)
+  valid(slot)
+  local a = SLOTS[slot]
+  if not a then return nil end
+  if a[1] == "macro" and RELATED then return "macro", 5000 + a[2], "spell" end
+  return a[1], a[2]
+end
+function GetActionText(slot)
+  local a = SLOTS[slot]
+  if a and a[1] == "macro" then
+    for name, m in pairs(MACROS) do if m.index == a[2] then return name end end
+  end
+end
+function GetActionTexture(slot) return SLOTS[slot] and 134400 or nil end
+function PickupMacro(x)
+  assert(not COMBAT, "PickupMacro en combat")
+  local index = type(x) == "number" and x or GetMacroIndexByName(x)
+  CALLS[#CALLS + 1] = { "PickupMacro", x }
+  CURSOR = { "macro", index }
+end
+function PickupAction(slot) valid(slot) assert(not COMBAT) CURSOR = SLOTS[slot] or {} SLOTS[slot] = nil end
+function PlaceAction(slot)
+  valid(slot)
+  assert(not COMBAT, "PlaceAction en combat")
+  PLACES = PLACES + 1
+  if not PLACE_OK or not CURSOR[1] then return end
+  local old = SLOTS[slot]
+  SLOTS[slot] = { CURSOR[1], CURSOR[2] }
+  CURSOR = old or {}
+end
+-- comme le jeu : les index suivants reculent d'un cran, la macro quitte les barres
+function DeleteMacro(index)
+  assert(not COMBAT, "DeleteMacro en combat")
+  local gone
+  for name, m in pairs(MACROS) do if m.index == index then gone = name end end
+  assert(gone, "DeleteMacro : index inconnu " .. tostring(index))
+  MACROS[gone] = nil
+  local char = index > 120
+  for _, m in pairs(MACROS) do
+    if m.index > index and (m.index > 120) == char then m.index = m.index - 1 end
+  end
+  for slot, a in pairs(SLOTS) do
+    if a[1] == "macro" then
+      if a[2] == index then SLOTS[slot] = nil
+      elseif a[2] > index and (a[2] > 120) == char then a[2] = a[2] - 1 end
+    end
+  end
+  CALLS[#CALLS + 1] = { "DeleteMacro", gone }
+end
+SPELLS = { [172] = "Corruption", [5782] = "Peur", [2061] = "Soins rapides", [2060] = "Soins rapides", [139] = "Rénovation" }
+BEST = { Corruption = 172, Peur = 5782, ["Soins rapides"] = 2061, ["Rénovation"] = 139 } -- plus haut rang connu
+local baseName = C_Spell.GetSpellName
+C_Spell.GetSpellName = function(id) return SPELLS[id] or baseName(id) end
+C_Spell.GetSpellInfo = function(name) if BEST[name] then return { spellID = BEST[name] } end end
+C_Spell.GetSpellSubtext = function(id) return id == 2060 and "Rang 2" or id == 2061 and "Rang 3" or "" end
+C_Spell.IsSpellHarmful = function(name) return name == "Corruption" or name == "Peur" end
+C_Spell.IsSpellHelpful = function(name) return name == "Soins rapides" or name == "Rénovation" end
+C_Spell.PickupSpell = function(id) assert(not COMBAT) CURSOR = { "spell", id } end
+C_Item.PickupItem = function(id) assert(not COMBAT) CURSOR = { "item", id } end
+C_Item.GetItemNameByID = function(id) return id == 5512 and "Pierre de soins" or nil end
+BOOK = { "Corruption", "Peur", "Soins rapides", "Rénovation" }
+C_SpellBook = {
+  GetNumSpellBookSkillLines = function() return 1 end,
+  GetSpellBookSkillLineInfo = function() return { itemIndexOffset = 0, numSpellBookItems = #BOOK } end,
+  GetSpellBookItemName = function(i) return BOOK[i] end,
+}
+Enum = { SpellBookSpellBank = { Player = 0 } }
+function slotIs(slot, kind, id) local a = SLOTS[slot] return (a == nil and kind == nil) or (a ~= nil and a[1] == kind and a[2] == id) end
+function accept(which) -- le joueur clique « Oui » sur la derniere confirmation
+  local p = POPUPS[#POPUPS]
+  assert(p and p.which == which, "confirmation attendue : " .. which .. ", recue : " .. tostring(p and p.which))
+  StaticPopupDialogs[which].OnAccept(nil, p.data)
+end
+`;
+boot("{ tutorialSeen = true }", BARS);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+local function said(fragment) return lastLine():find(fragment, 1, true) ~= nil end
+local function count(kind) local n = 0 for _, c in ipairs(CALLS) do if c[1] == kind then n = n + 1 end end return n end
+-- macros du joueur et barres de depart
+CreateMacro("Vieille", 1, "/cast Peurr")
+CreateMacro("Double1", 1, "/cast Peur")
+CreateMacro("Double2", 1, " /cast  Peur ")
+CreateMacro("Orph", 1, "/cast Corruption")
+CreateMacro("Risque", 1, "/cast [combat,nocombat] Peur")
+SLOTS[1], SLOTS[2], SLOTS[3], SLOTS[4] = { "spell", 172 }, { "spell", 2061 }, { "item", 5512 }, { "companion", 3 }
+SLOTS[5], SLOTS[14], SLOTS[26], SLOTS[61] = { "macro", MACROS.Double1.index }, { "spell", 2060 }, { "spell", 139 }, { "spell", 5782 }
+BINDINGS["1"], BINDINGS["F5"] = "ACTIONBUTTON1", "MACRO Double2"
+-- suggestions : trois macros de bibliotheque pour ce personnage, dont deux deja possedees (par le texte, par le nom)
+table.insert(ns.Library, 1, { class = "WARLOCK", category = "PvE", name = "Sugg texte", body = "/cast  Corruption", desc = "d1" })
+table.insert(ns.Library, 2, { class = "WARLOCK", category = "PvE", name = "double1", body = "/cast Peur\n/use 13", desc = "d2" })
+table.insert(ns.Library, 3, { class = "WARLOCK", category = "PvE", name = "Sugg neuve", body = "/cast Peur\n/use 14", desc = "d3" })
+table.insert(ns.Library, 4, { class = "WARLOCK", category = "PvE", name = "Sugg inconnue", body = "/cast Sort inconnu", desc = "d4" })
+
+-- 1. la fenetre s'ouvre sur l'accueil ; les cinq onglets tiennent sans se chevaucher ni toucher les boutons de l'editeur
+SlashCmdList.BLOCKFORGE("")
+local w, home = ns.ed.w, ns.home
+local labels = { "Accueil", "Éditeur", "Bibliothèque", "Mes macros", "Paramètres" }
+local tabs, x = {}, {}
+for i, label in ipairs(labels) do
+  tabs[i] = byText(label, BlockForgeFrame)
+  assert(tabs[i]._parent == BlockForgeFrame and tabs[i]._w == 118 and tabs[i]._point[1] == "TOPLEFT" and tabs[i]._point[3] == -33, "onglet " .. label)
+  x[i] = tabs[i]._point[2]
+end
+for i = 1, 4 do assert(x[i] + 118 <= x[i + 1], "onglets qui se chevauchent : " .. i) end
+assert(x[1] == 10 and x[5] + 118 == 616)
+-- boutons de l'editeur : page a 8, large de 884 ; assistant de 772 a 892, grimoire de 646 a 766 dans la fenetre
+assert(w.assistantButton._point[1] == "BOTTOMRIGHT" and w.assistantButton._point[2] == w.page and w.assistantButton._w == 120 and w.grimoireButton._w == 120)
+assert(w.grimoireButton._point[2] == w.assistantButton and w.grimoireButton._point[4] == -6)
+assert(x[5] + 118 < 8 + 884 - 120 - 6 - 120, "les onglets touchent « Mon grimoire »")
+assert(BlockForgeFrame._w == 900 and BlockForgeFrame._h == 640)
+assert(tabs[1].line:IsShown() and not tabs[2].line:IsShown() and w.home:IsVisible() and not w.page:IsVisible(), "accueil non affiche par defaut")
+-- /bf options et /bf assistant gardent leur onglet
+SlashCmdList.BLOCKFORGE("options")
+assert(tabs[5].line:IsShown())
+SlashCmdList.BLOCKFORGE("assistant")
+assert(tabs[2].line:IsShown() and ns.assistant:IsShown())
+-- l'Assistant a aussi son entree vers « Ameliorer ma barre » ; /bf barre et /bf bilan ouvrent les deux outils
+assert(ns.assistant.bars:IsShown() and ns.assistant.bars._w == 150 and ns.assistant.bars._point[2] == -34)
+fire(ns.assistant.bars, "OnClick")
+assert(ns.wand:IsShown() and not ns.assistant:IsShown() and tabs[1].line:IsShown())
+SlashCmdList.BLOCKFORGE("bilan")
+assert(ns.health:IsShown() and not ns.wand:IsShown())
+SlashCmdList.BLOCKFORGE("barre")
+assert(ns.wand:IsShown() and not ns.health:IsShown())
+ns.wand:Hide()
+fire(tabs[1], "OnClick")
+
+-- 2. accueil : jauge, bilan en bref, entrees, suggestions
+assert(home.gauge.text._text == "5 / 120 · 0 / 30" and home.gauge._parent == BlockForgeFrame and home.gauge:IsShown(), home.gauge.text._text)
+assert(home.gauge._point[1] == "RIGHT" and home.gauge._point[2] == w.headerRight and home.gauge._point[3] == "LEFT")
+assert(home.counts._text:find("5 / 120", 1, true) and home.counts._text:find("0 / 30", 1, true))
+local real = GetNumMacros
+GetNumMacros = function() return 103, 30 end
+ns.RefreshHome()
+assert(home.gauge.text._text == "103 / 120 · 30 / 30" and home.gauge.text._textColor[2] == 0.3, "jauge pleine non rouge")
+GetNumMacros = function() return 103, 2 end
+ns.RefreshHome()
+assert(home.gauge.text._textColor[2] == 0.7, "jauge proche de la limite non orange")
+GetNumMacros = real
+ns.RefreshHome()
+assert(home.gauge.text._textColor[1] == 0.8)
+assert(#ns.HomeActions == 4 and #home.tiles == 4)
+for i, tile in ipairs(home.tiles) do
+  assert(tile._w == 212 and tile._h == 52 and tile._point[2] == 8 + (i - 1) * 218 and tile._point[3] == -28 and tile.text._text == ns.HomeActions[i].title)
+end
+assert(home.tiles[4]._point[2] + 212 <= 884 - 8, "tuiles hors du panneau")
+-- bilan en bref : Vieille cassee, Double2 en double, orphelines : Vieille, Orph, Risque ; a risque : Risque
+local function chip(i) return home.healthChips[i].text._text end
+assert(chip(1) == "Cassées : 1" and chip(2) == "Doublons : 1" and chip(3) == "Orphelines : 3" and chip(4) == "À risque : 1", chip(1) .. chip(2) .. chip(3) .. chip(4))
+-- suggestions : sorts tous connus, ni le texte ni le nom deja possedes
+assert(#home.suggestions >= 1 and #home.suggestions <= 5 and home.suggestions[1].name == "Sugg neuve", home.suggestions[1] and home.suggestions[1].name)
+for _, s in ipairs(home.suggestions) do
+  assert(s.name ~= "Sugg texte" and s.name ~= "double1" and s.name ~= "Sugg inconnue", "suggestion deja possedee ou inutilisable : " .. s.name)
+  assert(#ns.LibraryUnknown(s.entry) == 0)
+end
+assert(home.rows[1]:IsShown() and home.rows[1].text._text == "Sugg neuve" and home.rows[1].desc._text == "d3")
+-- « Ouvrir » la met dans l'editeur ; « Creer » en fait une macro du jeu, et elle quitte les suggestions
+fire(home.rows[1].open, "OnClick")
+assert(tabs[2].line:IsShown() and ns.Compile(ns.ed.Blocks()) == "/cast Peur\n/use 14")
+fire(tabs[1], "OnClick")
+db.pickupAfterCreate = false
+fire(home.rows[1].create, "OnClick")
+assert(MACROS["Sugg neuve"] and MACROS["Sugg neuve"].body == "/cast Peur\n/use 14", "suggestion non creee")
+for _, s in ipairs(home.suggestions) do assert(s.name ~= "Sugg neuve", "suggestion creee encore proposee") end
+DeleteMacro(MACROS["Sugg neuve"].index)
+ns.RefreshHome()
+
+-- 3. « Ameliorer ma barre » : notre image des barres
+fire(home.tiles[2], "OnClick")
+local wand = ns.wand
+assert(wand and wand:IsShown() and wand._parent == w.home and wand._w == 884 and wand._h == 566 and #wand.cells == 120, "panneau des barres")
+local function cell(slot) return wand.cells[slot] end
+for i, c in ipairs(wand.cells) do
+  assert(c.slot == i and c._w == 34 and c._point[2] == 68 + ((i - 1) % 12) * 36 and c._point[3] == -46 - math.floor((i - 1) / 12) * 36, "case " .. i)
+end
+assert(cell(120)._point[2] + 34 <= 498 and -cell(120)._point[3] + 34 <= 520, "la grille deborde")
+assert(cell(1).entry.kind == "spell" and cell(1).entry.name == "Corruption" and cell(1).key._text == "1" and cell(1).icon._tex == 134400)
+assert(cell(3).entry.kind == "item" and cell(3).entry.name == "Pierre de soins" and cell(4).entry.kind == "other" and cell(6).entry.kind == "empty")
+assert(cell(5).entry.kind == "macro" and cell(5).entry.macroName == "Double1" and cell(5)._border[1] == 0.53, "macro non reconnue sur la barre")
+assert(wand.undo._enabled == false and wand.undo._text == "Rien à annuler" and not wand.confirm:IsShown())
+-- un emplacement vide ou d'un autre type n'ouvre rien
+local calls, places = #CALLS, PLACES
+fire(cell(4), "OnClick")
+fire(cell(6), "OnClick")
+assert(wand:IsShown() and wand.status._text:find("vide", 1, true) and #CALLS == calls and PLACES == places and not (ns.assistant and ns.assistant:IsShown()))
+-- une macro s'ouvre dans l'editeur
+fire(cell(5), "OnClick")
+assert(tabs[2].line:IsShown() and ns.ed.Name() == "Double1")
+
+-- 4. un sort : l'Assistant en mode « emplacement », la macro prend sa place, « Annuler » remet le sort et supprime la macro
+ns.OpenWand()
+fire(cell(1), "OnClick")
+local panel = ns.assistant
+assert(panel:IsShown() and not wand:IsShown() and panel.state.slot == 1 and panel.title._text == "Assistant — emplacement 1 de ta barre", panel.title._text)
+assert(panel.state.kind == "harm" and panel.cards[1].create._text == "Créer et poser" and panel.cards[1].title._text == "Survol, sinon cible")
+fire(panel.cards[1].create, "OnClick")
+local made = MACROS.Corruption
+assert(made and made.body == "#showtooltip\n/cast [@mouseover,harm,nodead][] Corruption" and slotIs(1, "macro", made.index), "macro non posee a la place du sort")
+assert(CURSOR[1] == nil, "le curseur garde quelque chose")
+assert(said("emplacement 1") and wand:IsShown() and not panel:IsShown() and cell(1).entry.macroName == "Corruption")
+assert(BlockForgeDB.undo == db.undo and db.undo.label == "« Corruption » sur l'emplacement 1" and #db.undo.ops == 2, "annulation non enregistree dans BlockForgeDB")
+assert(db.undo.ops[2].op == "slot" and db.undo.ops[2].before.kind == "spell" and db.undo.ops[2].before.id == 172 and db.undo.ops[1].op == "created")
+assert(wand.undo._enabled == true and wand.undo._text == "Annuler : « Corruption » sur l'emplacement 1")
+fire(wand.undo, "OnClick")
+assert(slotIs(1, "spell", 172) and MACROS.Corruption == nil and db.undo == false and CURSOR[1] == nil, "annulation incomplete")
+assert(wand.undo._enabled == false and cell(1).entry.kind == "spell")
+-- un autre sort choisi dans la grille de l'Assistant quitte le mode « emplacement » : simple creation
+fire(cell(1), "OnClick")
+panel.grid.Fill()
+fire(panel.grid.cells[2], "OnClick")
+assert(panel.state.slot == nil and panel.title._text == "Assistant" and panel.cards[1].create._text == "Créer la macro")
+panel:Hide()
+
+-- 5. une macro du meme nom au texte different : confirmation, puis « Annuler » lui rend son texte sans la supprimer
+CreateMacro("Peur", 1, "/cast Peur")
+ns.OpenWand()
+fire(cell(61), "OnClick")
+local popups = #POPUPS
+fire(panel.cards[1].create, "OnClick")
+assert(#POPUPS == popups + 1 and POPUPS[#POPUPS].which == "BLOCKFORGE_BAR_OVERWRITE" and slotIs(61, "spell", 5782) and MACROS.Peur.body == "/cast Peur", "ecrasement sans confirmation")
+accept("BLOCKFORGE_BAR_OVERWRITE")
+assert(slotIs(61, "macro", MACROS.Peur.index) and MACROS.Peur.body:find("@mouseover", 1, true) and wand:IsShown())
+assert(db.undo.ops[1].op == "edit" and db.undo.ops[1].body == "/cast Peur")
+fire(wand.undo, "OnClick")
+assert(slotIs(61, "spell", 5782) and MACROS.Peur and MACROS.Peur.body == "/cast Peur", "la macro qui existait doit rester, avec son ancien texte")
+
+-- 6. l'autre convention de GetActionInfo (identifiant qui n'est pas l'index) : pose verifiee par le nom, annulation comprise
+RELATED = true
+fire(cell(1), "OnClick")
+fire(panel.cards[1].create, "OnClick")
+assert(slotIs(1, "macro", MACROS.Corruption.index) and cell(1).entry.macroName == "Corruption" and cell(1).entry.how == "name" and cell(5).entry.macroName == "Double1")
+fire(wand.undo, "OnClick")
+assert(slotIs(1, "spell", 172) and MACROS.Corruption == nil)
+RELATED = false
+
+-- 7. plan B : le jeu ignore la pose. La macro est creee, laissee sous le curseur, l'emplacement intact ; « Annuler » la supprime
+PLACE_OK = false
+fire(cell(1), "OnClick")
+fire(panel.cards[1].create, "OnClick")
+assert(MACROS.Corruption and slotIs(1, "spell", 172) and CURSOR[1] == "macro" and CURSOR[2] == MACROS.Corruption.index, "plan B : macro sous le curseur")
+assert(said("sous ton curseur") and said("emplacement 1") and #db.undo.ops == 1 and db.undo.ops[1].op == "created")
+PLACE_OK = true
+ClearCursor()
+fire(wand.undo, "OnClick")
+assert(MACROS.Corruption == nil and slotIs(1, "spell", 172))
+-- relecture differente de la macro attendue : l'emplacement revient a son contenu, plan B
+local realText = GetActionText
+GetActionText = function() return "Autre chose" end
+RELATED = true
+local ok, why = ns.Bars.Place(1, MACROS.Orph.index, "Orph")
+assert(ok == false and why == "verify" and CURSOR[1] == nil, tostring(why))
+GetActionText, RELATED = realText, false
+assert(slotIs(1, "spell", 172), "emplacement non restaure apres une verification ratee")
+-- emplacements jamais touches : autre type, vide non designe, numero hors plage
+assert(select(2, ns.Bars.Place(4, MACROS.Orph.index, "Orph")) == "kind" and slotIs(4, "companion", 3))
+assert(select(2, ns.Bars.Place(6, MACROS.Orph.index, "Orph")) == "kind" and slotIs(6))
+for _, bad in ipairs({ 0, 121, 144, 181, 1.5, "1" }) do
+  assert(select(2, ns.Bars.Place(bad, MACROS.Orph.index, "Orph")) == "slot" and ns.Bars.Restore(bad, { kind = "empty" }) == false)
+end
+-- vide designe par le joueur : pose, puis remise a vide
+assert(ns.Bars.Place(6, MACROS.Orph.index, "Orph", nil, true) == true and slotIs(6, "macro", MACROS.Orph.index))
+assert(ns.Bars.Restore(6, { kind = "empty" }) == true and slotIs(6))
+
+-- 8. combat : rien ne se lit, ne se pose, ne s'annule
+db.undo = { label = "test", ops = { { op = "slot", slot = 1, before = { kind = "spell", id = 172 }, macro = "X" } } }
+COMBAT = true
+calls, places = #CALLS, PLACES
+ns.OpenWand()
+assert(said("combat"))
+assert(ns.Bars.Scan() == nil and select(2, ns.Bars.Place(1, 1, "Orph")) == "combat" and ns.Bars.Restore(1, { kind = "spell", id = 172 }) == false)
+ns.Bars.Upgrade(1, "Corruption", "/cast Corruption")
+assert(said("combat"))
+ns.Bars.Convert({ items = {}, need = 0 }, "x")
+assert(said("combat"))
+ns.RunUndo()
+assert(said("combat") and db.undo ~= false, "annulation perdue en combat")
+ns.OpenHealth()
+assert(said("combat"))
+ns.Health.DoArchive({ MACROS.Orph }, {})
+ns.Health.Repair({ macro = { name = "Vieille", body = "/cast Peurr" }, fix = { "Peurr", "Peur" } })
+assert(#CALLS == calls and PLACES == places and MACROS.Orph and MACROS.Vieille.body == "/cast Peurr", "action en combat")
+-- le panneau ouvert se ferme a l'entree en combat
+COMBAT = false
+db.undo = false
+ns.OpenWand()
+fireEvent("PLAYER_REGEN_DISABLED")
+assert(not wand:IsShown())
+
+-- 9. conversion en masse des sorts d'aide : apercu, compte, une confirmation, une annulation globale
+ns.OpenWand()
+fire(byText("Passer mes sorts d'aide au survol", wand), "OnClick")
+local plan = wand.state.plan
+assert(#plan.items == 3 and plan.need == 3 and #plan.skipped == 0, #plan.items)
+assert(wand.previewTitle._text == "Aperçu : 3 emplacement(s) à convertir" and wand.confirm:IsShown() and wand.confirm._text == "Convertir (3)" and wand.confirm._enabled == true)
+assert(wand.rows[1]._text == "2 : Soins rapides  ->  macro « Soins rapides »", wand.rows[1]._text)
+-- un rang inferieur au plus haut connu est garde dans la macro, avec un nom a part
+assert(wand.rows[2]._text == "14 : Soins rapides(Rang 2)  ->  macro « Soins rapides 2 »", wand.rows[2]._text)
+assert(wand.rows[3]._text == "26 : Rénovation  ->  macro « Rénovation »" and wand.rows[4]._text == "")
+assert(wand.need._text == "Macros à créer : 3 · places libres : 114", wand.need._text)
+assert(slotIs(2, "spell", 2061) and not MACROS["Soins rapides"], "l'apercu ne change rien")
+-- pas assez de place : refus, bouton grise
+GetNumMacros = function() return 118, 0 end
+fire(byText("Passer mes sorts d'aide au survol", wand), "OnClick")
+assert(wand.confirm._enabled == false and wand.need._textColor[2] == 0.3 and wand.need._text:find("places libres : 2", 1, true))
+calls = #CALLS
+assert(ns.Bars.Convert(wand.state.plan, "x") == nil and said("Pas assez de place : 3 macros à créer, 2 places libres") and #CALLS == calls)
+GetNumMacros = real
+fire(byText("Passer mes sorts d'aide au survol", wand), "OnClick")
+fire(wand.confirm, "OnClick")
+assert(slotIs(2, "macro", MACROS["Soins rapides"].index) and slotIs(14, "macro", MACROS["Soins rapides 2"].index) and slotIs(26, "macro", MACROS["Rénovation"].index))
+assert(MACROS["Soins rapides"].body == "#showtooltip\n/cast [@mouseover,help,nodead][help,nodead][@player] Soins rapides")
+assert(MACROS["Soins rapides 2"].body:find("Soins rapides(Rang 2)", 1, true))
+assert(wand.state.plan == nil and not wand.confirm:IsShown() and wand.status._text:find("3 emplacement(s) converti(s), 0", 1, true) and CURSOR[1] == nil)
+assert(#db.undo.ops == 6 and db.undo.label == "sorts d'aide au survol" and wand.undo._text == "Annuler : sorts d'aide au survol")
+-- les sorts offensifs ne sont pas touches par la conversion des aides
+assert(slotIs(1, "spell", 172) and slotIs(61, "spell", 5782) and slotIs(3, "item", 5512) and slotIs(4, "companion", 3))
+-- une seconde conversion ne trouve plus rien
+fire(byText("Passer mes sorts d'aide au survol", wand), "OnClick")
+assert(#wand.state.plan.items == 0 and wand.confirm._enabled == false)
+fire(byText("Fermer l'aperçu", wand), "OnClick")
+assert(wand.state.plan == nil)
+fire(wand.undo, "OnClick")
+assert(slotIs(2, "spell", 2061) and slotIs(14, "spell", 2060) and slotIs(26, "spell", 139), "annulation globale : emplacements")
+assert(not MACROS["Soins rapides"] and not MACROS["Soins rapides 2"] and not MACROS["Rénovation"] and db.undo == false, "annulation globale : macros")
+-- sorts offensifs : la macro « Peur » du joueur porte deja ce nom avec un autre texte, elle n'est pas ecrasee en masse
+fire(byText("Passer mes sorts offensifs au survol", wand), "OnClick")
+plan = wand.state.plan
+assert(#plan.items == 1 and plan.items[1].slot == 1 and #plan.skipped == 1 and plan.skipped[1].slot == 61 and plan.skipped[1].skip == "name")
+assert(wand.rows[2]._text:find("laissé", 1, true))
+fire(wand.confirm, "OnClick")
+assert(slotIs(1, "macro", MACROS.Corruption.index) and slotIs(61, "spell", 5782) and MACROS.Peur.body == "/cast Peur")
+-- un emplacement change par le joueur depuis n'est pas touche par l'annulation, et la macro posee ailleurs reste
+SLOTS[1], SLOTS[7] = { "spell", 5782 }, { "macro", MACROS.Corruption.index }
+fire(wand.undo, "OnClick")
+assert(slotIs(1, "spell", 5782) and MACROS.Corruption and slotIs(7, "macro", MACROS.Corruption.index) and said("0 étape(s) rétablie(s), 2 laissée(s)"), lastLine())
+SLOTS[1], SLOTS[7] = { "spell", 172 }, nil
+DeleteMacro(MACROS.Corruption.index)
+DeleteMacro(MACROS.Peur.index)
+
+-- 10. bilan de sante
+fire(tabs[1], "OnClick")
+ns.RefreshHome()
+fire(home.healthChips[1], "OnClick")
+local health = ns.health
+assert(health and health:IsShown() and not wand:IsShown() and health._parent == w.home and health._w == 884 and health.state.group == "broken")
+for i, c in ipairs(health.chips) do assert(c._w == 212 and c._point[2] == 8 + (i - 1) * 218) end
+assert(health.chips[4]._point[2] + 212 <= 876 and health.chips[1].text._text == "Cassées : 1" and health.chips[3].text._text == "Orphelines : 3")
+assert(health.rows[1]:IsShown() and health.rows[1].text._text == "Vieille" and not health.rows[2]:IsShown())
+assert(health.rows[1].reason._text == "Sort inconnu : « Peurr ». Le plus proche dans ton grimoire : « Peur ».", health.rows[1].reason._text)
+assert(health.open._enabled == false and health.repair._enabled == false and health.archive._enabled == false)
+fire(health.rows[1], "OnClick")
+assert(health.name._text == "Vieille" and health.open._enabled and health.repair._enabled and health.archive._enabled and health.info._text:find("Sur aucune barre", 1, true))
+-- reparer : le nom proche remplace le nom inconnu ; « Annuler » remet l'ancien texte
+fire(health.repair, "OnClick")
+assert(MACROS.Vieille.body == "/cast Peur" and said("réparée") and db.undo.ops[1].op == "edit" and health.chips[1].text._text == "Cassées : 0")
+assert(health.undo._enabled and health.undo._text == "Annuler : réparation de « Vieille »")
+fire(health.undo, "OnClick")
+assert(MACROS.Vieille.body == "/cast Peurr" and db.undo == false and health.chips[1].text._text == "Cassées : 1" and health.undo._enabled == false)
+-- ouvrir
+fire(health.rows[1], "OnClick")
+fire(health.open, "OnClick")
+assert(tabs[2].line:IsShown() and ns.ed.Name() == "Vieille")
+-- doublons et a risque
+ns.OpenHealth("duplicates")
+assert(health.rows[1].text._text == "Double2" and health.rows[1].reason._text == "Même texte que « Double1 ».")
+fire(health.chips[4], "OnClick")
+assert(health.state.group == "risky" and health.rows[1].text._text == "Risque" and health.rows[1].reason._text:find("contradictoires", 1, true))
+-- nom que rien n'explique : « peut-etre », sans reparation
+CreateMacro("Mystere", 1, "/cast Zzzzzzzz")
+ns.OpenHealth("broken")
+fire(health.rows[2], "OnClick")
+assert(health.name._text == "Mystere" and health.reason._text:find("peut-être", 1, true) and health.repair._enabled == false, health.reason._text)
+DeleteMacro(MACROS.Mystere.index)
+
+-- 11. archiver : confirmation qui nomme le nombre, copie dans « Mes modeles » AVANT la suppression, annulation qui recree
+ns.OpenHealth("duplicates")
+fire(health.rows[1], "OnClick")
+local personal, deletes = #db.personal, count("DeleteMacro")
+fire(health.archive, "OnClick")
+assert(POPUPS[#POPUPS].which == "BLOCKFORGE_ARCHIVE" and POPUPS[#POPUPS].text:find("Archiver 1 macro(s)", 1, true), POPUPS[#POPUPS].text)
+assert(MACROS.Double2 and #db.personal == personal and count("DeleteMacro") == deletes, "suppression sans confirmation")
+accept("BLOCKFORGE_ARCHIVE")
+assert(MACROS.Double2 == nil and #db.personal == personal + 1 and db.personal[#db.personal].name == "Double2" and db.personal[#db.personal].body == " /cast  Peur ", "archive absente")
+assert(said("1 macro(s) archivée(s)") and db.undo.ops[1].op == "delete" and health.chips[2].text._text == "Doublons : 0")
+fire(health.undo, "OnClick")
+assert(MACROS.Double2 and MACROS.Double2.body == " /cast  Peur " and #db.personal == personal + 1, "macro non recreee, ou copie retiree")
+-- la meme macro archivee deux fois : une seule copie ; un modele de meme nom au texte different n'est jamais ecrase
+assert(ns.ArchivePersonal("Double2", " /cast  Peur ") == "Double2" and #db.personal == personal + 1)
+assert(ns.ArchivePersonal("Double2", "/cast Autre") == "Double2 ~2" and #db.personal == personal + 2 and db.personal[personal + 1].body == " /cast  Peur ")
+-- une macro posee sur une barre : l'annulation lui rend son emplacement reste vide
+ns.OpenHealth("duplicates")
+local first
+for _, m in ipairs(ns.ReadMacros()) do if m.name == "Double1" then first = m end end
+assert(slotIs(5, "macro", first.index))
+ns.Health.Archive({ first }, health.state.report.usage)
+accept("BLOCKFORGE_ARCHIVE")
+assert(MACROS.Double1 == nil and slotIs(5) and db.undo.ops[1].slots[1] == 5)
+ns.RunUndo()
+assert(MACROS.Double1 and slotIs(5, "macro", MACROS.Double1.index), "macro non reposee sur sa barre")
+-- bibliotheque pleine : pas de copie, donc pas de suppression
+local kept = db.personal
+db.personal = {}
+for i = 1, 200 do db.personal[i] = { name = "M" .. i, body = "/x" } end
+ns.personalCache = nil
+ns.Health.DoArchive({ ns.ReadMacros()[1] }, {})
+assert(MACROS.Vieille and said("0 macro(s) archivée(s)") and said("1 laissée(s)"), lastLine())
+db.personal = kept
+ns.personalCache = nil
+-- sans DeleteMacro (client qui ne l'a pas) : refus, rien n'est archive pour rien
+local del = DeleteMacro
+DeleteMacro = nil
+popups = #POPUPS
+ns.Health.Archive({ ns.ReadMacros()[1] }, {})
+assert(#POPUPS == popups and said("supprimer"))
+DeleteMacro = del
+
+-- 12. archiver les orphelines : une confirmation avec leur nombre, une annulation globale
+ns.OpenHealth("orphans")
+local orphans = {}
+for i, item in ipairs(health.state.report.orphans) do orphans[i] = item.macro.name end
+table.sort(orphans)
+assert(table.concat(orphans, ",") == "Orph,Risque,Vieille", table.concat(orphans, ","))
+assert(health.bulk._enabled and health.bulk._text == "Archiver les orphelines… (3)")
+personal = #db.personal
+fire(health.bulk, "OnClick")
+assert(POPUPS[#POPUPS].text:find("Archiver 3 macro(s)", 1, true) and MACROS.Orph and MACROS.Risque and MACROS.Vieille)
+accept("BLOCKFORGE_ARCHIVE")
+assert(not MACROS.Orph and not MACROS.Risque and not MACROS.Vieille and MACROS.Double1 and MACROS.Double2 and #db.personal == personal + 3, "orphelines non archivees")
+assert(#db.undo.ops == 3 and db.undo.label == "archivage de 3 macro(s)" and health.bulk._enabled == false and health.bulk._text == "Archiver les orphelines… (0)")
+for _, name in ipairs(orphans) do
+  local found
+  for _, m in ipairs(db.personal) do if m.name == name then found = m end end
+  assert(found and found.note == "Archivée par le bilan de santé.", "copie absente : " .. name)
+end
+fire(health.undo, "OnClick")
+assert(MACROS.Orph and MACROS.Orph.body == "/cast Corruption" and MACROS.Risque and MACROS.Vieille and MACROS.Vieille.body == "/cast Peurr" and db.undo == false)
+assert(slotIs(5, "macro", MACROS.Double1.index), "les index ont bouge : la macro de la barre doit rester la meme")
+-- une macro de barre que BlockForge ne sait pas identifier : aucune orpheline annoncee, archivage en masse grise
+SLOTS[30] = { "macro", 140 }
+ns.OpenHealth("orphans")
+assert(health.state.report.orphansKnown == false and #health.state.report.orphans == 0 and health.bulk._enabled == false and health.empty:IsShown() and health.empty._text:find("pas pu lire", 1, true))
+SLOTS[30] = nil
+
+-- 13. /bf test : sondes en lecture seule
+local slotsBefore = {}
+for slot, a in pairs(SLOTS) do slotsBefore[slot] = a[1] .. a[2] end
+calls, places = #CALLS, PLACES
+local keysBefore = BINDINGS.F5
+GetLocale = function() return "frFR" end -- lu par l'autotest
+SlashCmdList.BLOCKFORGE("test")
+local text = table.concat(db.selftest.lines, "\n")
+assert(text:find("OK tab home", 1, true) and text:find("INFO probe bars: 120 slots read, 8 with content (5 spells, 1 items, 1 macros, 1 other)", 1, true), text)
+assert(text:find("INFO probe P4 GetActionInfo(5) = macro, id " .. MACROS.Double1.index .. ", subtype nil", 1, true) and text:find("identified by index as Double1", 1, true), text)
+assert(text:find("OK macros on bars identified: 1 / 1", 1, true) and text:find("INFO probe bindings: ACTIONBUTTON1=1", 1, true) and text:find("1 macros bound to a key", 1, true), text)
+assert(text:find("INFO probe actions: PlaceAction present, PickupAction present, PickupMacro present, DeleteMacro present", 1, true), text)
+assert(text:find("INFO probe P6 spec: C_SpecializationInfo absent", 1, true) and text:find("INFO probe P10 C_EncodingUtil: absent", 1, true), text)
+assert(text:find("INFO probe P13 secure button: SecureActionButtonTemplate created", 1, true) and text:find("INFO probe P11 compartment:", 1, true), text)
+assert(text:find("INFO probe P7 conditions: SecureCmdOptionParse absent", 1, true), text)
+assert(text:find("OK home tab: 4 entries", 1, true) and text:find("INFO health: 5 macros, 1 broken, 1 duplicates, 3 orphans (bars fully read: true), 1 at risk", 1, true), text)
+assert(text:find("INFO features: home=on, bars=on, health=on, suggestions=on, gauge=on, assistant=on, grimoire=on, share=on, tutorial=on, colorize=on", 1, true), text)
+assert(text:find("INFO optional api present: GetActionInfo", 1, true) and text:find("INFO optional api absent: C_ActionBar.PutActionInSlot", 1, true))
+assert(not text:find("FAIL v1", 1, true), text)
+assert(#CALLS == calls and PLACES == places and BINDINGS.F5 == keysBefore and CURSOR[1] == nil, "l'autotest a touche aux barres ou aux macros")
+for slot, a in pairs(SLOTS) do assert(slotsBefore[slot] == a[1] .. a[2], "emplacement change par l'autotest") end
+-- la sonde ne cree le bouton securise qu'une fois
+local widgets = #ALL
+SlashCmdList.BLOCKFORGE("test")
+assert(#ALL == widgets, "l'autotest cree des widgets a chaque passage")
+-- sonde P7 quand le client a SecureCmdOptionParse
+function SecureCmdOptionParse(s) if s:find("talent") then error("x") end return (s:find("^%[no") and not s:find("flyable")) and "N" or "Y" end
+SlashCmdList.BLOCKFORGE("test")
+text = table.concat(db.selftest.lines, "\n")
+assert(text:find("combat=understood:Y", 1, true) and text:find("flyable=ignored:Y", 1, true) and text:find("talent:1/1=error", 1, true), text)
+
+-- 14. toutes les infobulles
+for _, x in ipairs(ALL) do
+  if x._scripts.OnEnter then x._scripts.OnEnter(x) end
+end
+`, "=v1 lot A");
+
+// client sans les API de barres (GetActionInfo, DeleteMacro...) : rien ne casse, les outils se refusent proprement
+boot("{ tutorialSeen = true, undo = 5 }");
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+assert(db.undo == false, "annulation abimee non nettoyee")
+CreateMacro("Seule", 1, "/cast Corruption")
+SlashCmdList.BLOCKFORGE("")
+local home = ns.home
+assert(home and ns.ed.w.home:IsVisible() and home.gauge.text._text == "1 / 120 · 0 / 30")
+-- barres illisibles : aucune orpheline annoncee
+assert(home.report.orphansKnown == false and home.healthChips[3].text._text == "Orphelines : 0")
+ns.OpenWand()
+assert(lastLine():find("lire les barres", 1, true) and ns.wand == nil)
+assert(ns.Bars.Scan() == nil and ns.Bars.Read(1) == nil and select(2, ns.Bars.Place(1, 1, "Seule")) == "api")
+ns.Bars.Upgrade(1, "Seule", "/cast Peur")
+assert(lastLine():find("lire les barres", 1, true) and MACROS.Seule.body == "/cast Corruption")
+ns.OpenHealth()
+assert(ns.health:IsShown() and ns.health.bulk._enabled == false)
+ns.Health.Archive({ ns.ReadMacros()[1] }, {})
+assert(lastLine():find("supprimer", 1, true) and MACROS.Seule and #POPUPS == 0)
+GetLocale = function() return "frFR" end
+SlashCmdList.BLOCKFORGE("test")
+local text = table.concat(db.selftest.lines, "\n")
+assert(text:find("INFO probe bars: GetActionInfo absent", 1, true) and text:find("OK tab home", 1, true) and not text:find("FAIL v1", 1, true), text)
+`, "=sans barres");
+
+// l'annulation survit a un /reload : relue dans BlockForgeDB
+boot(`{ tutorialSeen = true, undo = { label = "ancienne", ops = { { op = "edit", name = "M", char = false, body = "/cast Avant" }, { op = "inconnue" }, 7 } } }`, BARS);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+CreateMacro("M", 1, "/cast Apres")
+assert(ns.UndoLabel() == "ancienne")
+SlashCmdList.BLOCKFORGE("")
+ns.OpenWand()
+assert(ns.wand.undo._enabled and ns.wand.undo._text == "Annuler : ancienne")
+fire(ns.wand.undo, "OnClick")
+assert(MACROS.M.body == "/cast Avant" and db.undo == false and lastLine():find("1 étape(s) rétablie(s), 2 laissée(s)", 1, true), lastLine())
+-- une operation venue d'un fichier modifie a la main ne peut pas viser un emplacement hors plage
+db.undo = { label = "x", ops = { { op = "slot", slot = 130, before = { kind = "empty" }, macro = "M" }, { op = "delete", name = string.rep("n", 17), body = "/x" } } }
+local places, calls = PLACES, #CALLS
+ns.RunUndo()
+assert(PLACES == places and #CALLS == calls and db.undo == false)
+`, "=annulation relue");
+
+// ---------------------------------------------------------------- 11. fonctions coupees dans les Parametres
+boot("{ tutorialSeen = true }", BARS);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+local function said(fragment) return lastLine():find(fragment, 1, true) ~= nil end
+local function refused() return said("fonction désactivée dans les Paramètres") end
+CreateMacro("Vieille", 1, "/cast Peurr")
+SLOTS[1] = { "spell", 172 }
+SlashCmdList.BLOCKFORGE("")
+local w, home = ns.ed.w, ns.home
+local tabHome, tabEditor = byText("Accueil", BlockForgeFrame), byText("Éditeur", BlockForgeFrame)
+-- dix fonctions, toutes actives par defaut, une case chacune dans l'onglet Parametres (colonne de droite, sans chevauchement)
+local ids = {}
+for i, def in ipairs(ns.Features) do
+  ids[i] = def.id
+  assert(type(def.label) == "string" and type(def.desc) == "string" and ns.Enabled(def.id) == true, def.id)
+end
+assert(table.concat(ids, ",") == "home,bars,health,suggestions,gauge,assistant,grimoire,share,tutorial,colorize", table.concat(ids, ","))
+assert(ns.Enabled("inconnue") == true)
+fire(byText("Paramètres", BlockForgeFrame), "OnClick")
+local boxes = {}
+for _, c in ipairs(checkboxes(w.settings)) do
+  for _, def in ipairs(ns.Features) do
+    if c.label == def.label and c.box._point[2] == 470 then boxes[def.id] = c.box end
+  end
+end
+for i, def in ipairs(ns.Features) do
+  local box = boxes[def.id]
+  assert(box and box._checked == true and box._point[3] == -54 - (i - 1) * 26, "case de la fonction " .. def.id)
+end
+assert(-54 - 11 * 26 - 26 > -432, "douze fonctions ne tiennent pas au-dessus de la ligne des commandes")
+
+-- tout est construit et ouvert une fois, pour verifier ensuite que les evenements sont retires
+ns.OpenWand()
+ns.OpenHealth()
+ns.Open("editor")
+ns.ToggleGrimoire()
+SlashCmdList.BLOCKFORGE("assistant")
+ns.assistant:Hide()
+local function listens(frame, event) return frame._events[event] == true end
+assert(listens(ns.wand, "ACTIONBAR_SLOT_CHANGED") and listens(ns.health, "UPDATE_MACROS") and listens(w.home, "UPDATE_MACROS"))
+local shareFrame = find(function(x) return x._events.CHAT_MSG_ADDON end)
+assert(shareFrame, "ecoute des macros recues absente")
+
+-- bars : plus aucune ecriture sur les barres
+ns.OpenWand()
+click(boxes.bars, false)
+assert(db.features.bars == false and not ns.Enabled("bars") and not ns.wand:IsShown() and not home.tiles[2]:IsShown(), "bars non coupee")
+assert(not listens(ns.wand, "ACTIONBAR_SLOT_CHANGED") and not listens(ns.wand, "UPDATE_MACROS"))
+-- les tuiles restantes se resserrent
+assert(home.tiles[1]._point[2] == 8 and home.tiles[3]._point[2] == 226 and home.tiles[4]._point[2] == 444)
+local calls, places = #CALLS, PLACES
+ns.OpenWand()
+assert(refused() and said("Améliorer ma barre") and not ns.wand:IsShown())
+ns.Bars.Upgrade(1, "Corruption", "/cast Corruption")
+assert(refused())
+ns.Bars.Convert({ items = { { slot = 1, macroName = "Corruption", body = "/cast Corruption" } }, need = 1 }, "x")
+assert(refused())
+assert(select(2, ns.Bars.Place(1, MACROS.Vieille.index, "Vieille")) == "off" and ns.Bars.Restore(1, { kind = "spell", id = 172 }) == false)
+ns.Bars.Cursor(MACROS.Vieille.index)
+SlashCmdList.BLOCKFORGE("barre")
+assert(refused() and not ns.assistant.bars:IsShown(), "entree de l'Assistant vers les barres encore visible")
+-- l'Assistant ouvert sur un emplacement avant la coupure ne pose rien non plus
+ns.OpenAssistant({ name = "Corruption", base = "Corruption", kind = "spell" }, 1)
+fire(ns.assistant.cards[1].create, "OnClick")
+assert(refused() and not MACROS.Corruption)
+ns.assistant:Hide()
+-- une annulation qui toucherait aux barres attend la reactivation
+db.undo = { label = "pose", ops = { { op = "slot", slot = 1, before = { kind = "spell", id = 172 }, macro = "X" } } }
+ns.RunUndo()
+assert(refused() and db.undo ~= false)
+db.undo = false
+assert(#CALLS == calls and PLACES == places and CURSOR[1] == nil and slotIs(1, "spell", 172), "ecriture sur les barres alors que la fonction est coupee")
+click(boxes.bars, true)
+assert(home.tiles[2]:IsShown() and home.tiles[2]._point[2] == 226 and listens(ns.wand, "ACTIONBAR_SLOT_CHANGED"))
+ns.OpenWand()
+assert(ns.wand:IsShown())
+ns.wand:Hide()
+
+-- health : ni panneau, ni reparation, ni archivage, ni calcul sur l'accueil
+ns.OpenHealth()
+ns.SetFeature("health", false)
+assert(not ns.health:IsShown() and not w.homeHealth:IsShown() and not listens(ns.health, "UPDATE_MACROS") and boxes.health._checked == false)
+ns.OpenHealth()
+assert(refused() and not ns.health:IsShown())
+local popups = #POPUPS
+ns.Health.Archive({ ns.ReadMacros()[1] }, {})
+assert(refused() and #POPUPS == popups)
+ns.Health.DoArchive({ ns.ReadMacros()[1] }, {})
+assert(refused() and MACROS.Vieille)
+ns.Health.Repair({ macro = ns.ReadMacros()[1], fix = { "Peurr", "Peur" } })
+assert(refused() and MACROS.Vieille.body == "/cast Peurr")
+local reports = 0
+local realReport = ns.Health.Report
+ns.Health.Report = function() reports = reports + 1 return realReport() end
+ns.Open("home")
+ns.RefreshHome()
+assert(reports == 0, "le bilan tourne alors qu'il est coupe")
+ns.SetFeature("health", true)
+assert(w.homeHealth:IsShown() and reports == 1 and listens(ns.health, "UPDATE_MACROS"))
+ns.Health.Report = realReport
+
+-- suggestions
+assert(w.homeSuggest:IsShown())
+ns.SetFeature("suggestions", false)
+assert(not w.homeSuggest:IsShown() and #home.suggestions == 0)
+ns.SetFeature("suggestions", true)
+assert(w.homeSuggest:IsShown())
+
+-- gauge
+ns.SetFeature("gauge", false)
+assert(not home.gauge:IsShown() and listens(w.home, "UPDATE_MACROS"), "l'accueil ecoute encore pour lui-meme")
+ns.SetFeature("gauge", true)
+assert(home.gauge:IsShown())
+
+-- home : l'onglet disparait, les autres se resserrent, la fenetre passe et s'ouvre sur l'editeur
+ns.Open("home")
+ns.SetFeature("home", false)
+assert(not tabHome:IsShown() and tabEditor._point[2] == 10 and tabEditor.line:IsShown() and not w.home:IsVisible(), "accueil non coupe")
+assert(byText("Paramètres", BlockForgeFrame)._point[2] == 10 + 3 * 122)
+assert(listens(w.home, "UPDATE_MACROS"), "la jauge de l'en-tete ecoute encore")
+ns.SetFeature("gauge", false)
+assert(not listens(w.home, "UPDATE_MACROS") and not listens(w.home, "PLAYER_REGEN_ENABLED"), "accueil et jauge coupes : plus aucune ecoute")
+ns.SetFeature("gauge", true)
+SlashCmdList.BLOCKFORGE("")
+SlashCmdList.BLOCKFORGE("")
+assert(BlockForgeFrame:IsShown() and tabEditor.line:IsShown())
+ns.SetFeature("home", true)
+assert(tabHome:IsShown() and tabHome._point[2] == 10 and tabEditor._point[2] == 132)
+
+-- assistant
+ns.Open("editor")
+ns.SetFeature("assistant", false)
+assert(not w.assistantButton:IsShown() and w.grimoireButton:IsShown() and not home.tiles[1]:IsShown() and home.tiles[2]._point[2] == 8)
+SlashCmdList.BLOCKFORGE("assistant")
+assert(refused() and said("Assistant") and not ns.assistant:IsShown())
+assert(not listens(ns.assistant.grid.frame, "SPELLS_CHANGED"))
+-- un sort de barre ne peut plus ouvrir ses recettes
+ns.OpenWand()
+fire(ns.wand.cells[1], "OnClick")
+assert(refused() and not ns.assistant:IsShown())
+ns.wand:Hide()
+ns.SetFeature("assistant", true)
+assert(w.assistantButton:IsShown() and listens(ns.assistant.grid.frame, "SPELLS_CHANGED"))
+
+-- grimoire
+ns.Open("editor")
+ns.ToggleGrimoire()
+assert(ns.grimoire:IsShown())
+ns.SetFeature("grimoire", false)
+assert(not w.grimoireButton:IsShown() and not ns.grimoire:IsShown() and not listens(ns.grimoire.grid.frame, "SPELLS_CHANGED"))
+ns.ToggleGrimoire()
+assert(refused() and not ns.grimoire:IsShown())
+ns.SetFeature("grimoire", true)
+assert(w.grimoireButton:IsShown() and listens(ns.grimoire.grid.frame, "SPELLS_CHANGED"))
+
+-- share : l'ancien reglage porte la valeur ; plus d'envoi, plus d'ecoute
+assert(w.send:IsShown() and byText("Envoyer à…", w.bottom):IsShown())
+ns.SetFeature("share", false)
+assert(db.acceptShared == false and db.features.share == nil and not w.send:IsShown() and not byText("Envoyer à…", w.bottom):IsShown())
+assert(not listens(shareFrame, "CHAT_MSG_ADDON"))
+ns.SendPrompt("Nom", "/cast A")
+assert(refused() and not (ns.prompt and ns.prompt:IsShown()) and #SENT == 0)
+ns.SetFeature("share", true)
+assert(db.acceptShared == true and w.send:IsShown() and listens(shareFrame, "CHAT_MSG_ADDON"))
+
+-- colorize : l'apercu n'a plus de code de couleur
+ns.Open("editor")
+ns.ed.Load("Test", "/cast [@mouseover,help] Soins")
+assert(w.preview._text:find("|cff", 1, true))
+ns.SetFeature("colorize", false)
+assert(w.preview._text == "/cast [@mouseover,help] Soins", w.preview._text)
+ns.SetFeature("colorize", true)
+assert(w.preview._text:find("|cff", 1, true))
+
+-- la visite guidee saute les etapes des fonctions coupees
+ns.SetFeature("grimoire", false)
+ns.SetFeature("home", false)
+SlashCmdList.BLOCKFORGE("tuto")
+local tour = ns.Tutorial
+assert(#ns.TutorialSteps == 12 and #tour.steps == 10 and tour.step == 1 and tour.coach.count._text == "1 / 10" and tabEditor.line:IsShown())
+for _, s in ipairs(tour.steps) do assert(s.feature ~= "grimoire" and s.feature ~= "home") end
+for _ = 1, 10 do fire(tour.coach.next, "OnClick") end
+assert(tour.step == nil)
+
+-- /bf test liste l'etat des fonctions ; la reinitialisation les reactive toutes
+GetLocale = function() return "frFR" end
+SlashCmdList.BLOCKFORGE("test")
+assert(table.concat(db.selftest.lines, "\n"):find("INFO features: home=off, bars=on, health=on, suggestions=on, gauge=on, assistant=on, grimoire=off, share=on", 1, true))
+ns.ResetDB()
+for _, def in ipairs(ns.Features) do assert(ns.Enabled(def.id), def.id) end
+assert(tabHome:IsShown() and w.grimoireButton:IsShown())
+`, "=fonctions");
+
+// au chargement : accueil coupe, la fenetre s'ouvre sur l'editeur ; visite coupee, elle ne se lance pas seule ; valeurs abimees remises
+boot("{ features = { home = false, tutorial = false, bars = 5 }, acceptShared = false }", BARS);
+run(String.raw`
+local ns, db = NS, BlockForgeDB
+assert(db.features.bars == true and db.features.home == false and not ns.Enabled("share"))
+assert(find(function(x) return x._events.CHAT_MSG_ADDON end) == nil, "ecoute des macros recues malgre la coupure")
+SlashCmdList.BLOCKFORGE("")
+assert(byText("Éditeur", BlockForgeFrame).line:IsShown() and not byText("Accueil", BlockForgeFrame):IsShown() and byText("Éditeur", BlockForgeFrame)._point[2] == 10)
+assert(ns.Tutorial.step == nil and db.tutorialSeen == false, "visite lancee alors qu'elle est coupee")
+assert(ns.home.gauge:IsShown() and ns.home.gauge.text._text == "0 / 120 · 0 / 30", "la jauge ne depend pas de l'accueil")
+SlashCmdList.BLOCKFORGE("tuto")
+assert(ns.Tutorial.step == 1 and #ns.Tutorial.steps == 11)
+`, "=fonctions au chargement");
+
+console.log("test_ui.js : OK (11 scenarios)");

@@ -21,12 +21,78 @@ ns.DEFAULTS = {
   personal = {},           -- { { name, body, icon, note }, ... } : "Mes modeles", communs a tous les personnages
   acceptShared = true,     -- proposer les macros envoyees par d'autres joueurs (Share.lua)
   tutorialSeen = false,    -- la visite guidee s'est deja lancee toute seule
+  undo = false,            -- derniere operation annulable sur les barres ou les macros (Bars.lua) : { label, ops }
+  features = {},           -- [id] = true / false : fonctions que le joueur peut couper (ns.RegisterFeature)
   errors = {},             -- diagnostics (Debug.lua) : 20 dernieres erreurs Lua de l'add-on
   selftest = {},           -- diagnostics (Debug.lua) : dernier rapport de /bf test
 }
 ns.SCALE_MIN, ns.SCALE_MAX, ns.SCALE_STEP = 0.6, 1.5, 0.05
 
-local OPTIONAL = { pos = true, lastClass = true } -- false ou une valeur, controlee par Sanitize
+local OPTIONAL = { pos = true, lastClass = true, undo = true }
+
+---------------------------------------------------------------------------
+-- Fonctions que le joueur peut couper, sans /reload (Parametres, section « Fonctions »).
+-- { id, label, desc, default, key } ; key : reglage historique qui porte la valeur a la place de BlockForgeDB.features[id].
+-- Un fichier charge plus tard ajoute les siennes par ns.RegisterFeature, et reagit par ns.OnFeatures.
+---------------------------------------------------------------------------
+ns.Features = {}
+local featureById, featureWatchers = {}, {}
+
+function ns.RegisterFeature(def)
+  ns.Features[#ns.Features + 1] = def
+  featureById[def.id] = def
+  if not def.key then ns.DEFAULTS.features[def.id] = def.default ~= false end
+end
+
+function ns.Enabled(id)
+  local def, db = featureById[id], ns.db
+  if not def or not db then return true end
+  if def.key then return db[def.key] ~= false end
+  return db.features[id] ~= false
+end
+
+-- true, et un message, quand la fonction est coupee : « if ns.Off("bars") then return end »
+function ns.Off(id)
+  if ns.Enabled(id) then return false end
+  ns.Msg(L["« %s » : fonction désactivée dans les Paramètres."]:format(featureById[id].label))
+  return true
+end
+
+-- fn : affiche ou cache les entrees d'une fonction, inscrit ou retire ses evenements ; now : appelee aussi tout de suite
+function ns.OnFeatures(fn, now)
+  featureWatchers[#featureWatchers + 1] = fn
+  if now then fn() end
+end
+
+-- une fonction qui echoue n'empeche pas les autres de suivre le reglage
+function ns.ApplyFeatures()
+  for _, fn in ipairs(featureWatchers) do
+    local ok, err = pcall(fn)
+    if not ok and geterrorhandler then geterrorhandler()(err) end
+  end
+end
+
+-- evenements d'un cadre inscrits seulement tant que sa fonction est active
+function ns.Listen(frame, on, ...)
+  for i = 1, select("#", ...) do
+    local event = select(i, ...)
+    if on then frame:RegisterEvent(event) else frame:UnregisterEvent(event) end
+  end
+end
+
+for _, def in ipairs({
+  { id = "home", label = L["Onglet Accueil"], desc = L["Désactivé : l'onglet disparaît et la fenêtre s'ouvre sur l'éditeur."] },
+  { id = "bars", label = L["Améliorer ma barre"], desc = L["Désactivé : BlockForge ne modifie plus aucun emplacement de tes barres d'action, conversions en masse comprises."] },
+  { id = "health", label = L["Bilan de santé"], desc = L["Désactivé : plus de contrôle de tes macros, ni réparation, ni archivage."] },
+  { id = "suggestions", label = L["Suggestions de l'accueil"], desc = L["Désactivé : l'accueil ne propose plus de macros de la bibliothèque."] },
+  { id = "gauge", label = L["Jauge des macros dans l'en-tête"], desc = L["Désactivé : le compte des emplacements de macro n'est plus affiché en haut de la fenêtre."] },
+  { id = "assistant", label = L["Assistant"], desc = L["Désactivé : le bouton, l'entrée de l'accueil et /bf assistant ne proposent plus de macros toutes faites."] },
+  { id = "grimoire", label = L["Mon grimoire"], desc = L["Désactivé : le bouton « Mon grimoire » de l'éditeur disparaît."] },
+  { id = "share", key = "acceptShared", label = L["Échange de macros entre joueurs"],
+    desc = L["Envoyer une macro à un joueur et recevoir les siennes. Une macro reçue t'est toujours proposée avant d'être ouverte. Désactivé : rien n'est envoyé, et ce qui arrive est ignoré sans rien afficher."] },
+  { id = "tutorial", label = L["Visite guidée à la première ouverture"], desc = L["Désactivé : la visite ne se lance plus toute seule. /bf tuto la lance toujours."] },
+  { id = "colorize", label = L["Aperçu coloré"], desc = L["Désactivé : le texte des macros s'affiche d'une seule couleur."] },
+}) do ns.RegisterFeature(def) end -- false ou une valeur, controlee par Sanitize
 
 -- Complete db avec les valeurs par defaut ; une valeur du mauvais type est remplacee.
 local function Merge(db, defaults)
@@ -49,6 +115,7 @@ local function Sanitize(db)
     db.pos = false
   end
   if db.lastClass and type(db.lastClass) ~= "string" then db.lastClass = false end
+  if db.undo and not (type(db.undo) == "table" and type(db.undo.ops) == "table" and type(db.undo.label) == "string") then db.undo = false end
   if db.libraryClass ~= "player" and db.libraryClass ~= "last" then db.libraryClass = "player" end
   if db.accent ~= "class" and db.accent ~= "gold" then db.accent = "class" end
   db.scale = math.min(ns.SCALE_MAX, math.max(ns.SCALE_MIN, db.scale))
@@ -71,6 +138,7 @@ function ns.InitDB()
   Sanitize(BlockForgeDB)
   ns.db = BlockForgeDB
   ns.ApplyTheme()
+  ns.ApplyFeatures()
   if ns.FlushErrors then ns.FlushErrors() end
 end
 
@@ -83,13 +151,22 @@ function ns.ApplySettings()
   if ns.ApplyPerCharDefault then ns.ApplyPerCharDefault() end
   if ns.UpdateMinimapButton then ns.UpdateMinimapButton() end
   if ns.RefreshLibrary then ns.RefreshLibrary() end
+  ns.ApplyFeatures()
+  for _, page in ipairs(pages) do page.Sync() end
+end
+
+function ns.SetFeature(id, on)
+  local def = featureById[id]
+  if not def or not ns.db then return end
+  if def.key then ns.db[def.key] = on else ns.db.features[id] = on end
+  ns.ApplyFeatures()
   for _, page in ipairs(pages) do page.Sync() end
 end
 
 function ns.ResetDB()
   -- favoris, sauvegardes et modeles ne sont pas des reglages : la reinitialisation les garde (et ne relance pas la visite)
   local keep = {}
-  for _, k in ipairs({ "favorites", "sets", "personal", "tutorialSeen" }) do keep[k] = BlockForgeDB[k] end
+  for _, k in ipairs({ "favorites", "sets", "personal", "tutorialSeen", "undo" }) do keep[k] = BlockForgeDB[k] end
   for k in pairs(BlockForgeDB) do BlockForgeDB[k] = nil end
   for k, v in pairs(keep) do BlockForgeDB[k] = v end
   ns.personalCache = nil
@@ -122,9 +199,6 @@ local CHECKS = {
   { L["Infobulles d'aide détaillées"], function(db) return db.helpTooltips end,
     function(db, v) db.helpTooltips = v end, nil,
     L["Désactivé : les infobulles n'affichent plus que leur titre."] },
-  { L["Accepter les macros envoyées par d'autres joueurs"], function(db) return db.acceptShared end,
-    function(db, v) db.acceptShared = v end, nil,
-    L["Une macro reçue t'est toujours proposée avant d'être ouverte. Désactivé : elles sont ignorées sans rien afficher."] },
 }
 
 local function CheckBox(parent, x, y, text)
@@ -219,6 +293,19 @@ function ns.BuildSettingsPage(parent, title)
   tour:SetPoint("LEFT", reset, "RIGHT", 6, 0)
   ui.Tip(tour, function() return L["Revoir le tutoriel"], L["Relance la visite guidée de la fenêtre, étape par étape. Aussi : /bf tuto."] end)
   ui.Label(parent, L["Commandes : /bf (ouvrir), /bf options (cette page), /bf tuto (visite guidée), /bf test (diagnostic)"], 20, y - 34, "GameFontDisableSmall")
+
+  -- Fonctions : colonne de droite de l'onglet (de 470 a 876), une case de 26 px tous les 26 depuis -54 ;
+  -- 14 cases finissent a -418, au-dessus de la ligne des commandes (-432).
+  -- shortcut: absente de la page d'options du jeu, trop etroite pour deux colonnes ; a mettre en liste defilante si on la veut la-bas
+  if not title then
+    ui.Label(parent, L["Fonctions (décoche pour désactiver)"], 474, -36, "GameFontNormal")
+    for i, def in ipairs(ns.Features) do
+      local cb = CheckBox(parent, 470, -54 - (i - 1) * 26, def.label)
+      cb:SetScript("OnClick", function(self) ns.SetFeature(def.id, self:GetChecked() and true or false) end)
+      ui.Tip(cb, function() return def.label, def.desc end)
+      syncs[#syncs + 1] = function() cb:SetChecked(ns.Enabled(def.id)) end
+    end
+  end
 
   local page = { Sync = function() if ns.db then for _, f in ipairs(syncs) do f() end end end }
   pages[#pages + 1] = page

@@ -76,7 +76,16 @@ local OPTIONAL = { "RAID_CLASS_COLORS", "GetMacroIcons", "GetPetActionInfo", "C_
   -- cycle 4, lot 1 : grimoire integre et Assistant
   "C_Spell.IsSpellPassive", "IsPassiveSpell", "C_Spell.IsSpellHarmful", "C_Spell.IsSpellHelpful", "IsHarmfulSpell", "IsHelpfulSpell",
   "C_Container.GetContainerNumSlots", "C_Container.GetContainerItemID", "GetContainerNumSlots", "GetContainerItemID",
-  "C_Item.GetItemSpell", "GetItemSpell", "GetInventoryItemID", "NUM_BAG_SLOTS", "IsShiftKeyDown" }
+  "C_Item.GetItemSpell", "GetItemSpell", "GetInventoryItemID", "NUM_BAG_SLOTS", "IsShiftKeyDown",
+  -- V1 lot A : barres d'action, bilan de sante ; et ce que les lots suivants comptent utiliser
+  "GetActionInfo", "HasAction", "GetActionText", "GetActionTexture", "C_ActionBar.GetActionText", "C_ActionBar.PutActionInSlot",
+  "PlaceAction", "PickupAction", "PickupSpell", "C_Spell.PickupSpell", "PickupItem", "C_Item.PickupItem", "DeleteMacro",
+  "C_Spell.GetSpellSubtext", "MultiBar5", "MultiBar7", "C_KeyBindings.GetBindingByKey",
+  "C_EncodingUtil.CompressString", "C_EncodingUtil.SerializeCBOR", "C_EncodingUtil.EncodeBase64",
+  "C_SpecializationInfo.GetActiveSpecGroup", "C_SpecializationInfo.GetNumSpecGroups", "C_SpecializationInfo.GetSpecialization",
+  "GetNumSpecGroups", "GetActiveSpecGroup", "C_Traits", "C_ClassTalents", "GetTalentInfo", "C_Container.GetContainerItemInfo",
+  "SecureCmdOptionParse", "RegisterAttributeDriver", "UnregisterAttributeDriver", "RegisterStateDriver", "SecureHandlerWrapScript",
+  "AddonCompartmentFrame", "BlockForge_OnAddonCompartmentClick" }
 
 local function Lookup(path)
   local v = _G
@@ -151,7 +160,7 @@ local CHECKS = {
   end },
   { "tabs", function(out)
     local errors = ns.TabErrors()
-    for _, key in ipairs({ "editor", "library", "macros", "settings" }) do
+    for _, key in ipairs({ "home", "editor", "library", "macros", "settings" }) do
       out[#out + 1] = errors[key] and ("FAIL tab " .. key .. ": " .. errors[key]) or ("OK tab " .. key)
     end
     local a = ns.Theme.accent
@@ -196,6 +205,102 @@ local CHECKS = {
     out[#out + 1] = (#bad == 0 and "OK" or "FAIL") .. (" assistant recipes: %d, broken: %s"):format(#ns.Recipes, First(bad, 20))
     local w = ns.ed.w
     out[#out + 1] = (w.grimoireButton and w.assistantButton and "OK" or "FAIL") .. " grimoire and assistant buttons"
+  end },
+  -- Sondes de l'etude technique (P4, P6, P7, P10, P11, P13 en partie), en lecture seule : rien ici ne modifie
+  -- une barre, une macro ou un raccourci. Les observations brutes sont relues dans BlockForgeDB.selftest.
+  { "v1 lot A", function(out)
+    local function safe(fn, ...)
+      if type(fn) ~= "function" then return "absent" end
+      local ok, v = pcall(fn, ...)
+      return ok and tostring(v) or "error"
+    end
+    local function has(path) return Lookup(path) ~= nil and "present" or "absent" end
+    local scan, stats = ns.Bars.Scan()
+    if not scan then
+      out[#out + 1] = "INFO probe bars: GetActionInfo absent, bar tools off"
+    else
+      out[#out + 1] = ("INFO probe bars: %d slots read, %d with content (%d spells, %d items, %d macros, %d other), bars 6-8 (slots 145-180) %s"):format(
+        #scan, stats.content, stats.spells, stats.items, stats.macros, stats.other, #scan > 120 and "read" or "absent")
+      local shown = 0
+      for _, e in ipairs(scan) do
+        if e.kind == "macro" and shown < 6 then
+          shown = shown + 1
+          local byId = type(e.id) == "number" and e.id >= 1 and e.id <= 150 and GetMacroInfo(e.id) or nil
+          out[#out + 1] = ("INFO probe P4 GetActionInfo(%d) = macro, id %s, subtype %s ; C_ActionBar.GetActionText %s, GetActionText %s ; GetMacroInfo(id) %s ; identified by %s as %s"):format(
+            e.slot, tostring(e.id), tostring(e.sub), safe(C_ActionBar and C_ActionBar.GetActionText, e.slot), safe(GetActionText, e.slot),
+            tostring(byId), tostring(e.how), tostring(e.macroName))
+        end
+      end
+      if stats.macros == 0 then
+        out[#out + 1] = "INFO probe P4: no macro on the bars ; put one on a bar and run /bf test again"
+      else
+        out[#out + 1] = (stats.unresolved == 0 and "OK" or "FAIL") .. (" macros on bars identified: %d / %d"):format(stats.macros - stats.unresolved, stats.macros)
+      end
+    end
+    local keys, bound = {}, 0
+    for _, binding in ipairs({ "ACTIONBUTTON1", "MULTIACTIONBAR1BUTTON1", "MULTIACTIONBAR3BUTTON1", "MULTIACTIONBAR5BUTTON1" }) do
+      keys[#keys + 1] = binding .. "=" .. safe(GetBindingKey, binding)
+    end
+    for _, m in ipairs(ns.ReadMacros()) do
+      if GetBindingKey("MACRO " .. m.name) then bound = bound + 1 end
+    end
+    out[#out + 1] = ("INFO probe bindings: %s ; %d macros bound to a key"):format(table.concat(keys, ", "), bound)
+    out[#out + 1] = ("INFO probe actions: PlaceAction %s, PickupAction %s, PickupMacro %s, DeleteMacro %s, PickupSpell %s / %s, PickupItem %s / %s, C_ActionBar %s"):format(
+      has("PlaceAction"), has("PickupAction"), has("PickupMacro"), has("DeleteMacro"), has("PickupSpell"), has("C_Spell.PickupSpell"),
+      has("PickupItem"), has("C_Item.PickupItem"), has("C_ActionBar"))
+    local S = C_SpecializationInfo or {}
+    out[#out + 1] = ("INFO probe P6 spec: C_SpecializationInfo %s, active group %s, groups %s, specialization %s ; GetActiveSpecGroup %s, GetNumSpecGroups %s ; C_Traits %s, C_ClassTalents %s, GetTalentInfo %s"):format(
+      has("C_SpecializationInfo"), safe(S.GetActiveSpecGroup), safe(S.GetNumSpecGroups), safe(S.GetSpecialization),
+      safe(GetActiveSpecGroup), safe(GetNumSpecGroups), has("C_Traits"), has("C_ClassTalents"), has("GetTalentInfo"))
+    out[#out + 1] = ("INFO probe containers: C_Container %s, slots in bag 0 %s"):format(has("C_Container"), safe(C_Container and C_Container.GetContainerNumSlots, 0))
+    if type(SecureCmdOptionParse) == "function" then
+      -- une condition comprise repond differemment a [c] et a [noc] ; une condition inconnue repond pareil, ou echoue
+      local results = {}
+      for _, cond in ipairs({ "combat", "mounted", "pet", "spec:1", "spec:2", "known:" .. (ns.SpellBook()[1] or "?"), "form:1", "stance:1",
+                              "group", "indoors", "flyable", "talent:1/1", "exists", "harm", "help" }) do
+        local ok1, a = pcall(SecureCmdOptionParse, "[" .. cond .. "] Y; N")
+        local ok2, b = pcall(SecureCmdOptionParse, "[no" .. cond .. "] Y; N")
+        results[#results + 1] = cond .. "=" .. ((not ok1 or not ok2) and "error" or (a ~= b and "understood:" or "ignored:") .. tostring(a))
+      end
+      out[#out + 1] = "INFO probe P7 conditions: " .. table.concat(results, ", ")
+    else
+      out[#out + 1] = "INFO probe P7 conditions: SecureCmdOptionParse absent"
+    end
+    local E = C_EncodingUtil
+    if not E then
+      out[#out + 1] = "INFO probe P10 C_EncodingUtil: absent"
+    else
+      local src = string.rep("/cast [@mouseover,help,nodead][] Test\n", 20)
+      local ok, err = pcall(function()
+        local method = Enum.CompressionMethod.Deflate
+        local packed = E.CompressString(src, method)
+        local text = E.EncodeBase64(packed)
+        out[#out + 1] = ("INFO probe P10 C_EncodingUtil: %d bytes, %d compressed, %d in base64, round trip %s, CBOR %s"):format(#src, #packed, #text,
+          tostring(E.DecompressString(E.DecodeBase64(text), method) == src), tostring(E.DeserializeCBOR(E.SerializeCBOR({ body = src })).body == src))
+      end)
+      if not ok then out[#out + 1] = "INFO probe P10 C_EncodingUtil: present, error " .. tostring(err) end
+    end
+    -- bouton securise : cree une seule fois, cache, sans attribut ni raccourci
+    if ns.probeButton == nil then
+      local ok, button = pcall(CreateFrame, "Button", nil, UIParent, "SecureActionButtonTemplate")
+      ns.probeButton = ok and button or false
+      if ns.probeButton then ns.probeButton:Hide() end
+    end
+    out[#out + 1] = ("INFO probe P13 secure button: SecureActionButtonTemplate %s out of combat ; RegisterAttributeDriver %s, RegisterStateDriver %s, SecureHandlerWrapScript %s"):format(
+      ns.probeButton and "created" or "refused", has("RegisterAttributeDriver"), has("RegisterStateDriver"), has("SecureHandlerWrapScript"))
+    out[#out + 1] = ("INFO probe P11 compartment: AddonCompartmentFrame %s, TOC function %s"):format(has("AddonCompartmentFrame"), has("BlockForge_OnAddonCompartmentClick"))
+
+    local states = {}
+    for _, def in ipairs(ns.Features) do states[#states + 1] = def.id .. "=" .. (ns.Enabled(def.id) and "on" or "off") end
+    out[#out + 1] = "INFO features: " .. table.concat(states, ", ")
+    local account, char = GetNumMacros()
+    local maxAccount, maxChar = ns.MacroLimits()
+    local gauge, level = ns.Gauge(account or 0, maxAccount, char or 0, maxChar)
+    local home, report = ns.home, ns.Health.Report()
+    out[#out + 1] = (home and ns.ed.w.home and "OK" or "FAIL") .. (" home tab: %d entries, %d suggestions, gauge %s (%s)"):format(
+      #ns.HomeActions, home and #home.suggestions or 0, gauge, level)
+    out[#out + 1] = ("INFO health: %d macros, %d broken, %d duplicates, %d orphans (bars fully read: %s), %d at risk ; undo pending: %s"):format(
+      report.total, #report.broken, #report.duplicates, #report.orphans, tostring(report.orphansKnown), #report.risky, tostring(ns.UndoLabel()))
   end },
 }
 

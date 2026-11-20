@@ -178,7 +178,7 @@ local function BuildMore(view)
   }
   if ns.CanShare and ns.CanShare() then
     items[2] = { L["Envoyer à…"], L["Envoie cette macro à un autre joueur qui a BlockForge. Il choisit de l'ouvrir ou non ; rien n'est enregistré chez lui sans son accord."],
-      function() ns.SendPrompt(view.Name(), ns.Compile(view.Blocks())) end }
+      function() ns.SendPrompt(view.Name(), ns.Compile(view.Blocks())) end, "share" }
   end
   -- bouton de 814 a 876 sur la ligne des boutons (-58) ; liste de 216 de large, de 660 a 876, entre -56 et 0
   local menu = ui.Panel(w.bottom, 216, 12 + #items * 22)
@@ -199,6 +199,8 @@ local function BuildMore(view)
       item[3]()
     end)
     ui.Tip(chip, function() return item[1], item[2] end)
+    -- item[4] : fonction que le joueur peut couper dans les Parametres
+    if item[4] then ns.OnFeatures(function() chip:SetShown(ns.Enabled(item[4])) end, true) end
   end
   w.bottom:HookScript("OnHide", function() menu:Hide() end)
   w.more = more

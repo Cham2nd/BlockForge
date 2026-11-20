@@ -199,9 +199,9 @@ function ns.BuildSpellGrid(parent, x, y, cols, rows, size, onClick)
   end)
 
   -- a jour seulement quand la grille se voit ; le cache de ns.SpellBook est vide par UI.lua, inscrit avant ce cadre
-  frame:RegisterEvent("SPELLS_CHANGED")
-  frame:RegisterEvent("BAG_UPDATE_DELAYED")
-  frame:RegisterEvent("UNIT_PET")
+  -- on : faux quand la fonction qui porte la grille est coupee dans les Parametres
+  function grid.Listen(on) ns.Listen(frame, on, "SPELLS_CHANGED", "BAG_UPDATE_DELAYED", "UNIT_PET") end
+  grid.Listen(true)
   frame:SetScript("OnEvent", function(self, event, unit)
     if self:IsVisible() and (event ~= "UNIT_PET" or unit == "player") then grid.Fill() end
   end)
@@ -247,6 +247,7 @@ end
 
 function ns.ToggleGrimoire()
   if drawer and drawer:IsShown() then return drawer:Hide() end
+  if ns.Off("grimoire") then return end
   if InCombatLockdown() then return ns.Msg(L["Impossible de modifier une macro en combat."]) end
   if not drawer then BuildDrawer() end
   if ns.assistant then ns.assistant:Hide() end -- il couvrirait le tiroir
@@ -271,6 +272,19 @@ function ns.BuildGrimoire()
     return L["Mon grimoire"], L["Tes sorts, les techniques de ton familier et tes objets utilisables, à ajouter d'un clic. S'ouvre à la place de la liste des blocs."]
   end)
   w.assistantButton, w.grimoireButton = assistant, book
+  ns.OnFeatures(function()
+    local grimoire, helper = ns.Enabled("grimoire"), ns.Enabled("assistant")
+    book:SetShown(grimoire)
+    assistant:SetShown(helper)
+    if drawer then
+      drawer.grid.Listen(grimoire)
+      if not grimoire then drawer:Hide() end
+    end
+    if ns.assistant then
+      ns.assistant.grid.Listen(helper)
+      if not helper then ns.assistant:Hide() end
+    end
+  end, true)
 
   -- combat, onglet change ou fenetre fermee : le tiroir et l'Assistant se ferment
   local function HideAll()
