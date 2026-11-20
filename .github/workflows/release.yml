@@ -1,0 +1,33 @@
+name: Release
+
+# Un tag vX.Y.Z pousse : tests, zip de l'add-on, release GitHub avec le zip et les notes du changelog.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: tests
+      - run: npm test
+        working-directory: tests
+      - name: Zip et release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          grep -qx "## Version: $VERSION" BlockForge/BlockForge.toc || { echo "Le TOC n'est pas en version $VERSION"; exit 1; }
+          zip -r "BlockForge-$VERSION.zip" BlockForge
+          # notes : premiere section du changelog, sans son titre
+          awk '/^# /{n++; next} n==1' release/CHANGELOG.md > notes.md
+          gh release create "$TAG" "BlockForge-$VERSION.zip" --title "BlockForge $VERSION" --notes-file notes.md
