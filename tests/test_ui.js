@@ -473,7 +473,7 @@ assert(db.lastClass == "SHAMAN", "derniere classe non memorisee")
 
 -- 8. parametres : onglet de la fenetre
 fire(byText("Paramètres", BlockForgeFrame), "OnClick")
-local settingsPanel = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, BlockForgeFrame) and w ~= perChar end)._parent
+local settingsPanel = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, BlockForgeFrame) and w ~= perChar and w:IsVisible() end)._parent
 assert(settingsPanel:IsVisible(), "onglet Parametres non affiche")
 local checks = checkboxes(settingsPanel)
 assert(#checks == 9, "cases : " .. #checks) -- 7 reglages + 2 choix de classe

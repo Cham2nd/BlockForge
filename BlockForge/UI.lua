@@ -236,6 +236,19 @@ local function ArgIcon(block)
   return getSpellIcon(name) or getSpellIcon((name:gsub("%s*%(.-%)$", "")))
 end
 
+-- sorts que le personnage ne connait pas : la recherche par nom ne repond que pour les sorts connus
+-- shortcut: techniques de familier ignorees (inconnues tant que le familier n'est pas sorti)
+local function UnknownSpells(blockList)
+  local unknown = {}
+  if InCombatLockdown() or not (C_Spell and C_Spell.GetSpellInfo) then return unknown end
+  for _, name in ipairs(ns.SpellsOf(blockList)) do
+    if not ns.PetSpells[name:lower()] and not tonumber(name) and not C_Spell.GetSpellInfo(name) then
+      unknown[#unknown + 1] = name
+    end
+  end
+  return unknown
+end
+
 local function RowPart(row, kind, n)
   local pool = row[kind]
   if not pool[n] then
@@ -436,8 +449,10 @@ function ns.ApplyPerCharDefault()
 end
 
 local function LoadText(name, body)
-  blocks = ns.Parse(body or "")
-  while #blocks > MAX_ROWS do table.remove(blocks) end
+  local parsed = ns.Parse(body or "")
+  -- trop de lignes pour l'editeur : ne rien charger plutot que couper, sinon enregistrer ecraserait la fin
+  if #parsed > MAX_ROWS then return Msg(L["Macro non chargée : %d lignes, l'éditeur en affiche %d au plus."]:format(#parsed, MAX_ROWS)) end
+  blocks = parsed
   nameBox:SetText(name or "")
   selected, activeClause = blocks[1], 1
   Refresh()
@@ -503,6 +518,10 @@ function Refresh()
   end
 
   local text, warnings = ns.Diagnose(blocks)
+  local unknown = UnknownSpells(blocks)
+  if #unknown > 0 then
+    warnings[#warnings + 1] = L["Sort inconnu de ce personnage (ou mal écrit) : %s"]:format(table.concat(unknown, ", "))
+  end
   local len = #text
   preview:SetText(text ~= "" and text or "|cff777777" .. L["(la macro compilée s'affiche ici)"] .. "|r")
   local ratio = math.min(1, len / ns.MAX_CHARS)
@@ -837,6 +856,8 @@ local function BuildLibrary(parent, showEditor)
       row:SetShown(entry ~= nil)
       if entry then
         row.text:SetText(("[%s] %s"):format(CATEGORY_LABEL[entry.category] or entry.category or "?", entry.name))
+        local c = entry.usable and 1 or 0.5 -- grise : un sort de la macro n'est pas connu du personnage
+        row.text:SetTextColor(c, c, c)
         Tint(row, CATEGORY_COLOR[entry.category] or GREY, entry == current and 1 or 0.45)
         row.mark:SetShown(entry == current)
       end
@@ -871,8 +892,13 @@ local function BuildLibrary(parent, showEditor)
   local function ShowClass(class)
     shown, offset = {}, 0
     ns.db.lastClass = class
+    local getName = (C_Spell and C_Spell.GetSpellName) or GetSpellInfo
     for _, entry in ipairs(ns.Library or {}) do
-      if entry.class == class then shown[#shown + 1] = entry end
+      if entry.class == class then
+        -- noms dans la langue du client, meme si l'affichage traduit est coupe
+        entry.usable = #UnknownSpells(ns.Parse(ns.Localize(entry.body, getName, RANK))) == 0
+        if entry.usable or not ns.db.onlyKnown then shown[#shown + 1] = entry end
+      end
     end
     Render()
     for token, chip in pairs(classChips) do
@@ -888,6 +914,19 @@ local function BuildLibrary(parent, showEditor)
     chip:SetScript("OnClick", function() ShowClass(token) end)
     classChips[token] = chip
   end
+  local onlyKnown = CreateFrame("CheckButton", nil, classPanel, "UICheckButtonTemplate")
+  onlyKnown:SetSize(24, 24)
+  onlyKnown:SetPoint("BOTTOMLEFT", 6, 6)
+  onlyKnown:SetChecked(ns.db.onlyKnown)
+  onlyKnown:SetScript("OnClick", function(self)
+    ns.db.onlyKnown = self:GetChecked() and true or false
+    ShowClass(ns.db.lastClass)
+  end)
+  local onlyKnownText = Label(classPanel, L["Mes sorts seulement"], 0, 0, "GameFontHighlightSmall")
+  onlyKnownText:ClearAllPoints()
+  onlyKnownText:SetPoint("LEFT", onlyKnown, "RIGHT", 2, 0)
+  Tip(onlyKnown, function() return L["Mes sorts seulement"], L["Cache les macros dont un sort n'est pas connu de ce personnage. Sans la case, elles sont grisées."] end)
+
   local _, playerClass = UnitClass("player")
   local start = ns.db.libraryClass == "last" and ns.db.lastClass
   if not (start and classChips[start]) then start = classChips[playerClass] and playerClass or "ALL" end

@@ -306,15 +306,43 @@ for name in ("spell lock,devour magic,seduction,sacrifice,fire shield,consume sh
   ns.PetSpells[name] = true
 end
 
+-- noms des sorts lances par /cast et /castsequence, sans "!", sans rang, sans doublon
+function ns.SpellsOf(blocks)
+  local list, seen = {}, {}
+  for _, block in ipairs(blocks) do
+    if block.type == "cast" or block.type == "castsequence" then
+      for _, clause in ipairs(block.clauses or {}) do
+        for spell in (clause.arg or ""):gmatch("[^,]+") do
+          local name = trim(spell:gsub("^%s*!", ""):gsub("%(.-%)%s*$", ""))
+          if name ~= "" and not seen[name] then
+            seen[name] = true
+            list[#list + 1] = name
+          end
+        end
+      end
+    end
+  end
+  return list
+end
+
 function ns.Diagnose(blocks)
   local text = ns.Compile(blocks)
   local warnings = {}
   if #text > ns.MAX_CHARS then
     warnings[#warnings + 1] = L["Trop long : %d / %d caractères."]:format(#text, ns.MAX_CHARS)
   end
-  local plainCasts, dismount, pet = 0, false, false
-  for _, block in ipairs(blocks) do
+  local plainCasts, dismount, pet, tooltips, clash = 0, false, false, 0, false
+  for i, block in ipairs(blocks) do
     local t = block.type
+    if t == "showtooltip" then tooltips = tooltips + (i == 1 and 1 or 2) end
+    for _, clause in ipairs(block.clauses or {}) do
+      local has = {}
+      for _, cond in ipairs(clause.conds) do has[cond] = true end
+      if has.harm and has.help then clash = true end
+      for cond in pairs(has) do
+        if has["no" .. cond] then clash = true end
+      end
+    end
     if t == "dismount" then dismount = true end
     if t == "petattack" or t == "petfollow" or t == "petpassive" then pet = true end
     if t == "cast" or t == "use" or t == "castsequence" then
@@ -336,6 +364,12 @@ function ns.Diagnose(blocks)
   -- seuls les sorts sans aucune condition sont surs de se bloquer entre eux
   if plainCasts > 1 then
     warnings[#warnings + 1] = L["Plusieurs sorts sans condition : le premier part, les suivants ne servent que s'il échoue (ou s'il ne déclenche pas le temps de recharge global)."]
+  end
+  if tooltips > 1 then
+    warnings[#warnings + 1] = L["#showtooltip doit être la première ligne, une seule fois."]
+  end
+  if clash then
+    warnings[#warnings + 1] = L["Conditions contradictoires dans une même alternative : elle ne sera jamais vraie."]
   end
   -- une macro ne peut pas attendre : pas de /wait pour laisser le familier revenir
   if dismount and pet then

@@ -53,6 +53,17 @@ assert(#w3 == 1 and w3[1]:find("Familier"))
 sl.clauses[1].arg = "Fear"
 local _, w4 = ns.Diagnose({ ns.NewBlock("dismount"), sl })
 assert(#w4 == 0)
+-- sorts d'une macro, conditions contradictoires, #showtooltip mal place
+local names = ns.SpellsOf(ns.Parse("#showtooltip\\n/cast [mod] !Stealth; Fear(Rank 2)\\n/castsequence reset=3 Immolate, Fear\\n/use 13"))
+assert(table.concat(names, "|") == "Stealth|Fear|Immolate", table.concat(names, "|"))
+local _, w5 = ns.Diagnose(ns.Parse("/cast [combat,nocombat] Fear"))
+assert(#w5 == 1 and w5[1]:find("contradictoires"))
+local _, w6 = ns.Diagnose(ns.Parse("/cast [harm,help] Fear"))
+assert(#w6 == 1)
+local _, w7 = ns.Diagnose(ns.Parse("/cast [harm,nodead] Fear\\n#showtooltip"))
+assert(#w7 == 1 and w7[1]:find("showtooltip"))
+local _, w8 = ns.Diagnose(ns.Parse("#showtooltip Fear\\n/cast [@mouseover,harm,nodead][] Fear"))
+assert(#w8 == 0)
 print(#ns.Library .. " macros, " .. bad .. " aller-retour differents")
 assert(bad == 0)
 `);

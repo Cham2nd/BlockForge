@@ -1,3 +1,10 @@
+# BlockForge 0.3.1
+
+- Corrigé : une macro de plus de 12 lignes chargée dans l'éditeur était coupée sans avertir. Elle n'est plus chargée, avec un message.
+- Éditeur : avertissement pour un sort inconnu du personnage ou mal écrit.
+- Éditeur : avertissements pour des conditions contradictoires et pour un `#showtooltip` mal placé ou en double.
+- Bibliothèque : macros grisées quand un de leurs sorts n'est pas connu du personnage ; case « Mes sorts seulement » pour les cacher.
+
 # BlockForge 0.3.0
 
 - Renommé : MacroForge devient BlockForge. Commandes `/bf`, `/blockforge`. Les réglages repartent de zéro.
