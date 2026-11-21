@@ -10,11 +10,11 @@ local function W(key) return function() return ns.ed.w[key] end end
 --   blocs 0-160, zone 166-582, reglages 588-884 (hauteur 430) ; apercu en dessous, de -436 a -566.
 ns.TutorialSteps = {
   -- accueil : les entrees sont un panneau de 884 x 150 a -102 ; la visite se pose dessous, a gauche
-  { tab = "home", feature = "home", anchor = W("homeActions"), at = { "TOPLEFT", "BOTTOMLEFT", 8, -8 }, -- 8 a 328, -260 a -400
+  { new = true, tab = "home", feature = "home", anchor = W("homeActions"), at = { "TOPLEFT", "BOTTOMLEFT", 8, -8 }, -- 8 a 328, -260 a -400
     title = L["L'accueil"],
     text = L["BlockForge s'ouvre ici. « Améliorer ma barre » remplace un sort de ta barre par sa macro, à la même place. En bas, le bilan de santé repère tes macros cassées, en double ou jamais utilisées, à côté de macros suggérées pour ton personnage."] },
   -- any : montree si au moins une de ces fonctions est active ; text peut etre une fonction, qui ne parle que de celles-la
-  { tab = "home", feature = "home", any = { "kits", "profiles", "living" }, anchor = W("homeActions"), at = { "TOPLEFT", "BOTTOMLEFT", 8, -8 },
+  { new = true, tab = "home", feature = "home", any = { "kits", "profiles", "living" }, anchor = W("homeActions"), at = { "TOPLEFT", "BOTTOMLEFT", 8, -8 },
     title = L["Kits, profils, macros vivantes"],
     text = function()
       local parts = {}
@@ -32,17 +32,23 @@ ns.TutorialSteps = {
   { tab = "editor", anchor = W("insp"), at = { "TOPRIGHT", "TOPLEFT", -8, -40 }, -- 260 a 580, -40 a -180
     title = L["Les conditions"],
     text = L["Clique sur un bloc, puis règle-le ici : son sort et ses conditions (cible survolée, focus, touche maintenue, combat…). Le « + » ajoute une alternative, essayée quand la précédente ne s'applique pas."] },
-  { tab = "editor", anchor = W("preview"), at = { "BOTTOMLEFT", "TOPLEFT", 0, 40 }, -- 10 a 330, -294 a -434
+  { new = true, tab = "editor", anchor = W("preview"), at = { "BOTTOMLEFT", "TOPLEFT", 0, 40 }, -- 10 a 330, -294 a -434
     title = L["Aperçu et simulateur"],
-    text = L["Le texte de la macro s'écrit tout seul, avec son compteur : 255 caractères au plus. « Simuler » montre quelle ligne partirait ; « Éditer le texte » te laisse taper la macro à la main."] },
+    text = function()
+      local parts = { L["255 caractères max. « Simuler » teste les conditions ; « Éditer le texte » permet de coller une macro."] }
+      if ns.Enabled("explain") then parts[#parts + 1] = L["« Expliquer » raconte chaque ligne."] end
+      if ns.Enabled("shorten") then parts[#parts + 1] = L["« Plus… » → « Raccourcir » propose les réductions sûres."] end
+      if ns.Enabled("translate") then parts[#parts + 1] = L["Un sort collé dans l’autre langue ? Le bouton de traduction apparaît."] end
+      return table.concat(parts, " ")
+    end },
   { tab = "editor", anchor = W("save"), at = { "BOTTOMLEFT", "TOPLEFT", 0, 60 }, -- 450 a 770, -294 a -434
     title = L["Nommer et enregistrer"],
     text = L["Donne un nom (16 caractères au plus), puis « Créer / mettre à jour » : c'est une vraie macro du jeu, à poser sur une barre d'action. À gauche, le bouton montre son icône : clique dessus pour la changer. « Plus… » la garde dans ta bibliothèque ou l'envoie à un joueur."] },
   -- boutons sur la ligne des onglets, de +25 a +3 au-dessus de la page : le panneau se pose dessous, aligne a droite
-  { tab = "editor", feature = "grimoire", anchor = W("grimoireButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 438 a 758, -5 a -145
+  { new = true, tab = "editor", feature = "grimoire", anchor = W("grimoireButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 438 a 758, -5 a -145
     title = L["Mon grimoire"],
     text = L["Tes sorts, les techniques de ton familier et les objets utilisables de tes sacs, en icônes. Un clic ajoute le sort à ta macro, ou remplit le bloc choisi s'il attend un sort. Maj+clic ouvre l'Assistant pour ce sort."] },
-  { tab = "editor", feature = "assistant", anchor = W("assistantButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 564 a 884, -5 a -145
+  { new = true, tab = "editor", feature = "assistant", anchor = W("assistantButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 564 a 884, -5 a -145
     title = L["L'Assistant"],
     text = L["Une bonne macro en deux clics : choisis un sort, l'Assistant propose des macros toutes faites (survol, focus, interruption, familier, bijoux…). « Créer la macro » l'enregistre, « Ouvrir dans l'éditeur » te laisse la retoucher."] },
   { tab = "library", anchor = W("libraryList"), at = { "TOPLEFT", "TOPRIGHT", 8, -40 }, -- 490 a 810, -40 a -180
@@ -122,7 +128,7 @@ local function Build()
 end
 
 -- manual : demandee par le joueur (bouton, /bf tuto) ; sinon premiere ouverture de la fenetre
-function Tutorial.Start(manual)
+function Tutorial.Start(manual, newsOnly)
   if InCombatLockdown() then
     if manual then ns.Msg(L["Pas de visite guidée en combat."]) end
     return
@@ -140,8 +146,10 @@ function Tutorial.Start(manual)
       if ns.Enabled(feature) then break end
       if i == #s.any then on = false end
     end
+    if newsOnly and not s.new then on = false end
     if on then Tutorial.steps[#Tutorial.steps + 1] = s end
   end
+  if #Tutorial.steps == 0 then return Tutorial.Stop() end
   Show(1)
 end
 

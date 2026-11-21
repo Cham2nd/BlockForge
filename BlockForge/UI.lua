@@ -855,6 +855,7 @@ local function BuildBottom(parent, palette)
   w.bottom, w.preview, w.action, w.save, w.reset = bottom, preview, action, save, reset
   warnText = Label(bottom, "", 452, -86, "GameFontRedSmall")
   warnText:SetWidth(420)
+  w.warnText = warnText
   -- sort mal ecrit : un clic met le nom du grimoire a la place
   fixButton = Chip(bottom, 240, 16)
   fixButton:SetPoint("BOTTOMRIGHT", -8, 5)
@@ -1309,6 +1310,11 @@ local function BuildLibrary(parent, showEditor)
   body:ClearAllPoints()
   body:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -14) -- suit la description, quelle que soit sa longueur
   body:SetWidth(376)
+  desc:SetHeight(60)
+  body:ClearAllPoints()
+  body:SetPoint("TOPLEFT", 10, -124)
+  body:SetJustifyV("TOP")
+  local explanation = ns.BuildDetailExplanation(detail, body, 10, -294, 376, 156, 326)
   local source = Label(detail, "", 10, -500, "GameFontDisableSmall")
   source:SetWidth(376)
   local current
@@ -1342,10 +1348,11 @@ local function BuildLibrary(parent, showEditor)
       personalUI.Sync(currentClass == PERSONAL, current)
       favButton:SetShown(currentClass ~= PERSONAL)
     end
-    if not current then return end
+    if not current then explanation:Update('') return end
     title:SetText(current.name)
     desc:SetText(LibraryDesc(current) or "")
-    body:SetText(ns.Code(LibraryBody(current)))
+    body:SetText(ns.Code(ns.TokenText(LibraryBody(current))))
+    explanation:Update(LibraryBody(current))
     source:SetText(current.source and L["Source : %s"]:format(current.source) or "")
     favButton:SetText(ns.db.favorites[FavKey(current)] and L["Retirer des favoris"] or L["Ajouter aux favoris"])
   end
@@ -1609,17 +1616,19 @@ local function BuildMacros(parent, showEditor)
   info:SetWidth(376)
   local body = Label(detail, "", 10, -76, "BlockForgeCodeFont")
   body:SetSize(376, 230)
+  local explanation = ns.BuildDetailExplanation(detail, body, 10, -196, 376, 110, 230)
   body:SetJustifyV("TOP")
   local capturing
 
   local function ShowDetail()
-    if not current then return end
+    if not current then explanation:Update('') return end
     title:SetText(current.name)
     local key = GetBindingKey("MACRO " .. current.name)
     local living = ns.LivingLabel(current.name, current.char)
     info:SetText((current.char and L["Macro du personnage"] or L["Macro générale"]) .. "  ·  "
       .. (key and L["Raccourci : %s"]:format(key) or L["Aucun raccourci"]) .. (living and ("  ·  " .. living) or ""))
-    body:SetText(ns.Code(current.body))
+    body:SetText(ns.Code(ns.TokenText(current.body)))
+    explanation:Update(ns.LivingBody(current.name, current.body))
   end
 
   local open = Button(detail, L["Ouvrir dans l'éditeur"], 180, function()
@@ -1824,6 +1833,7 @@ local function BuildMacros(parent, showEditor)
       title:SetText(L["Choisis une macro dans la liste."])
       info:SetText("")
       body:SetText("")
+      explanation:Update("")
       for _, b in ipairs(actions) do b:Disable() end
     elseif not capturing then
       ShowDetail()
@@ -1855,6 +1865,7 @@ end
 local ShowTab
 
 function ns.ApplyWindow()
+  if ns.Welcome and ns.Welcome.panel and ns.Welcome.panel:IsShown() then ns.Welcome.Place() end
   if not main then return end
   -- la fenetre ne depasse jamais l'ecran ; le reglage enregistre reste celui choisi
   local fit = math.min((UIParent:GetWidth() or 0) / main:GetWidth(), (UIParent:GetHeight() or 0) / main:GetHeight())
@@ -1910,6 +1921,12 @@ local function BuildHeader()
     v:SetPoint("RIGHT", close, "LEFT", -8, 0)
     v:SetText("v" .. version)
     view.w.headerRight = v
+    local intro = Button(main, "v" .. version, 64, function() ns.OpenWelcome() end)
+    intro:SetPoint("RIGHT", close, "LEFT", -8, 0)
+    intro:SetHeight(18)
+    v:Hide()
+    view.w.headerRight, view.w.versionButton = intro, intro
+    ns.OnFeatures(function() intro:SetShown(ns.Enabled("welcome")) v:SetShown(not ns.Enabled("welcome")) end, true)
   end
 
   -- fondu a l'ouverture : une animation ne touche pas a l'alpha reel, la fenetre ne peut pas rester a moitie transparente
@@ -2040,7 +2057,7 @@ end
 function ns.Toggle()
   if not main then Build() else main:SetShown(not main:IsShown()) end
   -- premiere ouverture : visite guidee (une seule fois ; pas en combat, elle attendra la prochaine ouverture)
-  if main:IsShown() and ns.Tutorial and not ns.db.tutorialSeen and ns.Enabled("tutorial") and not InCombatLockdown() then ns.Tutorial.Start() end
+  if main:IsShown() and ns.Tutorial and not ns.db.tutorialSeen and ns.Enabled("tutorial") and not (ns.Enabled("welcome") and ns.db.welcomeSeen ~= "1.0") and not InCombatLockdown() then ns.Tutorial.Start() end
 end
 
 -- ouvre la fenetre sur un onglet (visite guidee, macro recue)
@@ -2060,6 +2077,8 @@ SLASH_BLOCKFORGE1 = "/blockforge"
 SLASH_BLOCKFORGE2 = "/bf"
 SlashCmdList.BLOCKFORGE = function(msg)
   msg = ns.trim((msg or ""):lower())
+  if msg == "intro" or msg == "nouveautes" or msg == "whatsnew" then return ns.OpenWelcome() end
+  if msg == "aide" or msg == "?" then return ns.PrintHelp() end
   if msg == "options" or msg == "config" or msg == "param" then return ns.OpenSettings() end
   if msg == "test" then return ns.SelfTest() end
   if msg == "tuto" or msg == "tutorial" or msg == "help" then return ns.Tutorial.Start(true) end

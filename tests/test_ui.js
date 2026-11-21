@@ -800,7 +800,8 @@ fire(byText("Paramètres", BlockForgeFrame), "OnClick")
 local settingsPanel = find(function(w) return w._template == "UICheckButtonTemplate" and inside(w, BlockForgeFrame) and w ~= perChar and w:IsVisible() end)._parent
 assert(settingsPanel:IsVisible(), "onglet Parametres non affiche")
 local checks = checkboxes(settingsPanel)
-assert(#checks == 25, "cases : " .. #checks) -- 7 reglages + 2 choix de classe + 2 couleurs d'accent + 14 fonctions
+assert(#checks == 11, "cases : " .. #checks) -- les fonctions ont leur propre liste defilante
+assert(settingsPanel.featureList and #settingsPanel.featureList.rows == 12)
 for _, c in ipairs(checks) do assert(c.label, "case sans libelle") end
 local function cb(fragment)
   for _, c in ipairs(checks) do if c.label:find(fragment, 1, true) then return c.box end end
@@ -1258,7 +1259,7 @@ run(`fireEvent("ADDON_LOADED", "BlockForge")
      assert(NS.db.accent == "class" and NS.Theme.accent[2] == 0.82 and NS.fade == nil, "replis du theme")`, "=classic2");
 
 // ---------------------------------------------------------------- 5. client anglais : textes et descEN
-boot("nil", `function GetLocale() return "enUS" end`);
+boot("{ features = { welcome = false } }", `function GetLocale() return "enUS" end`);
 run(String.raw`
 SlashCmdList.BLOCKFORGE("")
 assert(BlockForgeFrame.TitleText._text == "BlockForge — block-based macro editor")
@@ -1297,7 +1298,8 @@ local function accept(kind) -- repond au dernier dialogue : "OnAccept", "OnAlt" 
   StaticPopupDialogs[p.which][kind or "OnAccept"]({}, p.data)
 end
 
--- A. tutoriel : premiere ouverture en combat = rien, la visite attend ; hors combat elle se lance une seule fois
+-- A. tutoriel seul : sans presentation, premiere ouverture hors combat
+ns.SetFeature("welcome", false)
 assert(db.tutorialSeen == false and db.acceptShared == true and type(db.personal) == "table")
 COMBAT = true
 SlashCmdList.BLOCKFORGE("")
@@ -2720,26 +2722,23 @@ SLOTS[1] = { "spell", 172 }
 SlashCmdList.BLOCKFORGE("")
 local w, home = ns.ed.w, ns.home
 local tabHome, tabEditor = byText("Accueil", BlockForgeFrame), byText("Éditeur", BlockForgeFrame)
--- quatorze fonctions, toutes actives par defaut, une case chacune dans l'onglet Parametres (colonne de droite, sans chevauchement)
+-- Fonctions actives par defaut, rendues dans douze lignes reutilisables.
 local ids = {}
 for i, def in ipairs(ns.Features) do
   ids[i] = def.id
   assert(type(def.label) == "string" and type(def.desc) == "string" and ns.Enabled(def.id) == true, def.id)
 end
-assert(table.concat(ids, ",") == "home,bars,health,suggestions,gauge,assistant,grimoire,share,tutorial,colorize,living,kits,profiles,specProfiles", table.concat(ids, ","))
+assert(table.concat(ids, ",") == "home,bars,health,suggestions,gauge,assistant,grimoire,share,tutorial,colorize,living,kits,profiles,specProfiles,explain,translate,shorten,welcome,welcomeMotion", table.concat(ids, ","))
 assert(ns.Enabled("inconnue") == true)
 fire(byText("Paramètres", BlockForgeFrame), "OnClick")
 local boxes = {}
-for _, c in ipairs(checkboxes(w.settings)) do
-  for _, def in ipairs(ns.Features) do
-    if c.label == def.label and c.box._point[2] == 470 then boxes[def.id] = c.box end
-  end
+for i, cb in ipairs(w.settings.featureList.rows) do
+  boxes[cb.def.id] = cb
+  assert(cb._checked == true and cb._point[3] == -(i - 1) * 26, cb.def.id)
+  assert(-cb._point[3] + cb._h <= w.settings.featureList._h)
 end
-for i, def in ipairs(ns.Features) do
-  local box = boxes[def.id]
-  assert(box and box._checked == true and box._point[3] == -54 - (i - 1) * 26, "case de la fonction " .. def.id)
-end
-assert(#ns.Features == 14 and -54 - 13 * 26 - 26 > -432, "quatorze fonctions ne tiennent pas au-dessus de la ligne des commandes")
+assert(#ns.Features == 19 and #w.settings.featureList.rows == 12)
+
 
 -- tout est construit et ouvert une fois, pour verifier ensuite que les evenements sont retires
 ns.OpenWand()
@@ -3862,15 +3861,14 @@ assert(#tour.steps == 12 and tour.steps[2].any)
 fire(tour.coach.next, "OnClick")
 assert(tour.coach.text._text == "Une macro « vivante » suit tes sacs et ton équipement : BlockForge la réécrit hors combat.", tour.coach.text._text)
 tour.Stop()
--- cases des Parametres : quatorze, les quatre nouvelles a la suite, dans la colonne de droite
+-- Les fonctions du lot B restent accessibles apres defilement.
 fire(byText("Paramètres", BlockForgeFrame), "OnClick")
-local seen = {}
-for _, c in ipairs(checkboxes(w.settings)) do
-  for i, def in ipairs(ns.Features) do
-    if c.label == def.label and c.box._point[2] == 470 then
-      seen[def.id] = c.box
-      assert(c.box._point[3] == -54 - (i - 1) * 26 and c.box._point[3] - 26 >= -432, "case " .. def.id)
-    end
+local list, seen = w.settings.featureList, {}
+list.offset = 7 list.Render()
+for i, cb in ipairs(list.rows) do
+  if cb.def then
+    seen[cb.def.id] = cb
+    assert(-cb._point[3] + cb._h <= list._h, cb.def.id)
   end
 end
 assert(seen.living._checked == true and seen.kits._checked == false and seen.profiles._checked == false and seen.specProfiles._checked == true)

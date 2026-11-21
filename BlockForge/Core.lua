@@ -185,6 +185,11 @@ end
 ns.CompileClause = compileClause
 
 function ns.CompileBlock(block)
+  if block.source and block.sourceKey then
+    local copy = {}
+    for k, v in pairs(block) do if k ~= "source" and k ~= "sourceKey" then copy[k] = v end end
+    if ns.CompileBlock(copy) == block.sourceKey then return block.source end
+  end
   if block.type == "raw" then return trim(block.arg or "") end
   local def = ns.BlockById[block.type] or ns.BlockById.raw
   if not def.clauses then
@@ -292,11 +297,14 @@ function ns.ParseLine(line)
   return block
 end
 
-function ns.Parse(text)
+function ns.Parse(text, preserve)
   local blocks = {}
   for line in (text .. "\n"):gmatch("(.-)\r?\n") do
     local block = ns.ParseLine(line)
-    if block then blocks[#blocks + 1] = block end
+    if block then
+      if preserve then block.sourceKey, block.source = ns.CompileBlock(block), line end
+      blocks[#blocks + 1] = block
+    end
   end
   return blocks
 end
@@ -603,7 +611,7 @@ end
 function ns.CloneBlocks(blocks)
   local out = {}
   for i, b in ipairs(blocks) do
-    local copy = { type = b.type, arg = b.arg, reset = b.reset }
+    local copy = { type = b.type, arg = b.arg, reset = b.reset, source = b.source, sourceKey = b.sourceKey }
     if b.clauses then
       copy.clauses = {}
       for j, clause in ipairs(b.clauses) do
@@ -621,7 +629,7 @@ end
 function ns.BlocksKey(blocks)
   local out = {}
   for _, b in ipairs(blocks) do
-    out[#out + 1] = b.type .. "\1" .. (b.arg or "") .. "\1" .. (b.reset or "")
+    out[#out + 1] = b.type .. "\1" .. (b.arg or "") .. "\1" .. (b.reset or "") .. "\1" .. ns.CompileBlock(b)
     for _, clause in ipairs(b.clauses or {}) do
       out[#out + 1] = "\2" .. table.concat(clause.conds, ",") .. "\1" .. (clause.alt or "") .. "\1" .. (clause.arg or "")
     end
@@ -1298,4 +1306,263 @@ function ns.ProfilePlan(profile, macros, opts, env)
     table.sort(plan.blocked)
   end
   return plan
+end
+
+-- Explication pure : aucun etat du jeu, les conditions inconnues restent citees.
+local function explainCondition(cond, L)
+  local base = {
+    harm = L["l’unité visée est ennemie"], help = L["l’unité visée est amie"],
+    exists = L["l’unité visée existe"], dead = L["l’unité visée est morte"],
+    combat = L["tu es en combat"], stealth = L["tu es camouflé"],
+    mounted = L["tu es sur une monture"], pet = L["ton familier est sorti"],
+    channeling = L["tu canalises"], pvpcombat = L["tes talents JcJ sont actifs"],
+    indoors = L["tu es à l’intérieur"], outdoors = L["tu es à l’extérieur"],
+    swimming = L["tu nages"], resting = L["tu te reposes"],
+    group = L["tu es en groupe"], mod = L["une touche de modification est tenue"],
+    form = L["tu es en forme ou posture"],
+  }
+  local word, value = cond:lower():match('^(%a+):?(.*)$')
+  if not word then return L["condition « %s »"]:format(cond) end
+  local neg = word:sub(1, 2) == 'no'
+  if neg then word = word:sub(3) end
+  if word == 'modifier' then word = 'mod' elseif word == 'button' then word = 'btn' elseif word == 'stance' then word = 'form' end
+  local text = value == '' and base[word] or nil
+  if value ~= '' then
+    if word == 'mod' then
+      local keys, valid = {}, true
+      local names = { shift = L["Maj"], ctrl = L["Ctrl"], alt = L["Alt"] }
+      for k in value:gmatch('[^/]+') do if not names[k] then valid = false end keys[#keys + 1] = names[k] or k end
+      if valid then text = L["tu tiens %s"]:format(table.concat(keys, L[" ou "])) end
+    elseif (word == 'btn' or word == 'spec' or word == 'form') and value:match('^%d+[/%d]*$') then
+      local fmt = word == 'btn' and L["clic souris %s"] or word == 'spec' and L["spécialisation %s"] or L["forme ou posture %s"]
+      text = fmt:format((value:gsub('/', L[" ou "])))
+    elseif word == 'group' and (value == 'raid' or value == 'party') then
+      text = value == 'raid' and L["tu es en raid"] or L["tu es dans un groupe hors raid"]
+    elseif word == 'pet' then text = L["ton familier est « %s »"]:format(cond:match(':(.*)$'))
+    elseif word == 'channeling' then text = L["tu canalises %s"]:format(cond:match(':(.*)$')) end
+  end
+  if not text then return L["condition « %s »"]:format(cond) end
+  return neg and L["non (%s)"]:format(text) or text
+end
+
+local function explainTarget(unit, L)
+  local names = { target = L["sur ta cible"], mouseover = L["sur l’unité survolée"],
+    focus = L["sur ton focus"], player = L["sur toi"], pet = L["sur ton familier"],
+    targettarget = L["sur la cible de ta cible"], cursor = L["à ton curseur"] }
+  return names[unit] or L["sur l’unité « %s »"]:format(unit)
+end
+
+function ns.Explain(input, language)
+  local L = language or ns.L or setmetatable({}, { __index = function(_, k) return k end })
+  local blocks = type(input) == 'string' and ns.Parse(input) or input or {}
+  local verbs = {
+    tooltipAction = L["Affiche l’icône et l’infobulle : %s"],
+    cast = L["Lance %s"], use = L["Utilise %s"], castsequence = L["À chaque appui, lance le prochain sort de %s"],
+    stopcasting = L["Arrête ton incantation"], startattack = L["Démarre ton attaque automatique"],
+    stopattack = L["Arrête ton attaque automatique"], petattack = L["Envoie ton familier attaquer"],
+    petfollow = L["Rappelle ton familier"], petpassive = L["Mets ton familier en mode passif"],
+    petstay = L["Fais rester ton familier sur place"], petdefensive = L["Mets ton familier en mode défensif"],
+    petaggressive = L["Mets ton familier en mode agressif"], cancelaura = L["Annule l’effet %s"],
+    target = L["Cible %s"], targetenemy = L["Cible l’ennemi le plus proche"],
+    focus = L["Définis ton focus : %s"], assist = L["Assiste %s"],
+    equip = L["Équipe %s"], dismount = L["Descends de ta monture"],
+  }
+  local out = {}
+  local function names(text)
+    return (text:gsub(TOKEN, function(id, param)
+      local token = tokenById[id]
+      return '<' .. (token and L[token.label] or id) .. (param ~= '' and (' ' .. param) or '') .. '>'
+    end))
+  end
+  for _, original in ipairs(blocks) do
+    local b = original
+    if b.type == 'showtooltip' and (b.arg or '') ~= '' then
+      b = ns.ParseLine('/cast ' .. b.arg)
+      b.type = 'tooltipAction'
+    end
+    local parts = {}
+    if b.type == 'raw' or (not ns.BlockById[b.type] and b.type ~= 'tooltipAction') then
+      parts[1] = L["Ligne libre : %s"]:format(names(b.arg or ''))
+    elseif b.type == 'showtooltip' then
+      parts[1] = (b.arg or '') == '' and L["Affiche l’icône et l’infobulle de l’action choisie"]
+        or L["Affiche l’icône et l’infobulle : %s"]:format(names(b.arg))
+    else
+      for _, c in ipairs(b.clauses or {}) do
+        if #b.clauses == 1 or compileClause(c) ~= '' or (ns.BlockById[b.type] and (not ns.BlockById[b.type].arg or ns.BlockById[b.type].optional)) then
+          local groups = {}
+          if #c.conds > 0 then groups[1] = c.conds end
+          for g in (c.alt or ''):gmatch('%b[]') do
+            local conds = {}
+            for v in g:sub(2, -2):gmatch('[^,]+') do conds[#conds + 1] = trim(v) end
+            groups[#groups + 1] = conds
+          end
+          if #groups == 0 then groups[1] = {} end
+          for _, conds in ipairs(groups) do
+            local unit, conditions = 'target', {}
+            for _, cond in ipairs(conds) do
+              local u = cond:match('^@(.+)$') or cond:match('^target=(.+)$')
+              if u then unit = u else conditions[#conditions + 1] = explainCondition(cond, L) end
+            end
+            local arg = names(c.arg or '')
+            if arg == '' then
+              arg = (b.type == 'focus' or b.type == 'target' or b.type == 'assist') and L["ta cible"] or L["(argument manquant)"]
+            end
+            local action = (verbs[b.type] or '%s'):format(arg)
+            if (c.arg or '') == '' and unit ~= 'target' then
+              if b.type == 'focus' then action = L["Définis ton focus"]
+              elseif b.type == 'target' then action = L["Cible l’unité choisie"]
+              elseif b.type == 'assist' then action = L["Assiste l’unité choisie"] end
+            end
+            if b.type == 'cast' or b.type == 'use' or b.type == 'castsequence' or b.type == 'petattack' or unit ~= 'target' then
+              action = action .. ' ' .. explainTarget(unit, L)
+            end
+            if #conditions > 0 then action = action .. L[" si %s"]:format(table.concat(conditions, L[" et "])) end
+            parts[#parts + 1] = action
+          end
+        end
+      end
+      if #parts == 0 then parts[1] = L["(argument manquant)"] end
+      if b.type == 'castsequence' and b.reset and b.reset ~= '' then
+        local reset = {}
+        local labels = { target = L["changement de cible"], combat = L["changement d’état de combat"], shift = L["Maj"], ctrl = L["Ctrl"], alt = L["Alt"] }
+        for v in b.reset:gmatch('[^/]+') do reset[#reset + 1] = labels[v] or (tonumber(v) and L["%s secondes sans appui"]:format(v) or L["« %s »"]:format(v)) end
+        parts[#parts] = parts[#parts] .. L[" ; recommence après %s"]:format(table.concat(reset, L[" ou "]))
+      end
+    end
+    out[#out + 1] = table.concat(parts, L[" ; sinon "]) .. '.'
+  end
+  return out
+end
+
+-- Raccourcissement lexical : les arguments et les lignes inconnues restent intacts.
+function ns.Shorten(text)
+  local lines, changes, first = {}, {}, nil
+  for _, b in ipairs(ns.Parse(text)) do
+    if b.type == 'raw' then break end
+    if b.type == 'cast' or b.type == 'use' or b.type == 'castsequence' then
+      local c = b.clauses[1]
+      if b.type ~= 'castsequence' and #b.clauses == 1 and #c.conds == 0 and not c.alt then first = c.arg end
+      break
+    end
+  end
+  for line, ending in (text .. '\n'):gmatch('(.-)(\r?\n)') do
+    local b, result = ns.ParseLine(line), line
+    local function change(after, kind)
+      if #after < #result then
+        changes[#changes + 1] = { before = result, after = after, saved = #result - #after, kind = kind, line = #lines + 1 }
+        result = after
+      end
+    end
+    if b and b.type ~= 'raw' then
+      if b.type == 'showtooltip' then
+        if first and b.arg == first and result:match('^#showtooltip%s') then change('#showtooltip', 'tooltip') end
+      else
+        local command, tail = result:match('^(%s*/[^%s%[]+)(.*)$')
+        if command then
+          local parts = splitTopLevel(tail, ';')
+          for i, part in ipairs(parts) do
+            local lead, rest = part:match('^(%s*)(.*)$')
+            local groups = {}
+            while rest:sub(1, 1) == '[' do
+              local g = rest:match('^%b[]')
+              if not g then break end
+              local inner = g:sub(2, -2):gsub('[^,]+', function(c)
+                return (trim(c):gsub('^target=', '@'):gsub('^modifier:', 'mod:'):gsub('^nomodifier$', 'nomod'):gsub('^nomodifier:', 'nomod:'):gsub('^button:', 'btn:'))
+              end)
+              groups[#groups + 1] = '[' .. inner .. ']'
+              rest = rest:sub(#g + 1):gsub('^%s+', '')
+            end
+            if #groups > 0 then parts[i] = table.concat(groups) .. rest end
+          end
+          -- Garde le separateur entre la commande et son argument pour le parseur du client.
+          local tail = table.concat(parts, ';')
+          change(command .. (tail:sub(1, 1) == '[' and ' ' or '') .. tail, 'conditions')
+          -- Une alternative finale sans argument ne lance aucun sort ni objet.
+          if b.type == 'cast' or b.type == 'use' or b.type == 'castsequence' or b.type == 'cancelaura' or b.type == 'equip' then change((result:gsub(';%s*$', '')), 'semicolon') end
+          if b.type == 'castsequence' then change((result:gsub(',%s+', ',')), 'spaces') end
+        end
+      end
+    end
+    lines[#lines + 1] = result .. ending
+  end
+  local result = table.concat(lines):sub(1, -2)
+  return result, changes, #text - #result
+end
+
+-- Traduction par argument entier : aucun remplacement dans /run, les noms d'unites ou les conditions.
+function ns.Translate(text, getName, rankWord)
+  if not getName then return text, 0 end
+  local count = 0
+  local function spell(arg)
+    local lead, name, tail = arg:match('^(%s*)(.-)(%s*)$')
+    local bang = name:sub(1, 1) == '!' and '!' or ''
+    name = name:sub(#bang + 1)
+    local base, rank = name:match('^(.-)%s*%((.-)%)$')
+    base = base or name
+    local id = (ns.SpellIDs or {})[base] or (ns.FrenchSpellIDs or {})[base]
+    local ok, value = false, nil
+    if id then ok, value = pcall(getName, id) end
+    if not ok or type(value) ~= 'string' or value == '' then return arg end
+    if rank then
+      local number = rank:match('^[Rr]ank%s+(%d+)$') or rank:match('^[Rr]ang%s+(%d+)$')
+      value = value .. '(' .. (number and rankWord and (rankWord .. ' ' .. number) or rank) .. ')'
+    end
+    local result = lead .. bang .. value .. tail
+    if result ~= arg then count = count + 1 end
+    return result
+  end
+  local result = text:gsub('[^\r\n]+', function(line)
+    local b = ns.ParseLine(line)
+    if not b or not (b.type == 'cast' or b.type == 'use' or b.type == 'castsequence' or b.type == 'cancelaura' or b.type == 'showtooltip') then return line end
+    local cmd, rest = line:match('^(%s*[/#][^%s%[]+)(.*)$')
+    if not cmd then return line end
+    local clauses = splitTopLevel(rest, ';')
+    for i, part in ipairs(clauses) do
+      local prefix, tail = part:match('^(%s*)(.*)$')
+      while tail:sub(1, 1) == '[' do
+        local g = tail:match('^%b[]')
+        if not g then break end
+        prefix, tail = prefix .. g, tail:sub(#g + 1)
+        local spaces = tail:match('^%s*')
+        prefix, tail = prefix .. spaces, tail:sub(#spaces + 1)
+      end
+      if b.type == 'castsequence' then
+        local reset = tail:match('^reset=%S+%s+')
+        if reset then prefix, tail = prefix .. reset, tail:sub(#reset + 1) end
+        tail = tail:gsub('[^,]+', spell)
+      else tail = spell(tail) end
+      clauses[i] = prefix .. tail
+    end
+    return cmd .. table.concat(clauses, ';')
+  end)
+  return result, count
+end
+
+-- Controle semantique borne pour /bf test ; le simulateur ne predit ni recharge ni reussite d'un sort.
+function ns.ShorteningCheck(text)
+  local short = ns.Shorten(text)
+  if #short > #text or ns.Shorten(short) ~= short then return false end
+  local before, after = ns.Parse(text), ns.Parse(short)
+  if #before ~= #after then return false end
+  for _, mod in ipairs({ false, 'shift', 'ctrl', 'alt' }) do
+    for _, target in ipairs({ 'none', 'harm', 'help' }) do
+      for _, hover in ipairs({ 'none', 'harm', 'help' }) do
+        local state = { mod = mod, target = target, mouseover = hover, focus = target, targetDead = false,
+          combat = mod ~= false, pet = true, form = 1, spec = 1, group = 'raid' }
+        local a, b = ns.Simulate(before, state), ns.Simulate(after, state)
+        for i, block in ipairs(before) do
+          if block.type ~= after[i].type then return false end
+          if a[i] then
+            if not b[i] or a[i].clause ~= b[i].clause or a[i].unit ~= b[i].unit or a[i].unknown ~= b[i].unknown then return false end
+            if a[i].clause then
+              local x, y = block.clauses[a[i].clause].arg, after[i].clauses[b[i].clause].arg
+              if block.type == 'castsequence' then x, y = x:gsub(',%s+', ','), y:gsub(',%s+', ',') end
+              if x ~= y or block.reset ~= after[i].reset then return false end
+            end
+          elseif block.type == 'raw' and block.arg ~= after[i].arg then return false end
+        end
+      end
+    end
+  end
+  return true
 end

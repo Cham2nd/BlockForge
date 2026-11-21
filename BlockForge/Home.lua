@@ -26,7 +26,7 @@ ns.HomeBuilders = {}
 
 -- un seul grand panneau a la fois par-dessus une page
 function ns.HidePanels()
-  for _, key in ipairs({ "wand", "health", "assistant", "kitsPanel", "livingPanel", "profilesPanel" }) do
+  for _, key in ipairs({ "wand", "health", "assistant", "kitsPanel", "livingPanel", "profilesPanel", "shortenPanel" }) do
     if ns[key] then ns[key]:Hide() end
   end
 end

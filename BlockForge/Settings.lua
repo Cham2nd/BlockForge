@@ -24,6 +24,8 @@ ns.DEFAULTS = {
   kits = {},               -- [personnage] = { class, role, hover, pet, waiting } : kit choisi (Kits.lua)
   personal = {},           -- { { name, body, icon, note }, ... } : "Mes modeles", communs a tous les personnages
   acceptShared = true,     -- proposer les macros envoyees par d'autres joueurs (Share.lua)
+  welcomeSeen = "",
+  welcomeAnnounced = false,
   tutorialSeen = false,    -- la visite guidee s'est deja lancee toute seule
   undo = false,            -- derniere operation annulable sur les barres ou les macros (Bars.lua) : { label, ops }
   features = {},           -- [id] = true / false : fonctions que le joueur peut couper (ns.RegisterFeature)
@@ -142,6 +144,7 @@ end
 
 function ns.InitDB()
   if type(BlockForgeDB) ~= "table" then BlockForgeDB = {} end
+  if ns.welcomeUpgrading == nil then ns.welcomeUpgrading = next(BlockForgeDB) ~= nil end
   Merge(BlockForgeDB, ns.DEFAULTS)
   Sanitize(BlockForgeDB)
   ns.db = BlockForgeDB
@@ -174,7 +177,7 @@ end
 function ns.ResetDB()
   -- favoris, sauvegardes et modeles ne sont pas des reglages : la reinitialisation les garde (et ne relance pas la visite)
   local keep = {}
-  for _, k in ipairs({ "favorites", "sets", "profiles", "specProfiles", "living", "kits", "personal", "tutorialSeen", "undo" }) do keep[k] = BlockForgeDB[k] end
+  for _, k in ipairs({ "favorites", "sets", "profiles", "specProfiles", "living", "kits", "personal", "tutorialSeen", "welcomeSeen", "welcomeAnnounced", "undo" }) do keep[k] = BlockForgeDB[k] end
   for k in pairs(BlockForgeDB) do BlockForgeDB[k] = nil end
   for k, v in pairs(keep) do BlockForgeDB[k] = v end
   ns.personalCache = nil
@@ -216,6 +219,7 @@ local function CheckBox(parent, x, y, text)
   local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
   label:SetPoint("LEFT", cb, "RIGHT", 4, 0)
   label:SetText(text)
+  cb.label = label
   return cb
 end
 
@@ -302,18 +306,38 @@ function ns.BuildSettingsPage(parent, title)
   ui.Tip(tour, function() return L["Revoir le tutoriel"], L["Relance la visite guidée de la fenêtre, étape par étape. Aussi : /bf tuto."] end)
   ui.Label(parent, L["Commandes : /bf (ouvrir), /bf options (cette page), /bf tuto (visite guidée), /bf test (diagnostic)"], 20, y - 34, "GameFontDisableSmall")
 
-  -- Fonctions : colonne de droite de l'onglet (de 470 a 876), une case de 26 px tous les 26 depuis -54 ;
-  -- 14 cases finissent a -418, au-dessus de la ligne des commandes (-432).
-  -- shortcut: absente de la page d'options du jeu, trop etroite pour deux colonnes ; a mettre en liste defilante si on la veut la-bas
+  -- Douze lignes reutilisees : 312 px, quelle que soit la taille du catalogue.
   if not title then
-    ui.Label(parent, L["Fonctions (décoche pour désactiver)"], 474, -36, "GameFontNormal")
-    for i, def in ipairs(ns.Features) do
-      local cb = CheckBox(parent, 470, -54 - (i - 1) * 26, def.label)
-      cb:SetScript("OnClick", function(self) ns.SetFeature(def.id, self:GetChecked() and true or false) end)
-      ui.Tip(cb, function() return def.label, def.desc end)
-      syncs[#syncs + 1] = function() cb:SetChecked(ns.Enabled(def.id)) end
+    ui.Label(parent, L["Fonctions (décoche pour désactiver)"], 474, -36, 'GameFontNormal')
+    local list = CreateFrame('Frame', nil, parent)
+    list:SetPoint('TOPLEFT', 470, -54) list:SetSize(406, 338)
+    list.offset, list.rows = 0, {}
+    list.range = ui.Label(parent, '', 474, -400, 'GameFontDisableSmall')
+    function list.Render()
+      list.offset = math.max(0, math.min(list.offset, #ns.Features - 12))
+      for i, cb in ipairs(list.rows) do
+        local def = ns.Features[list.offset + i]
+        cb.def = def cb:SetShown(def ~= nil) cb.label:SetShown(def ~= nil)
+        if def then cb.label:SetText(def.label) cb:SetChecked(ns.Enabled(def.id)) end
+      end
+      list.range:SetText(L["%d-%d / %d  (molette)"]:format(list.offset + 1, math.min(list.offset + 12, #ns.Features), #ns.Features))
     end
+    for i = 1, 12 do
+      local cb = CheckBox(list, 0, -(i - 1) * 26, '')
+      cb.label:SetWidth(370) cb.label:SetWordWrap(false)
+      cb:SetScript('OnClick', function(self) if self.def then ns.SetFeature(self.def.id, self:GetChecked() and true or false) end end)
+      ui.Tip(cb, function() if cb.def then return cb.def.label, cb.def.desc end end)
+      list.rows[i] = cb
+    end
+    list:EnableMouseWheel(true)
+    list:SetScript('OnMouseWheel', function(_, delta) list.offset = list.offset - delta * 3 list.Render() end)
+    syncs[#syncs + 1] = list.Render
+    parent.featureList = list
   end
+  local intro = ui.Button(parent, L["Revoir la présentation"], 210, function() ns.OpenWelcome() end)
+  intro:SetPoint('TOPLEFT', 18, y - 62)
+  ns.OnFeatures(function() intro:SetShown(ns.Enabled('welcome')) end, true)
+  parent.welcomeButton = intro
 
   local page = { Sync = function() if ns.db then for _, f in ipairs(syncs) do f() end end end }
   pages[#pages + 1] = page

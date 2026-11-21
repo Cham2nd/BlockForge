@@ -21,6 +21,7 @@ Settings.lua
 Debug.lua
 UI.lua
 Tools.lua
+MacroHelp.lua
 Personal.lua
 Share.lua
 Grimoire.lua
@@ -33,5 +34,6 @@ Kits.lua
 Profiles.lua
 Living.lua
 Tutorial.lua
+Welcome.lua
 IconPicker.lua
 Minimap.lua

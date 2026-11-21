@@ -88,6 +88,7 @@ local OPTIONAL = { "RAID_CLASS_COLORS", "GetMacroIcons", "GetPetActionInfo", "C_
   "AddonCompartmentFrame", "BlockForge_OnAddonCompartmentClick",
   -- V1 lot B : macros vivantes, kits, profils
   "C_Timer.After", "UnitLevel", "C_Item.GetItemInfoInstant", "GetItemInfoInstant", "SetBinding",
+  "GetFileIDFromPath",
   "C_EncodingUtil.DecompressString", "C_EncodingUtil.DecodeBase64", "Enum.CompressionMethod" }
 
 local function Lookup(path)
@@ -99,6 +100,7 @@ end
 local function First(list, n) return table.concat(list, ", ", 1, math.min(#list, n)) end
 
 local CHECKS = {
+  { "v1 lot C", function(out) ns.LotCTest(out) end },
   { "api", function(out)
     for _, path in ipairs(APIS) do
       out[#out + 1] = (type(Lookup(path)) == "function" and "OK api " or "FAIL api absent: ") .. path

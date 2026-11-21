@@ -133,13 +133,13 @@ local function BuildTextMode(view)
   box:SetScript("OnCursorChanged", function(_, _, y, _, height)
     local top, at = -y, scroll:GetVerticalScroll() or 0
     if top < at then scroll:SetVerticalScroll(top)
-    elseif top + height > at + 86 then scroll:SetVerticalScroll(top + height - 86) end
+    elseif top + height > at + scroll:GetHeight() then scroll:SetVerticalScroll(top + height - scroll:GetHeight()) end
   end)
   scroll:EnableMouse(true)
   scroll:SetScript("OnMouseDown", function() box:SetFocus() end) -- clic sous la derniere ligne
   scroll:EnableMouseWheel(true)
   scroll:SetScript("OnMouseWheel", function(self, delta)
-    local max = math.max(0, (box:GetHeight() or 0) - 86)
+    local max = math.max(0, (box:GetHeight() or 0) - self:GetHeight())
     self:SetVerticalScroll(math.max(0, math.min(max, (self:GetVerticalScroll() or 0) - delta * 26)))
   end)
 
@@ -164,7 +164,7 @@ local function BuildTextMode(view)
       L["Tape ou colle la macro à la main à la place de l'aperçu. Les blocs suivent après une courte pause ; une ligne que l'éditeur ne connaît pas est gardée telle quelle."]
   end)
   T.Watch(Sync)
-  w.textToggle, w.textBox = toggle, box
+  w.textToggle, w.textBox, w.textScroll = toggle, box, scroll
 end
 
 ---------------------------------------------------------------------------
@@ -173,18 +173,19 @@ end
 local function BuildMore(view)
   local ui, w = ns.ui, view.w
   local items = {
+    { L["Raccourcir"], L["Montre les changements sûrs avant de les appliquer. Annuler les défait."], function() ns.OpenShorten() end, "shorten" },
     { L["Ajouter à ma bibliothèque"], L["Garde cette macro dans « Mes modèles » (onglet Bibliothèque), pour tous tes personnages."],
       function() ns.AddPersonal(view.Name(), ns.Compile(view.Blocks()), view.icon) end },
   }
   if ns.CanShare and ns.CanShare() then
-    items[2] = { L["Envoyer à…"], L["Envoie cette macro à un autre joueur qui a BlockForge. Il choisit de l'ouvrir ou non ; rien n'est enregistré chez lui sans son accord."],
+    items[#items + 1] = { L["Envoyer à…"], L["Envoie cette macro à un autre joueur qui a BlockForge. Il choisit de l'ouvrir ou non ; rien n'est enregistré chez lui sans son accord."],
       function() ns.SendPrompt(view.Name(), ns.Compile(view.Blocks())) end, "share" }
   end
   -- bouton de 814 a 876 sur la ligne des boutons (-58) ; liste de 216 de large, de 660 a 876, entre -56 et 0
   local menu = ui.Panel(w.bottom, 216, 12 + #items * 22)
   local more = ui.Button(w.bottom, L["Plus…"], 62, function() menu:SetShown(not menu:IsShown()) end)
   more:SetPoint("LEFT", w.reset, "RIGHT", 4, 0)
-  ui.Tip(more, function() return L["Plus…"], L["Garder la macro dans ta bibliothèque, ou l'envoyer à un autre joueur."] end)
+  ui.Tip(more, function() return L["Plus…"], L["Raccourcir la macro, la garder dans ta bibliothèque ou l’envoyer à un autre joueur."] end)
   menu:SetPoint("BOTTOMRIGHT", more, "TOPRIGHT", 0, 2)
   menu:SetFrameStrata("DIALOG")
   menu:EnableMouse(true) -- le fond arrete les clics
@@ -219,4 +220,5 @@ function ns.BuildEditorTools()
     -- les blocs ont change ailleurs que dans le champ (clic, annuler...) : le champ suit, meme s'il a le focus
     if view.textMode and view.typing ~= "text" and not view.dirty then w.textBox:SetText(text) end
   end
+  if ns.BuildMacroHelp then ns.BuildMacroHelp() end
 end

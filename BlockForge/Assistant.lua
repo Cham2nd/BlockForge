@@ -116,6 +116,10 @@ local function BuildCard(deck, i)
   card.code = ui.Label(card, "", 10, -46, "BlockForgeCodeFont")
   card.code:SetSize(608, 68)
   card.code:SetJustifyV("TOP")
+  card:EnableMouse(true)
+  ui.Tip(card, function()
+    if ns.Enabled("explain") and card.body then return L["Expliquer"], ns.Explanation(card.body) end
+  end)
   return card
 end
 
