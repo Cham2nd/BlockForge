@@ -8,6 +8,7 @@ const dir = process.argv[2] && !process.argv[2].endsWith(".csv") ? process.argv[
 const csv = process.argv.find((a) => a.endsWith(".csv"));
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
+require(__dirname + "/lua51")(L);
 const fail = () => { throw new Error(to_jsstring(lua.lua_tostring(L, -1))); };
 const run = (code) => { if (lauxlib.luaL_dostring(L, to_luastring(code)) !== lua.LUA_OK) fail(); };
 

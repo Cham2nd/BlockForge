@@ -165,8 +165,8 @@ assert(not shortPanel.apply._enabled)
 shortPanel:Hide()
 assert(#CALLS == calls, 'help tools wrote a game macro')
 local n = #PRINTS
-SlashCmdList.BLOCKFORGE('aide') assert(#PRINTS == n + 12)
-SlashCmdList.BLOCKFORGE('?') assert(#PRINTS == n + 24)
+SlashCmdList.BLOCKFORGE('aide') assert(#PRINTS == n + 14)
+SlashCmdList.BLOCKFORGE('?') assert(#PRINTS == n + 28)
 
 -- API d'animation absente, puis disponible : alpha reel, clic d'interruption, fermeture et icone de repli.
 ns.SetFeature('welcomeMotion', true)

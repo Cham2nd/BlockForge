@@ -26,6 +26,15 @@ function ns.FlushErrors()
   for _, entry in ipairs(list) do Store(entry) end
 end
 
+local blocked = CreateFrame("Frame")
+blocked:RegisterEvent("ADDON_ACTION_BLOCKED")
+blocked:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+blocked:SetScript("OnEvent", function(_, event, addon, action)
+  if addon ~= ADDON then return end
+  Store({ time = date("%Y-%m-%d %H:%M:%S"), version = Version(),
+    message = event .. ": " .. tostring(action), stack = "" })
+end)
+
 local function Record(msg)
   -- Midnight : un message secret ne peut pas etre lu par un add-on
   if canaccessvalue and not canaccessvalue(msg) then return end
@@ -388,13 +397,16 @@ function ns.SelfTest()
     local ok, err = pcall(check[2], lines)
     if not ok then lines[#lines + 1] = "FAIL " .. check[1] .. ": " .. tostring(err) end
   end
+  local ok, err = pcall(ns.ReleaseProbes, lines)
+  if not ok then lines[#lines + 1] = "INFO probes: " .. tostring(err) end
   local passed, failed = 0, 0
   for _, line in ipairs(lines) do
     if line:find("^OK") then passed = passed + 1 elseif line:find("^FAIL") then failed = failed + 1 end
   end
   local version, build, _, toc = GetBuildInfo()
   local _, class = UnitClass("player")
-  ns.db.selftest = { time = date("%Y-%m-%d %H:%M:%S"), version = Version(),
+  local previous = type(ns.db.selftest) == "table" and ns.db.selftest or {}
+  ns.db.selftest = { cold = previous.cold, probe = previous.probe, clicked = previous.clicked, link = previous.link, time = date("%Y-%m-%d %H:%M:%S"), version = Version(),
     build = ("%s %s %s"):format(tostring(version), tostring(build), tostring(toc)),
     locale = tostring(GetLocale()), class = tostring(class), lines = lines }
   Msg(L["Autotest : %d OK, %d en échec. Détails enregistrés, visibles après /reload."]:format(passed, failed))

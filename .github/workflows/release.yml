@@ -38,6 +38,7 @@ jobs:
           VERSION="${TAG#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           grep -qx "## Version: $VERSION" BlockForge/BlockForge.toc || { echo "Le TOC n'est pas en version $VERSION"; exit 1; }
+          if [ -f LICENSE ]; then cp LICENSE BlockForge/LICENSE; fi
           zip -r "BlockForge-$VERSION.zip" BlockForge
           # notes : premiere section du changelog, sans son titre
           awk '/^# /{n++; next} n==1' release/CHANGELOG.md > notes.md

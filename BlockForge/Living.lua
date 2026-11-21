@@ -9,7 +9,8 @@ local T = ns.Theme
 local MAX_JOURNAL, MAX_ROWS = 20, 18
 local EVENTS = { "BAG_UPDATE_DELAYED", "PLAYER_EQUIPMENT_CHANGED", "SPELLS_CHANGED", "UNIT_PET", "PLAYER_ENTERING_WORLD", "PLAYER_REGEN_ENABLED" }
 
-local Living = {}
+local events = CreateFrame("Frame")
+local Living = { retries = 0, generation = 0 }
 ns.Living = Living
 
 -- Entrees communes a toutes les classes ; les bijoux seuls n'attendent aucun sort.
@@ -180,14 +181,101 @@ function ns.LivingCommit(name)
   if p or had then Updated() end
 end
 
+local function Wait(on)
+  ns.Listen(events, on and ns.Enabled("living"), "GET_ITEM_INFO_RECEIVED")
+end
+
+local function Schedule(delay)
+  if Living.scheduled then return end
+  Living.scheduled = true
+  local generation = Living.generation
+  local function run()
+    if generation ~= Living.generation then return end
+    Living.scheduled = false
+    Living.Pass()
+  end
+  if C_Timer and C_Timer.After then
+    local ok = pcall(C_Timer.After, delay, run)
+    if ok then return end
+  end
+  local elapsed = 0
+  events:SetScript("OnUpdate", function(_, dt)
+    elapsed = elapsed + dt
+    if elapsed >= delay then events:SetScript("OnUpdate", nil) run() end
+  end)
+end
+
+local function Cancel()
+  Living.generation = Living.generation + 1
+  Living.scheduled = false
+  events:SetScript("OnUpdate", nil)
+end
+
+local function MacroOpen()
+  if not MacroFrame then return false end
+  if not Living.macroHooked and type(MacroFrame.HookScript) == "function" then
+    local ok = pcall(MacroFrame.HookScript, MacroFrame, "OnHide", function() Living.Request() end)
+    if ok then Living.macroHooked = true end
+  end
+  if type(MacroFrame.IsShown) ~= "function" then return true end
+  local ok, shown = pcall(MacroFrame.IsShown, MacroFrame)
+  return not ok or shown and true or false
+end
+
+local function Cold(env)
+  local ids = {}
+  for _, list in pairs(ns.LivingItems) do for _, item in ipairs(list) do ids[item[1]] = true end end
+  local cold = false
+  for _, item in ipairs(env.bags) do
+    if ids[item.id] and not item.name then
+      cold = true
+      try(C_Item and C_Item.RequestLoadItemDataByID, item.id)
+    end
+  end
+  return cold
+end
+
+local function Downgrade(rec, names, env)
+  for _, token in ipairs(ns.TokensOf(rec.template)) do
+    local list = ns.LivingItems[token.id]
+    local old, new = rec.last[token.raw], names[token.raw]
+    if list and new and old ~= new then
+      if not old then return true end
+      local before, after
+      for rank, item in ipairs(list) do
+        local name = env.itemName(item[1])
+        if name == old then before = rank end
+        if name == new then after = rank end
+      end
+      -- un ancien nom hors cache ne permet pas de prouver une amelioration
+      if not before or not after or after > before then return true end
+    end
+  end
+  return false
+end
+
 -- Une passe : chaque macro vivante est relue, comparee, et reecrite seulement si son texte resolu a change.
 -- Renvoie le nombre de macros reecrites.
 function Living.Pass()
   if not ns.db or not ns.Enabled("living") or InCombatLockdown() then return 0 end
+  if MacroOpen() then return 0 end
   Living.lastPass = GetTime and GetTime() or 0
   local list = Living.List()
-  if #list == 0 then return 0 end
+  if #list == 0 then Cancel() Wait(false) Living.retries = 0 return 0 end
   local env, edits, touched = Living.Env(), {}, false
+  local cold = Cold(env)
+  if cold and Living.retries < 5 then
+    Wait(true)
+    if not Living.scheduled then
+      Living.retries = Living.retries + 1
+      Log("", L["Cache des objets incomplet : passe reportée de 2 secondes."])
+      Schedule(2)
+    end
+    return 0
+  end
+  Cancel()
+  Wait(cold)
+  if not cold then Living.retries = 0 end
   for _, e in ipairs(list) do
     local rec, index = e.rec, ns.FindMacro(e.name, e.char)
     local body = index and select(3, GetMacroInfo(index)) or nil
@@ -205,7 +293,9 @@ function Living.Pass()
       local flag = (not new and "missing") or (#new > ns.MAX_CHARS and "long") or (#missing > 0 and "missing") or nil
       touched = touched or flag ~= rec.flag
       rec.flag = flag
-      if new and #new <= ns.MAX_CHARS and ns.NormBody(new) ~= ns.NormBody(body) then
+      if cold and new and Downgrade(rec, names, env) then
+        Log(e.name, L["Cache des objets incomplet : remplacement par un objet inférieur refusé."])
+      elseif new and #new <= ns.MAX_CHARS and ns.NormBody(new) ~= ns.NormBody(body) then
         edits[#edits + 1] = { entry = e, index = index, old = body, new = new, names = names }
       elseif new and #new <= ns.MAX_CHARS then
         rec.last = names
@@ -235,25 +325,16 @@ function Living.Pass()
   return #ops
 end
 
--- Demande de passe : une par seconde au plus. En combat rien ne part : PLAYER_REGEN_ENABLED redemandera.
--- shortcut: sans C_Timer une demande trop proche de la passe precedente est ignoree, pas reportee ; a reporter si un client n'a pas C_Timer
-local scheduled = false
+-- Les demandes se regroupent ; un evenement de cache peut terminer l'attente avant le delai.
 function Living.Request()
-  if scheduled or InCombatLockdown() or #Living.List() == 0 then return end
-  if C_Timer and C_Timer.After then
-    scheduled = true
-    C_Timer.After(1, function()
-      scheduled = false
-      Living.Pass()
-    end)
-  elseif not GetTime or GetTime() - (Living.lastPass or -10) >= 1 then
-    Living.Pass()
-  end
+  if not ns.db or not ns.Enabled("living") or Living.scheduled or InCombatLockdown() or #Living.List() == 0 then return end
+  Schedule(1)
 end
 
-local events = CreateFrame("Frame")
 events:SetScript("OnEvent", function(_, event, unit)
-  if event ~= "UNIT_PET" or unit == "player" then Living.Request() end
+  if event == "GET_ITEM_INFO_RECEIVED" then
+    if ns.Enabled("living") then Living.Pass() end
+  elseif event ~= "UNIT_PET" or unit == "player" then Living.Request() end
 end)
 
 -- le joueur confirme : la macro modifiee ailleurs redevient vivante, et son texte sera de nouveau ecrase par le modele
@@ -513,5 +594,7 @@ end)
 -- evenements inscrits seulement tant que la fonction est active
 ns.OnFeatures(function()
   if not ns.db then return end
-  ns.Listen(events, ns.Enabled("living"), unpack(EVENTS))
+  local on = ns.Enabled("living")
+  ns.Listen(events, on, unpack(EVENTS))
+  if not on then Cancel() Living.retries = 0 Wait(false) end
 end)

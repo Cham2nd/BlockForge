@@ -1,7 +1,7 @@
 {
   "private": true,
   "scripts": {
-    "test": "node test.js && node test_core.js && node test_ui.js && node test_lotc.js && node check_locale.js && node check_library.js && node check_limits.js"
+    "test": "node test.js && node test_core.js && node test_ui.js && node test_lotc.js && node check_locale.js && node check_library.js && node check_limits.js && node test_101.js && node check_release.js"
   },
   "dependencies": {
     "fengari": "^0.1.5",

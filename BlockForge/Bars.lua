@@ -186,11 +186,19 @@ Bars.FindExact = FindExact
 -- { op = "edit", name, char, body, icon } ; { op = "delete", name, char, body, icon, slots } ;
 -- { op = "bind", key, macro, before } (touche liee a une macro par un profil ; before : son ancienne action, "" si libre)
 ---------------------------------------------------------------------------
-function ns.SetUndo(record) ns.db.undo = record end
+-- cle d'un personnage dans BlockForgeDB (profils, kits, macros vivantes)
+function ns.CharKey()
+  return tostring(UnitName and UnitName("player") or "?") .. "-" .. tostring(GetNormalizedRealmName and GetNormalizedRealmName() or "")
+end
+
+function ns.SetUndo(record)
+  record.owner = ns.CharKey()
+  ns.db.undo = record
+end
 
 function ns.UndoLabel()
   local u = ns.db.undo
-  return type(u) == "table" and type(u.ops) == "table" and type(u.label) == "string" and u.label or nil
+  return type(u) == "table" and u.owner == ns.CharKey() and type(u.ops) == "table" and type(u.label) == "string" and u.label or nil
 end
 
 local UNDO = {}
@@ -252,6 +260,9 @@ end
 function ns.RunUndo()
   if InCombatLockdown() then return ns.Msg(L["Impossible de modifier une macro en combat."]) end
   local u = ns.db.undo
+  if type(u) == "table" and u.owner ~= ns.CharKey() then
+    return ns.Msg(type(u.owner) == "string" and L["Cette annulation appartient à %s."]:format(ns.Plain(u.owner)) or L["Cette annulation appartient à un autre personnage."])
+  end
   if not ns.UndoLabel() then return end
   -- remettre un emplacement, c'est ecrire sur les barres : l'annulation attend que la fonction soit reactivee
   for _, op in ipairs(u.ops) do

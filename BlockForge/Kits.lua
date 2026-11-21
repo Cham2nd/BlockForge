@@ -118,7 +118,21 @@ local function Check()
     ns.Msg(L["%d macro(s) de ton kit sont maintenant disponibles : onglet Accueil de BlockForge pour les installer."]:format(#ready))
   end
 end
-watcher:SetScript("OnEvent", Check)
+local scheduled = false
+watcher:SetScript("OnEvent", function()
+  if scheduled then return end
+  scheduled = true
+  local function run()
+    scheduled = false
+    if ns.Enabled("kits") and not InCombatLockdown() then Check() end
+  end
+  if C_Timer and C_Timer.After and pcall(C_Timer.After, 1, run) then return end
+  local elapsed = 0
+  watcher:SetScript("OnUpdate", function(_, dt)
+    elapsed = elapsed + dt
+    if elapsed >= 1 then watcher:SetScript("OnUpdate", nil) run() end
+  end)
+end)
 
 -- evenements inscrits seulement si la fonction est active et qu'un kit attend encore des sorts
 function Kits.Watch()
@@ -161,7 +175,7 @@ function Kits.Place(plan, record)
     end
   end
   if #ops > 0 then
-    if record and ns.db.undo == record then
+    if record and record.owner == ns.CharKey() and ns.db.undo == record then
       for _, op in ipairs(ops) do record.ops[#record.ops + 1] = op end
     else
       ns.SetUndo({ label = L["pose de %d macros sur une barre"]:format(placed), ops = ops })

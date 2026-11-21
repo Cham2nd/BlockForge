@@ -18,10 +18,6 @@ local function try(fn, ...)
   if ok then return a, b end
 end
 
--- cle d'un personnage dans BlockForgeDB (profils, kits, macros vivantes)
-function ns.CharKey()
-  return tostring(UnitName and UnitName("player") or "?") .. "-" .. tostring(GetNormalizedRealmName and GetNormalizedRealmName() or "")
-end
 
 -- groupe de talents actif (double specialisation), nil si le client ne le donne pas
 function Profiles.ActiveSpec()

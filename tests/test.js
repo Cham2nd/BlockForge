@@ -4,6 +4,7 @@ const { lua, lauxlib, lualib, to_luastring, to_jsstring } = require("fengari");
 const dir = process.argv[2] || __dirname + "/../BlockForge";
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
+require(__dirname + "/lua51")(L);
 
 function load(file) {
   const src = fs.readFileSync(dir + "/" + file);

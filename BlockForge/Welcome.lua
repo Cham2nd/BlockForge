@@ -248,7 +248,7 @@ local function Build()
   p.subtitle = ui.Label(p, '', 22, -76, 'GameFontHighlightSmall')
   p.subtitle:SetSize(402, 34) p.subtitle:SetJustifyV('TOP')
   p.demo = {}
-  for i, text in ipairs({ L["Lancer un sort"], L["Survol"], L["Vivante"] }) do
+  for i, text in ipairs({ L["Lancer un sort"], L["Survol"], L["Vivantes"] }) do
     local chip = ui.Chip(p, 78, 22)
     chip:SetPoint('TOPLEFT', 440 + (i - 1) * 84, -26)
     chip.text:SetText(text) ui.Tint(chip, T.groups[i], 0.9)

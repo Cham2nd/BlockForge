@@ -325,6 +325,7 @@ function click(cb, value) cb._checked = value fire(cb, "OnClick", "LeftButton") 
 function boot(dbLua, prelude) {
   L = lauxlib.luaL_newstate();
   lualib.luaL_openlibs(L);
+require(__dirname + "/lua51")(L);
   run(MOCK, "=mock");
   if (prelude) run(prelude, "=prelude");
   run("BlockForgeDB = " + dbLua, "=db");
@@ -1193,8 +1194,8 @@ SlashCmdList.BLOCKFORGE("")
 assert(not BlockForgeFrame:IsShown())
 SlashCmdList.BLOCKFORGE("")
 assert(BlockForgeFrame:IsShown())
-io.write(#ALL .. " widgets, " .. #CALLS .. " appels macro, " .. #PRINTS .. " messages\n")
-for _, p in ipairs(PRINTS) do io.write("  > ", p, "\n") end
+__testWrite(#ALL .. " widgets, " .. #CALLS .. " appels macro, " .. #PRINTS .. " messages\n")
+for _, p in ipairs(PRINTS) do __testWrite("  > ", p, "\n") end
 `, "=scenario");
 
 // ---------------------------------------------------------------- 2. BlockForgeDB partielle (ancienne version)
@@ -1247,6 +1248,7 @@ fire(BlockForgeMinimapButton, "OnClick", "RightButton")
 L = null;
 L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
+require(__dirname + "/lua51")(L);
 run(MOCK, "=mock");
 run(`Settings = nil  Minimap = nil  CATEGORIES = {}  C_Item = {}  RAID_CLASS_COLORS = nil  WIDGET.CreateAnimationGroup = nil
      function InterfaceOptions_AddCategory(p) assert(p.name == "BlockForge") CATEGORIES[#CATEGORIES + 1] = p end
@@ -2448,7 +2450,7 @@ assert(ns.Bars.Place(6, MACROS.Orph.index, "Orph", nil, true) == true and slotIs
 assert(ns.Bars.Restore(6, { kind = "empty" }) == true and slotIs(6))
 
 -- 8. combat : rien ne se lit, ne se pose, ne s'annule
-db.undo = { label = "test", ops = { { op = "slot", slot = 1, before = { kind = "spell", id = 172 }, macro = "X" } } }
+db.undo = { owner = NS.CharKey(), label = "test", ops = { { op = "slot", slot = 1, before = { kind = "spell", id = 172 }, macro = "X" } } }
 COMBAT = true
 calls, places = #CALLS, PLACES
 ns.OpenWand()
@@ -2696,7 +2698,7 @@ assert(text:find("INFO probe bars: GetActionInfo absent", 1, true) and text:find
 `, "=sans barres");
 
 // l'annulation survit a un /reload : relue dans BlockForgeDB
-boot(`{ tutorialSeen = true, undo = { label = "ancienne", ops = { { op = "edit", name = "M", char = false, body = "/cast Avant" }, { op = "inconnue" }, 7 } } }`, BARS);
+boot(`{ tutorialSeen = true, undo = { owner = "Moi-Royaume", label = "ancienne", ops = { { op = "edit", name = "M", char = false, body = "/cast Avant" }, { op = "inconnue" }, 7 } } }`, BARS);
 run(String.raw`
 local ns, db = NS, BlockForgeDB
 CreateMacro("M", 1, "/cast Apres")
@@ -2707,7 +2709,7 @@ assert(ns.wand.undo._enabled and ns.wand.undo._text == "Annuler : ancienne")
 fire(ns.wand.undo, "OnClick")
 assert(MACROS.M.body == "/cast Avant" and db.undo == false and lastLine():find("1 étape(s) rétablie(s), 2 laissée(s)", 1, true), lastLine())
 -- une operation venue d'un fichier modifie a la main ne peut pas viser un emplacement hors plage
-db.undo = { label = "x", ops = { { op = "slot", slot = 130, before = { kind = "empty" }, macro = "M" }, { op = "delete", name = string.rep("n", 17), body = "/x" } } }
+db.undo = { owner = NS.CharKey(), label = "x", ops = { { op = "slot", slot = 130, before = { kind = "empty" }, macro = "M" }, { op = "delete", name = string.rep("n", 17), body = "/x" } } }
 local places, calls = PLACES, #CALLS
 ns.RunUndo()
 assert(PLACES == places and #CALLS == calls and db.undo == false)
@@ -2778,7 +2780,7 @@ fire(ns.assistant.cards[1].create, "OnClick")
 assert(refused() and not MACROS.Corruption)
 ns.assistant:Hide()
 -- une annulation qui toucherait aux barres attend la reactivation
-db.undo = { label = "pose", ops = { { op = "slot", slot = 1, before = { kind = "spell", id = 172 }, macro = "X" } } }
+db.undo = { owner = NS.CharKey(), label = "pose", ops = { { op = "slot", slot = 1, before = { kind = "spell", id = 172 }, macro = "X" } } }
 ns.RunUndo()
 assert(refused() and db.undo ~= false)
 db.undo = false
@@ -3170,7 +3172,7 @@ local saved
 for _, s in ipairs(backup.macros) do if s.name == "V1" then saved = s end end
 assert(saved and saved.body == "/use Autre bijou", "la sauvegarde doit dater d'avant la reecriture")
 -- une annulation deja en attente (operation du joueur) n'est pas remplacee
-db.undo = { label = "operation du joueur", ops = {} }
+db.undo = { owner = NS.CharKey(), label = "operation du joueur", ops = {} }
 EQUIP[13] = 9001
 fireEvent("PLAYER_EQUIPMENT_CHANGED")
 tick()
@@ -3189,7 +3191,7 @@ panel:Hide()
 ns.Open("macros")
 fireEvent("UPDATE_MACROS")
 local mrow = find(function(x) return x.scope and x.text._text == "V1" end)
-assert(mrow and mrow.scope._text == "Vivante")
+assert(mrow and mrow.scope._text == "Macro vivante")
 fire(mrow, "OnClick")
 assert(find(function(x) return x._type == "FontString" and x._text and x._text:find("Macro générale", 1, true) and x._text:find("·  vivante", 1, true) end), "detail sans la mention vivante")
 
@@ -3529,6 +3531,7 @@ fireEvent("SPELLS_CHANGED")
 assert(#PRINTS == prints and not line:IsShown(), "annonce en combat")
 COMBAT = false
 fireEvent("PLAYER_REGEN_ENABLED")
+tick()
 assert(#PRINTS == prints + 1 and said("1 macro(s) de ton kit sont maintenant disponibles") and line:IsShown() and line.text._text == "Kit : 1 macro(s) disponibles — installer", lastLine())
 fireEvent("SPELLS_CHANGED")
 assert(#PRINTS == prints + 1, "une seule annonce par session")
@@ -3968,6 +3971,7 @@ for _, it in ipairs(kits.state.items) do
   end
 end
 fireEvent("SPELLS_CHANGED")
+tick()
 assert(kitLine:IsShown())
 ns.SetFeature("kits", false)
 assert(not kitLine:IsShown() and not watcher._events.SPELLS_CHANGED and not watcher._events.PLAYER_REGEN_ENABLED and #ns.KitsUI.Ready() == 0)

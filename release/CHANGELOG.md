@@ -1,3 +1,15 @@
+# BlockForge 1.0.1
+
+- **Annulation** : une opération ne peut être annulée que par le personnage qui l’a effectuée, y compris après /reload.
+- **Macros vivantes** : les noms d’objets encore en chargement ne provoquent plus de remplacement par un objet inférieur. Les mises à jour attendent aussi la fermeture de la fenêtre de macros du jeu.
+- **Kits** : les nouveaux sorts sont vérifiés une seule fois lors d’une rafale d’événements.
+- **Anglais** : les macros vivantes portent désormais l’étiquette « Living ».
+
+## Diagnostic
+
+- /bf test ajoute des observations du client ; les actions bloquées de BlockForge sont conservées dans le journal d’erreurs.
+- /bf sonde (ou /bf probe), hors combat, propose un bouton et un lien à cliquer, vérifie une touche libre puis la libère et envoie un message d’add-on à toi seul. Termine puis tape /reload pour conserver les résultats.
+
 # BlockForge 1.0.0
 
 - **Catégorie Vivantes** : six recettes communes dans la Bibliothèque avec recherche, favoris et création directe, un groupe Macros vivantes dans l’Assistant et un filtre Vivantes dans Mes macros ; masqués quand la fonction est désactivée.

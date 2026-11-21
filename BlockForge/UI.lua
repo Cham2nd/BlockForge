@@ -1750,7 +1750,7 @@ local function BuildMacros(parent, showEditor)
       if m then
         row.icon:SetTexture(m.icon or QUESTION)
         row.text:SetText(m.name)
-        row.scope:SetText(ns.LivingLabel(m.name, m.char) and L["Vivante"] or m.char and L["Personnage"] or L["Générale"])
+        row.scope:SetText(ns.LivingLabel(m.name, m.char) and L["Macro vivante"] or m.char and L["Personnage"] or L["Générale"])
         Tint(row, m.char and T.accent or T.grey, m == current and 1 or 0.5)
         row.mark:SetShown(m == current)
       end
@@ -1769,7 +1769,7 @@ local function BuildMacros(parent, showEditor)
     row.icon:SetPoint("LEFT", 8, 0)
     row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     row.text:SetPoint("LEFT", 32, 0)
-    row.text:SetPoint("RIGHT", -76, 0)
+    row.text:SetPoint("RIGHT", -(6 + 13 * 6 + 6), 0)
     row.scope = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     row.scope:SetPoint("RIGHT", -6, 0)
     row:SetScript("OnClick", function()
@@ -2133,6 +2133,8 @@ SlashCmdList.BLOCKFORGE = function(msg)
   if msg == "intro" or msg == "nouveautes" or msg == "whatsnew" then return ns.OpenWelcome() end
   if msg == "aide" or msg == "?" then return ns.PrintHelp() end
   if msg == "options" or msg == "config" or msg == "param" then return ns.OpenSettings() end
+  if msg == "sonde" or msg == "probe" then return ns.OpenProbe() end
+  if msg == "annuler" or msg == "undo" then return ns.RunUndo() end
   if msg == "test" then return ns.SelfTest() end
   if msg == "tuto" or msg == "tutorial" or msg == "help" then return ns.Tutorial.Start(true) end
   if msg == "assistant" then return ns.OpenAssistant() end

@@ -10,6 +10,7 @@ if not (GetLocale and GetLocale() ~= "frFR") then return end
 
 L["Mana"] = "Mana"
 L["Vivantes"] = "Living"
+L["/bf annuler, /bf undo : annule la dernière opération de ce personnage."] = "/bf undo, /bf annuler: undo the last operation of this character."
 L["Repas"] = "Meal"
 L["Bandage vivant"] = "Living bandage"
 L["Soin vivant"] = "Living healing"
@@ -897,3 +898,17 @@ L["non vérifiable"] = "cannot verify"
 L["chargée"] = "loaded"
 L["icône de secours"] = "fallback icon"
 L["API facultative %s : %s"] = "Optional API %s: %s"
+
+L["Cette annulation appartient à %s."] = "This undo belongs to %s."
+L["Cette annulation appartient à un autre personnage."] = "This undo belongs to another character."
+
+L["Cache des objets incomplet : passe reportée de 2 secondes."] = "Item cache incomplete: pass postponed for 2 seconds."
+L["Cache des objets incomplet : remplacement par un objet inférieur refusé."] = "Item cache incomplete: downgrade blocked."
+
+L["Macro vivante"] = "Living"
+L["Sondes BlockForge"] = "BlockForge probes"
+L["Clique ici"] = "Click here"
+L["Terminé"] = "Done"
+L["Sondes enregistrées. Tape /reload pour les conserver."] = "Probes recorded. Type /reload to save them."
+L["BlockForge : clique ici"] = "BlockForge: click here"
+L["/bf sonde, /bf probe : sondes à cliquer, hors combat."] = "/bf sonde, /bf probe: clickable probes, out of combat."

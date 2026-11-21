@@ -4,6 +4,7 @@ const { lua, lauxlib, lualib, to_luastring, to_jsstring } = require("fengari");
 const dir = process.argv[2] || __dirname + "/../BlockForge";
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
+require(__dirname + "/lua51")(L);
 const run = (code, name) => { if (lauxlib.luaL_loadbuffer(L, code, code.length, to_luastring(name)) || lua.lua_pcall(L, 0, 0, 0)) throw new Error(to_jsstring(lua.lua_tostring(L, -1))); };
 let fr = "FR = {\n";
 for (const line of fs.readFileSync(process.argv[3], "utf8").split(/\r?\n/).slice(1)) {

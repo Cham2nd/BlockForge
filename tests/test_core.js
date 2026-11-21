@@ -4,6 +4,7 @@ const { lua, lauxlib, lualib, to_luastring, to_jsstring } = require("fengari");
 const dir = process.argv[2] || __dirname + "/../BlockForge";
 const L = lauxlib.luaL_newstate();
 lualib.luaL_openlibs(L);
+require(__dirname + "/lua51")(L);
 const run = (code, name) => { if (lauxlib.luaL_loadbuffer(L, code, code.length, to_luastring(name)) || lua.lua_pcall(L, 0, 0, 0)) throw new Error(to_jsstring(lua.lua_tostring(L, -1))); };
 run(to_luastring("NS = {}"), "init");
 const src = fs.readFileSync(dir + "/Core.lua", "utf8");
@@ -427,6 +428,7 @@ print("test_core recettes OK (" .. #ns.Recipes .. " recettes, " .. built .. " ma
 function loadLocalized(locale) {
   const S = lauxlib.luaL_newstate();
   lualib.luaL_openlibs(S);
+require(__dirname + "/lua51")(S);
   const go = (code, name) => { if (lauxlib.luaL_loadbuffer(S, code, code.length, to_luastring(name)) || lua.lua_pcall(S, 0, 0, 0)) throw new Error(to_jsstring(lua.lua_tostring(S, -1))); };
   go(to_luastring("NS = {}" + (locale ? ` function GetLocale() return "${locale}" end` : "")), "init");
   for (const f of ["Locale.lua", "Core.lua"])

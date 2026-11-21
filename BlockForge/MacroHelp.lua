@@ -181,6 +181,8 @@ function ns.PrintHelp()
     L["/bf kit : kits de personnage."],
     L["/bf profil, /bf profile : profils."],
     L["/bf vivant, /bf living : macros vivantes."],
+    L["/bf sonde, /bf probe : sondes à cliquer, hors combat."],
+    L["/bf annuler, /bf undo : annule la dernière opération de ce personnage."],
     L["/bf test : diagnostic complet, sans modifier tes macros."],
   }) do ns.Msg(line) end
 end
