@@ -21,10 +21,15 @@ end
 local bodies = {}
 for _, entry in ipairs(ns.Library) do bodies[#bodies + 1] = entry.body end
 assert(#bodies == 274)
+assert(#ns.Recipes == 17)
 for _, recipe in ipairs(ns.Recipes) do
   for _, kind in ipairs({ 'harm', 'help', 'either', 'pet', 'item' }) do
     for options = 0, 7 do
-      bodies[#bodies + 1] = recipe.build('Corruption', {kind = kind, showtooltip = options % 2 == 1, nodead = math.floor(options / 2) % 2 == 1, stopattack = options >= 4})
+      local body = recipe.build('Corruption', {kind = kind, showtooltip = options % 2 == 1, nodead = math.floor(options / 2) % 2 == 1, stopattack = options >= 4})
+      assert(ns.Compile(ns.Parse(body)) == body and #body <= 255, recipe.id)
+      local _, warnings = ns.Diagnose(ns.Parse(body))
+      assert(#warnings == 0, recipe.id)
+      bodies[#bodies + 1] = body
     end
   end
 end

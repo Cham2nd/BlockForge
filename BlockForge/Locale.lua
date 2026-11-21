@@ -8,6 +8,21 @@ ns.L = L
 
 if not (GetLocale and GetLocale() ~= "frFR") then return end
 
+L["Mana"] = "Mana"
+L["Vivantes"] = "Living"
+L["Repas"] = "Meal"
+L["Bandage vivant"] = "Living bandage"
+L["Soin vivant"] = "Living healing"
+L["Potion de mana vivante"] = "Living mana potion"
+L["Manger et boire"] = "Eat and drink"
+L["Potion de soin vivante"] = "Living healing potion"
+L["Utilise ta meilleure potion de mana disponible dans tes sacs."] = "Uses the best mana potion available in your bags."
+L["Utilise ta meilleure nourriture puis ta meilleure boisson disponibles dans tes sacs."] = "Uses the best food then the best drink available in your bags."
+L["Utilise ton meilleur bandage sur l'allié vivant survolé, sinon sur toi."] = "Uses your best bandage on the living ally under your mouse, otherwise on you."
+L["Utilise ta meilleure potion de soin disponible dans tes sacs."] = "Uses the best healing potion available in your bags."
+L["Créer une macro vivante"] = "Create a living macro"
+L["Aucune macro vivante. Clique sur « Créer une macro vivante » pour choisir une recette dans l'Assistant, ou choisis un bloc puis « Vivant… » dans l'éditeur."] = "No living macros. Click Create a living macro to pick a recipe in the Assistant, or choose a block then Living… in the editor."
+
 -- Core.lua : blocs
 L["Icône / infobulle"] = "Icon / tooltip"
 L["sort (optionnel)"] = "spell (optional)"
@@ -423,7 +438,7 @@ L["Choisis à gauche un sort, une technique de ton familier ou un objet : l'Assi
 -- Cycle 4, lot 1 : visite guidee (Tutorial.lua)
 L["Tes sorts, les techniques de ton familier et les objets utilisables de tes sacs, en icônes. Un clic ajoute le sort à ta macro, ou remplit le bloc choisi s'il attend un sort. Maj+clic ouvre l'Assistant pour ce sort."] = "Your spells, your pet's abilities and the usable items in your bags, as icons. One click adds the spell to your macro, or fills the selected block if it is waiting for a spell. Shift-click opens the Assistant for that spell."
 L["L'Assistant"] = "The Assistant"
-L["Une bonne macro en deux clics : choisis un sort, l'Assistant propose des macros toutes faites (survol, focus, interruption, familier, bijoux…). « Créer la macro » l'enregistre, « Ouvrir dans l'éditeur » te laisse la retoucher."] = "A good macro in two clicks: pick a spell, the Assistant offers ready-made macros (mouseover, focus, interrupt, pet, trinkets...). \"Create the macro\" saves it, \"Open in editor\" lets you adjust it."
+L["Choisis un sort pour ses recettes (survol, focus, interruption, familier, bijoux…). Les macros vivantes de survie, mana, repas, bandage et soin sont disponibles même sans sort choisi. « Créer la macro » l'enregistre, « Ouvrir dans l'éditeur » te laisse la retoucher."] = "Pick a spell for its recipes (mouseover, focus, interrupt, pet, trinkets...). Living survival, mana, meal, bandage and healing macros are available even before picking a spell. Create macro saves it; Open in editor lets you adjust it."
 
 -- V1 lot A : barres d'action et annulation (Bars.lua, Assistant.lua)
 L["Assistant — emplacement %d de ta barre"] = "Assistant — slot %d of your bar"
@@ -649,7 +664,6 @@ L["Écris d'abord le nom du sort dans l'argument, puis choisis ce jeton."] = "Fi
 L["Met un jeton à la place d'un nom fixe : ta meilleure potion, ton bijou du moment, ton arme… La macro du jeu porte toujours un vrai nom, que BlockForge réécrit hors combat quand tes sacs ou ton équipement changent."] = "Puts a token in place of a fixed name: your best potion, your current trinket, your weapon... The game macro always holds a real name, which BlockForge rewrites out of combat when your bags or gear change."
 L["Macros vivantes"] = "Living macros"
 L["Tes macros à jetons. BlockForge les réécrit hors combat, jamais pendant."] = "Your token macros. BlockForge rewrites them out of combat, never during it."
-L["Aucune macro vivante. Dans l'éditeur, choisis un bloc puis « Vivant… » ; ou, dans l'Assistant, la recette « Bouton de survie »."] = "No living macro. In the editor, pick a block then \"Living...\"; or, in the Assistant, the \"Survival button\" recipe."
 L["Redevenir vivante"] = "Make it living again"
 L["Cette macro a été modifiée hors de BlockForge : elle n'est plus réécrite. Ce bouton confirme que le modèle à jetons reprend la main : le texte actuel de la macro sera remplacé. Hors combat seulement."] = "This macro was edited outside BlockForge: it is no longer rewritten. This button confirms that the token model takes over again: the current text of the macro will be replaced. Out of combat only."
 L["Ne plus suivre"] = "Stop following"

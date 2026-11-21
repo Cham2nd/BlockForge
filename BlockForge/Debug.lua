@@ -201,13 +201,16 @@ local CHECKS = {
     out[#out + 1] = ("INFO grimoire: %d castable spells (%d harmful, %d helpful, %d either), %d pet abilities, %d usable items, pet out %s"):format(
       #spells, kinds.harm, kinds.help, kinds.either, #ns.PetAbilities(), #ns.BagItems(), tostring(ns.HasPet()))
     -- chaque recette, pour un vrai sort du personnage : relue sans perte et sans avertissement
-    local name, bad = spells[1] and spells[1].name or "Test", {}
+    local name, bad, standalone, living = spells[1] and spells[1].name or "Test", {}, 0, 0
     for _, r in ipairs(ns.Recipes) do
+      if r.standalone then standalone = standalone + 1 end
+      if r.feature == "living" then living = living + 1 end
       local text = r.build(name, { kind = "either", showtooltip = true, nodead = true, stopattack = true })
       local _, warnings = ns.Diagnose(ns.Parse(text))
       if ns.Compile(ns.Parse(text)) ~= text or #text > ns.MAX_CHARS or #warnings > 0 then bad[#bad + 1] = r.id end
     end
     out[#out + 1] = (#bad == 0 and "OK" or "FAIL") .. (" assistant recipes: %d, broken: %s"):format(#ns.Recipes, First(bad, 20))
+    out[#out + 1] = (standalone == 5 and living == 6 and "OK" or "FAIL") .. (" living recipes: %d, standalone: %d"):format(living, standalone)
     local w = ns.ed.w
     out[#out + 1] = (w.grimoireButton and w.assistantButton and "OK" or "FAIL") .. " grimoire and assistant buttons"
   end },

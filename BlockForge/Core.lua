@@ -872,20 +872,40 @@ ns.Recipes = {
     desc = L["Utilise l'objet, puis lance le sort. Remplace « Sort de secours » dans l'éditeur."],
     applies = forKinds("item"),
     build = function(name, o) return recipeText(o, { "/use " .. name, "/cast " .. L["Sort de secours"] }) end },
+  { id = "living_trinkets", feature = "living", title = L["Bijoux vivants"],
+    desc = L["Tes deux bijoux par leur nom, puis le sort : la macro suit les bijoux que tu portes."],
+    applies = forKinds("harm help either"),
+    build = function(name, o)
+      local lines = { "/use {bf:bijou13}", "/use {bf:bijou14}" }
+      if name then lines[#lines + 1] = "/cast " .. name end
+      return recipeText(o, lines, name)
+    end },
   -- Recettes vivantes (feature : coupees avec la fonction). Les jetons {bf:...} sont remplaces par de vrais noms a l'enregistrement.
   -- name : nom de la macro, quand elle ne porte pas celui du sort choisi.
   -- Pierre et potion n'ont pas le meme temps de recharge : selon le jeu, les deux peuvent partir sur le meme appui.
   -- Le bandage se canalise : il reste derriere une touche, pour ne pas partir avec la potion.
-  { id = "survival", feature = "living", name = L["Survie"], title = L["Bouton de survie"],
+  { id = "survival", feature = "living", standalone = true, name = L["Survie"], title = L["Bouton de survie"],
     desc = L["Pierre de soins, sinon ta meilleure potion ; avec une touche tenue : bandage. Suit tes sacs tout seul."],
     applies = forKinds("item"),
     build = function(_, o)
       return recipeText(o, { "/use [nomod] {bf:pierre_soin}", "/use [nomod] {bf:potion_soin}", "/use [mod] {bf:bandage}" })
     end },
-  { id = "living_trinkets", feature = "living", title = L["Bijoux vivants"],
-    desc = L["Tes deux bijoux par leur nom, puis le sort : la macro suit les bijoux que tu portes."],
-    applies = forKinds("harm either"),
-    build = function(name, o) return recipeText(o, { "/use {bf:bijou13}", "/use {bf:bijou14}", "/cast " .. name }, name) end },
+  { id = "living_mana", feature = "living", standalone = true, name = L["Mana"], title = L["Potion de mana vivante"],
+    desc = L["Utilise ta meilleure potion de mana disponible dans tes sacs."],
+    applies = forKinds("item"),
+    build = function(_, o) return recipeText(o, { "/use {bf:potion_mana}" }) end },
+  { id = "living_food_water", feature = "living", standalone = true, name = L["Repas"], title = L["Manger et boire"],
+    desc = L["Utilise ta meilleure nourriture puis ta meilleure boisson disponibles dans tes sacs."],
+    applies = forKinds("item"),
+    build = function(_, o) return recipeText(o, { "/use {bf:nourriture}", "/use {bf:eau}" }) end },
+  { id = "living_bandage", feature = "living", standalone = true, name = L["Bandage vivant"], title = L["Bandage vivant"],
+    desc = L["Utilise ton meilleur bandage sur l'allié vivant survolé, sinon sur toi."],
+    applies = forKinds("item"),
+    build = function(_, o) return recipeText(o, { "/use [@mouseover,help,nodead][@player] {bf:bandage}" }) end },
+  { id = "living_healing", feature = "living", standalone = true, name = L["Soin vivant"], title = L["Potion de soin vivante"],
+    desc = L["Utilise ta meilleure potion de soin disponible dans tes sacs."],
+    applies = forKinds("item"),
+    build = function(_, o) return recipeText(o, { "/use {bf:potion_soin}" }) end },
 }
 
 -- nom de macro tire d'un nom de sort : 16 octets au plus (max : moins, pour laisser la place a un suffixe), sans couper un caractere UTF-8

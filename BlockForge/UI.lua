@@ -1215,7 +1215,7 @@ end
 local FAV = "FAVORITES" -- pseudo-classe : jamais memorisee comme derniere classe
 local PERSONAL = "PERSONAL" -- pseudo-classe : les modeles du joueur (BlockForgeDB.personal, Personal.lua)
 local CLASS_ORDER = { FAV, PERSONAL, "ALL", "WARLOCK", "HUNTER", "ROGUE", "MAGE", "PRIEST", "DRUID", "WARRIOR", "PALADIN", "SHAMAN" }
-local CATEGORY_LABEL = { Pet = L["Familier"], Utility = L["Utilitaire"] }
+local CATEGORY_LABEL = { Pet = L["Familier"], Utility = L["Utilitaire"], Living = L["Vivantes"] }
 
 -- noms traduits des techniques de familier, pour l'avertissement monture de ns.Diagnose
 for name, id in pairs(ns.SpellIDs) do
@@ -1232,7 +1232,7 @@ local GetItemName = C_Item and C_Item.GetItemNameByID
 
 -- la bibliotheque est ecrite en anglais : traduite a la demande, et seulement si le reglage le veut
 local function LibraryBody(entry)
-  if entry.personal or not ns.db.localizeLibrary then return entry.body end -- un modele du joueur est deja dans sa langue
+  if entry.personal or entry.living or not ns.db.localizeLibrary then return entry.body end -- modeles deja dans la langue du client
   if not entry.localized then
     entry.localized = ns.Localize(entry.body, (C_Spell and C_Spell.GetSpellName) or GetSpellInfo, RANK, GetItemName)
   end
@@ -1243,7 +1243,7 @@ end
 local function SearchText(entry)
   local lang = ns.db.localizeLibrary
   if entry.searchLang ~= lang then
-    entry.search = ns.Fold(entry.name .. "\n" .. (LibraryDesc(entry) or "") .. "\n" .. LibraryBody(entry))
+    entry.search = ns.Fold(entry.name .. "\n" .. (LibraryDesc(entry) or "") .. "\n" .. ns.TokenText(LibraryBody(entry)))
     entry.searchLang = lang
   end
   return entry.search
@@ -1320,12 +1320,12 @@ local function BuildLibrary(parent, showEditor)
   local current
   local open = Button(detail, L["Ouvrir dans l'éditeur"], 180, function()
     if not current then return end
-    LoadText(current.name, LibraryBody(current), current.icon)
+    LoadText(current.macroName or current.name, LibraryBody(current), current.icon)
     showEditor()
   end)
   open:SetPoint("BOTTOMLEFT", 10, 10)
   open:Disable()
-  local function FavKey(entry) return entry.class .. "/" .. entry.name end
+  local function FavKey(entry) return entry.living and ("Living/" .. entry.living) or entry.class .. "/" .. entry.name end
   local ShowClass
   local favButton = Button(detail, L["Ajouter aux favoris"], 180, function()
     if not current or current.personal then return end
@@ -1335,15 +1335,24 @@ local function BuildLibrary(parent, showEditor)
   end)
   favButton:SetPoint("LEFT", open, "RIGHT", 6, 0)
   favButton:Disable()
+  -- Entre l'explication (fin a -450) et la source (-500), avant les actions du bas.
+  local create = Button(detail, L["Créer"], 180, function()
+    if current and current.living and ns.Enabled("living") then
+      view.SaveMacro(current.macroName, LibraryBody(current), ns.db.perCharDefault and true or false, nil, false)
+    end
+  end)
+  create:SetPoint("TOPLEFT", 10, -470)
+  create:Hide()
 
   local entryRows, classChips, catChips, shown, offset = {}, {}, {}, {}, 0
   local currentClass, category, query
-  local empty = Label(listPanel, "", 10, -80, "GameFontDisableSmall")
+  local empty = Label(listPanel, "", 10, -102, "GameFontDisableSmall")
   local range = listPanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   range:SetPoint("RIGHT", listPanel.band, "RIGHT", -6, 0)
 
   local personalUI = ns.BuildPersonal and ns.BuildPersonal(detail)
   local function ShowDetail()
+    create:SetShown(current ~= nil and current.living ~= nil and ns.Enabled("living"))
     if personalUI then
       personalUI.Sync(currentClass == PERSONAL, current)
       favButton:SetShown(currentClass ~= PERSONAL)
@@ -1378,7 +1387,7 @@ local function BuildLibrary(parent, showEditor)
       and L["%d-%d / %d  (molette)"]:format(offset + 1, math.min(offset + MAX_LIB_ROWS, #shown), #shown) or "")
   end
 
-  -- Recherche et categories au-dessus de la liste ; 18 lignes depuis -74 finissent a -540 (panneau : 566)
+  -- Categories : deux rangees de trois puces (8..286, -52..-92) ; 18 lignes de -96 a -562.
   local search = Edit(listPanel, 272, function(text)
     query = ns.Fold(ns.trim(text))
     ShowClass()
@@ -1387,23 +1396,20 @@ local function BuildLibrary(parent, showEditor)
   local searchHint = Label(search, L["Rechercher..."], 2, -4, "GameFontDisableSmall")
   search:HookScript("OnTextChanged", function(self) searchHint:SetShown(self:GetText() == "") end)
   Tip(search, function() return L["Rechercher"], L["Nom, description ou texte de la macro."] end)
-  local x = 8
-  for i, cat in ipairs({ false, "PvE", "PvP", "Pet", "Utility" }) do
-    local w = ({ 52, 44, 44, 64, 72 })[i]
-    local chip = Chip(listPanel, w, 18)
-    chip:SetPoint("TOPLEFT", x, -52)
+  for i, cat in ipairs({ false, "PvE", "PvP", "Pet", "Utility", "Living" }) do
+    local chip = Chip(listPanel, 90, 18)
+    chip:SetPoint("TOPLEFT", 8 + ((i - 1) % 3) * 94, -52 - math.floor((i - 1) / 3) * 22)
     chip.text:SetText(cat and (CATEGORY_LABEL[cat] or cat) or L["Toutes"])
     chip:SetScript("OnClick", function()
       category = cat or nil
       ShowClass()
     end)
     catChips[cat] = chip
-    x = x + w + 2
   end
 
   for i = 1, MAX_LIB_ROWS do
     local row = Chip(listPanel, 284, 24)
-    row:SetPoint("TOPLEFT", 8, -74 - (i - 1) * 26)
+    row:SetPoint("TOPLEFT", 8, -96 - (i - 1) * 26)
     row.mark = SideBar(row, T.accent)
     row:SetScript("OnClick", function()
       current = shown[offset + i]
@@ -1446,8 +1452,17 @@ local function BuildLibrary(parent, showEditor)
     currentClass = class or currentClass
     shown = {}
     if not keepOffset then offset = 0 end
-    if currentClass ~= FAV then ns.db.lastClass = currentClass end
+    if class and currentClass ~= FAV then ns.db.lastClass = currentClass end
     local personal = currentClass == PERSONAL and ns.PersonalEntries and ns.PersonalEntries() or nil
+    if current and current.living and not ns.Enabled("living") then
+      current = nil
+      title:SetText("")
+      desc:SetText(L["Choisis une macro dans la liste."])
+      body:SetText("")
+      source:SetText("")
+      open:Disable()
+      favButton:Disable()
+    end
     -- modele renomme ou supprime : les lignes sont refaites, la selection suit le modele lui-meme
     if current and current.personal then
       local kept = current.personal
@@ -1468,6 +1483,14 @@ local function BuildLibrary(parent, showEditor)
       if inList and Matches(entry) then
         entry.usable = #ns.LibraryUnknown(entry) == 0
         if entry.usable or not ns.db.onlyKnown then shown[#shown + 1] = entry end
+      end
+    end
+    if not personal and ns.Enabled("living") then
+      for _, entry in ipairs(ns.Living.LibraryEntries()) do
+        if (currentClass ~= FAV or ns.db.favorites[FavKey(entry)]) and Matches(entry) then
+          entry.usable = true
+          shown[#shown + 1] = entry
+        end
       end
     end
     empty:SetText((category or (query and query ~= "")) and L["Aucune macro ne correspond."]
@@ -1511,6 +1534,13 @@ local function BuildLibrary(parent, showEditor)
   ns.ReloadLibrary = function() ShowClass(nil, true) end
   local w = view.w
   w.library, w.libraryList, w.libraryClasses = parent, listPanel, classPanel
+  w.libraryLiving = catChips.Living
+  ns.OnFeatures(function()
+    local on = ns.Enabled("living")
+    catChips.Living:SetShown(on)
+    if not on and category == "Living" then category = nil end
+    ShowClass(nil, true)
+  end, true)
   T.OnChange(function() PaintChips() Render() end)
 
   -- objets hors cache : demandes une seule fois ; a leur arrivee, les macros qui les citent sont retraduites
@@ -1605,9 +1635,17 @@ local function BuildMacros(parent, showEditor)
   setsPanel:SetPoint("TOPLEFT", detail, "TOPRIGHT", 6, 0)
 
   local macros, current, offset, rowsM = {}, nil, 0, {}
+  local livingOnly = false
+  local livingFilter = Chip(listPanel, 90, 18)
+  livingFilter:SetPoint("TOPLEFT", 8, -28)
+  livingFilter.text:SetText(L["Vivantes"])
+  livingFilter:SetScript("OnClick", function()
+    livingOnly, offset = not livingOnly, 0
+    RefreshMacros()
+  end)
   local counts = listPanel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   counts:SetPoint("RIGHT", listPanel.band, "RIGHT", -6, 0)
-  local empty = Label(listPanel, L["Aucune macro."], 10, -40, "GameFontDisableSmall")
+  local empty = Label(listPanel, L["Aucune macro."], 10, -60, "GameFontDisableSmall")
 
   -- Detail : nom, onglet et touche, corps, actions ; partage par texte en dessous (corps : -76 a -306)
   local title = Label(detail, L["Choisis une macro dans la liste."], 10, -32, "GameFontHighlightLarge")
@@ -1704,6 +1742,7 @@ local function BuildMacros(parent, showEditor)
   for _, b in ipairs(actions) do b:Disable() end
 
   local function Render()
+    Tint(livingFilter, livingOnly and T.accent or T.grey, livingOnly and 0.95 or 0.6)
     offset = math.max(0, math.min(offset, #macros - MAX_MACRO_ROWS))
     for i, row in ipairs(rowsM) do
       local m = macros[offset + i]
@@ -1721,9 +1760,9 @@ local function BuildMacros(parent, showEditor)
     counts:SetText(L["%d/%d générales · %d/%d perso"]:format(numAccount, MAX_ACCOUNT, numChar, MAX_CHARACTER))
   end
 
-  for i = 1, MAX_MACRO_ROWS do -- 20 lignes depuis -28 finissent a -546 (panneau : 566)
+  for i = 1, MAX_MACRO_ROWS do -- filtre de -28 a -46 ; 20 lignes de -50 a -549
     local row = Chip(listPanel, 284, 24)
-    row:SetPoint("TOPLEFT", 8, -28 - (i - 1) * 26)
+    row:SetPoint("TOPLEFT", 8, -50 - (i - 1) * 25)
     row.mark = SideBar(row, T.accent)
     row.icon = row:CreateTexture(nil, "ARTWORK")
     row.icon:SetSize(18, 18)
@@ -1823,6 +1862,13 @@ local function BuildMacros(parent, showEditor)
 
   function RefreshMacros()
     macros = ReadMacros()
+    if livingOnly then
+      local tracked = {}
+      for _, m in ipairs(macros) do
+        if ns.LivingLabel(m.name, m.char) then tracked[#tracked + 1] = m end
+      end
+      macros = tracked
+    end
     -- la selection survit a la relecture : meme nom, meme onglet
     local was = current
     current = nil
@@ -1854,9 +1900,16 @@ local function BuildMacros(parent, showEditor)
     end
   end)
   RefreshMacros()
+  ns.OnFeatures(function()
+    local on = ns.Enabled("living")
+    livingFilter:SetShown(on)
+    if not on then livingOnly = false end
+    RefreshMacros()
+  end, true)
   T.OnChange(function() Render() RenderSets() end)
   local w = view.w
   w.macros, w.macroDetail = parent, detail
+  w.macroLiving = livingFilter
 end
 
 ---------------------------------------------------------------------------

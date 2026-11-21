@@ -18,5 +18,5 @@ boot('{ welcomeSeen = "1.0", welcomeAnnounced = true, tutorialSeen = true }');
 run("fireEvent('PLAYER_ENTERING_WORLD') assert(not NS.Welcome.events._scripts.OnUpdate and not NS.Welcome.panel)", '=lotc_seen');
 boot('{ features = { welcome = false, explain = false, translate = false, shorten = false } }');
 run("fireEvent('PLAYER_ENTERING_WORLD') assert(next(NS.Welcome.events._events) == nil and not NS.Welcome.events._scripts.OnUpdate) NS.Open('editor') assert(not NS.ed.w.explain:IsShown() and not NS.ed.w.translate:IsShown() and not NS.ed.w.shorten:IsShown())", '=lotc_disabled');
-console.log('test_lotc OK (FR/EN, 274 macros, 520 recipes, 108 states, welcome, switches, undo)');
+console.log('test_lotc OK (FR/EN, 274 macros, 680 recipes, 108 states, welcome, switches, undo)');
 `)(require, __dirname, process);

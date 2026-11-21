@@ -12,6 +12,21 @@ local EVENTS = { "BAG_UPDATE_DELAYED", "PLAYER_EQUIPMENT_CHANGED", "SPELLS_CHANG
 local Living = {}
 ns.Living = Living
 
+-- Entrees communes a toutes les classes ; les bijoux seuls n'attendent aucun sort.
+function Living.LibraryEntries()
+  if not Living.entries then
+    Living.entries = {}
+    for _, recipe in ipairs(ns.Recipes) do
+      if recipe.feature == "living" then
+        Living.entries[#Living.entries + 1] = { class = "ALL", category = "Living", living = recipe.id,
+          name = recipe.title, macroName = recipe.name or ns.MacroName(recipe.title),
+          desc = recipe.desc, descEN = recipe.desc, body = recipe.build(nil, { showtooltip = true }) }
+      end
+    end
+  end
+  return Living.entries
+end
+
 -- API pas toutes verifiees en jeu : absente ou en erreur, l'appel rend nil
 local function try(fn, ...)
   if not fn then return nil end
@@ -121,6 +136,7 @@ end
 local function Updated()
   if Living.Render then Living.Render() end
   if Living.HomeChip then Living.HomeChip() end
+  ns.RefreshSets()
 end
 
 -- Enregistrement : Prepare rend le texte a ecrire dans le jeu (jetons remplaces), nil et un message s'il ne peut pas ;
@@ -399,8 +415,15 @@ local function Build()
     state.offset = state.offset - delta * 3
     Render()
   end)
-  panel.empty = ui.Label(panel, L["Aucune macro vivante. Dans l'éditeur, choisis un bloc puis « Vivant… » ; ou, dans l'Assistant, la recette « Bouton de survie »."], 12, -60, "GameFontDisableSmall")
+  panel.empty = ui.Label(panel, L["Aucune macro vivante. Clique sur « Créer une macro vivante » pour choisir une recette dans l'Assistant, ou choisis un bloc puis « Vivant… » dans l'éditeur."], 12, -60, "GameFontDisableSmall")
   panel.empty:SetWidth(410)
+  -- Sous la liste (fin a -484), de 12 a 422 et de -500 a -522.
+  panel.create = ui.Button(panel, L["Créer une macro vivante"], 410, function()
+    ns.OpenAssistant(nil, nil, true)
+    if ns.assistant and ns.assistant:IsShown() then panel:Hide() end
+  end)
+  panel.create:SetPoint("TOPLEFT", 12, -500)
+  ns.OnFeatures(function() panel.create:SetShown(ns.Enabled("assistant")) end, true)
 
   panel.name = ui.Label(panel, "", 440, -54, "GameFontHighlightLarge")
   panel.name:SetWidth(436)
@@ -464,7 +487,10 @@ table.insert(ns.HomeBuilders, function(top, page)
   local ui = ns.ui
   local chip = ui.Chip(top, 236, 18)
   chip:SetPoint("TOPLEFT", 640, -72)
-  chip:SetScript("OnClick", function() ns.OpenLiving() end)
+  chip:SetScript("OnClick", function()
+    if #Living.List() == 0 and ns.Enabled("assistant") then ns.OpenAssistant(nil, nil, true)
+    else ns.OpenLiving() end
+  end)
   ui.Tip(chip, function()
     local journal = ns.db.living.journal
     local last = journal[#journal]

@@ -669,7 +669,7 @@ fire(byText("Ouvrir dans l'éditeur"), "OnClick")
 for i = #ns.Library, 1, -1 do if ns.Library[i].class == "SHAMAN" then table.remove(ns.Library, i) end end
 fire(byText("Bibliothèque"), "OnClick")
 fire(byText("Chaman"), "OnClick")
-assert(not libRows[1]:IsShown(), "classe vide : aucune ligne")
+assert(libRows[6]:IsShown() and not libRows[7]:IsShown(), "classe sans recette de sort : six recettes vivantes communes")
 assert(db.lastClass == "SHAMAN", "derniere classe non memorisee")
 
 -- 7b. recherche + categorie + favoris
@@ -2017,14 +2017,16 @@ local function ids()
   return table.concat(out, " ")
 end
 -- seulement les recettes d'un sort offensif, sans celle du familier (aucun familier sorti)
-assert(ids() == "mouseover_harm focus_mod interrupt_focus nearest trinkets stopcasting sequence living_trinkets", ids())
+assert(ids() == "mouseover_harm focus_mod interrupt_focus nearest trinkets stopcasting sequence living_trinkets survival living_mana living_food_water living_bandage living_healing", ids())
 local body = "#showtooltip\n/cast [@mouseover,harm,nodead][] Corruption"
 assert(cards[1].recipe.id == "mouseover_harm" and cards[1].body == body and plain(cards[1].code._text) == body, cards[1].body)
 assert(cards[1].code._text:find("|cff") and cards[1].title._text == "Survol, sinon cible" and #cards[1].desc._text > 20)
-assert(cards[1].count._text == #body .. " / 255" and cards[4]:IsShown() and panel.range._text == "1-4 / 8  (molette)", panel.range._text)
+assert(cards[1].count._text == #body .. " / 255" and cards[4]:IsShown() and panel.range._text == "1-4 / 13  (molette)", panel.range._text)
 for i, card in ipairs(cards) do -- cartes dans le panneau : 248 + 628 <= 881, derniere finie avant -563
-  assert(card._w == 628 and card._h == 119 and -70 + card._point[3] - card._h >= -563 and card.code._h == 68, "carte " .. i)
+  assert(card._w == 628 and card._h == 114 and -70 + card._point[3] - card._h >= -550 and card.code._h == 65, "carte " .. i)
+  assert(card.count._w == 52 and 336 - card.count._w > 280, "compteur sur l'etiquette vivante")
 end
+assert(panel.range._point[3] == 1 and 566 - 1 - 10 > 552, "position sur la derniere carte")
 -- options : chaque puce refait le texte des cartes
 local tooltipChip, deadChip, attackChip = panel.chips[1], panel.chips[2], panel.chips[3]
 assert(tooltipChip.text._text == "#showtooltip" and deadChip.text._text == "Ne pas viser les morts" and attackChip:IsShown())
@@ -2039,22 +2041,22 @@ fire(tooltipChip, "OnClick")
 fire(deadChip, "OnClick")
 assert(cards[1].body == body)
 -- molette : les 8 recettes dans 4 cartes ; la sequence ne se cree pas telle quelle
-for _ = 1, 9 do fire(panel.deck, "OnMouseWheel", -1) end
-assert(cards[1].recipe.id == "trinkets" and cards[3].recipe.id == "sequence" and cards[4].recipe.id == "living_trinkets" and panel.range._text == "5-8 / 8  (molette)", panel.range._text)
+for _ = 1, 4 do fire(panel.deck, "OnMouseWheel", -1) end
+assert(cards[1].recipe.id == "trinkets" and cards[3].recipe.id == "sequence" and cards[4].recipe.id == "living_trinkets" and panel.range._text == "5-8 / 13  (molette)", panel.range._text)
 assert(cards[3].create._enabled == false and cards[4].create._enabled == true and plain(cards[4].code._text):find("/use <Bijou du haut>", 1, true), cards[4].code._text)
 for _ = 1, 9 do fire(panel.deck, "OnMouseWheel", 1) end
 assert(cards[1].recipe.id == "mouseover_harm" and cards[1].create._enabled == true)
 -- autre sort dans la grille de l'Assistant : aide, donc d'autres recettes et pas de /stopattack
 fire(panel.grid.cells[4], "OnClick")
 assert(state.entry.name == "Soins rapides" and state.kind == "help" and panel.kind._text == "Sort d'aide")
-assert(ids() == "mouseover_help focus_mod self_alt stopcasting sequence" and not attackChip:IsShown(), ids())
+assert(ids() == "mouseover_help focus_mod self_alt stopcasting sequence living_trinkets survival living_mana living_food_water living_bandage living_healing" and not attackChip:IsShown(), ids())
 assert(cards[2].body == "#showtooltip\n/cast [mod:shift,@focus][@mouseover,help,nodead][] Soins rapides", cards[2].body)
 -- type inconnu du jeu : toutes les recettes de sort ; familier sorti : sa recette en plus
 fire(panel.grid.cells[3], "OnClick")
-assert(state.kind == "either" and #state.recipes == 10 and attackChip:IsShown(), ids())
+assert(state.kind == "either" and #state.recipes == 15 and attackChip:IsShown(), ids())
 HAS_PET = true
 fire(panel.grid.cells[1], "OnClick")
-assert(ids() == "mouseover_harm focus_mod interrupt_focus nearest with_pet trinkets stopcasting sequence living_trinkets", ids())
+assert(ids() == "mouseover_harm focus_mod interrupt_focus nearest with_pet trinkets stopcasting sequence living_trinkets survival living_mana living_food_water living_bandage living_healing", ids())
 fire(panel.grid.chips[2], "OnClick")
 fire(panel.grid.cells[1], "OnClick")
 assert(state.kind == "pet" and panel.kind._text == "Technique du familier" and ids():find("with_pet", 1, true), ids())
@@ -2062,7 +2064,7 @@ HAS_PET = false
 -- objet : /use, et seulement ses recettes
 fire(panel.grid.chips[3], "OnClick")
 fire(panel.grid.cells[2], "OnClick")
-assert(state.kind == "item" and ids() == "stopcasting item_fallback survival" and cards[3]:IsShown() and not cards[4]:IsShown() and panel.range._text == "", ids())
+assert(state.kind == "item" and ids() == "stopcasting item_fallback survival living_mana living_food_water living_bandage living_healing" and cards[3]:IsShown() and cards[4]:IsShown() and panel.range._text == "1-4 / 7  (molette)", ids())
 assert(cards[1].body == "#showtooltip\n/stopcasting\n/use Pierre de soins" and cards[2].create._enabled == false)
 
 -- C. « Ouvrir dans l'editeur » : les blocs de la recette, le nom du sort, l'Assistant se ferme ; Ctrl+Z rend l'ancien contenu
@@ -2156,10 +2158,10 @@ assert(grid.chips[1].text._text == "Spells" and grid.chips[2].text._text == "Pet
 assert(ns.SpellKind("Corruption") == "either" and ns.HasPet() == false)
 SlashCmdList.BLOCKFORGE("assistant")
 local panel = ns.assistant
-assert(panel:IsShown() and not ns.grimoire:IsShown() and panel.intro:IsShown() and panel.name._text == "Pick a spell on the left." and not panel.cards[1]:IsShown())
+assert(panel:IsShown() and not ns.grimoire:IsShown() and not panel.intro:IsShown() and panel.name._text == "Pick a spell on the left." and panel.cards[1]:IsShown() and #panel.state.recipes == 5)
 -- un sort tape a la main dans l'editeur n'a pas besoin de la grille : l'Assistant accepte une entree directe
 ns.OpenAssistant({ name = "Fireball", kind = "spell" })
-assert(#panel.state.recipes == 10 and panel.cards[1].title._text == "Mouseover, else target" and panel.kind._text == "Harmful or helpful spell")
+assert(#panel.state.recipes == 15 and panel.cards[1].title._text == "Mouseover, else target" and panel.kind._text == "Harmful or helpful spell")
 for _, r in ipairs(ns.Recipes) do
   for _, c in ipairs({ "é", "è", "ê", "à", "ù", "ç", "«", "»", " :", " ;" }) do
     assert(not (r.title .. r.desc .. r.build("X", {})):find(c, 1, true), "recette en francais : " .. r.id)
@@ -3197,7 +3199,7 @@ DeleteMacro(MACROS.Survie.index)
 ns.OpenAssistant({ name = "Pierre de soins majeure", kind = "item" })
 local assistant = ns.assistant
 local card = assistant.cards[3]
-assert(card.recipe.id == "survival" and card.title._text == "Bouton de survie" and plain(card.code._text):find("/use [nomod] <Pierre de soins>", 1, true), card.code._text)
+assert(card.recipe.id == "survival" and card.title._text == "Bouton de survie" and card.living:IsShown() and plain(card.code._text):find("/use [nomod] <Pierre de soins>", 1, true), card.code._text)
 fire(card.create, "OnClick")
 assert(MACROS.Survie and MACROS.Survie.body == "#showtooltip\n/use [nomod] Pierre de soins majeure\n/use [nomod] Potion de soins\n/use [mod] Bandage runique épais", MACROS.Survie and MACROS.Survie.body)
 assert(db.living.account.Survie and db.living.account.Survie.flag == nil, "macro de survie non vivante")
@@ -3217,6 +3219,145 @@ EQUIP[14] = 9000
 fire(trinkets.create, "OnClick")
 assert(MACROS.Corruption and MACROS.Corruption.body == "#showtooltip Corruption\n/use Autre bijou\n/use Bijou de test\n/cast Corruption", MACROS.Corruption and MACROS.Corruption.body)
 assert(slotIs(1, "macro", MACROS.Corruption.index) and db.living.account.Corruption and db.living.account.Corruption.template:find("{bf:bijou13}", 1, true), "macro vivante non posee")
+
+-- Recettes autonomes : sort, objet, familier ou aucune selection ; regroupees apres le sort.
+local expected = "survival living_mana living_food_water living_bandage living_healing"
+local function autonomes()
+  local out, found = {}, false
+  for _, r in ipairs(assistant.state.recipes) do
+    if r.standalone then found = true out[#out + 1] = r.id
+    else assert(not found, "recette de sort apres les autonomes") end
+  end
+  return table.concat(out, " ")
+end
+for _, entry in ipairs({ { name = "Soins rapides", kind = "spell" }, { name = "Pierre de soins", kind = "item" }, { name = "Griffe", kind = "pet" } }) do
+  ns.OpenAssistant(entry)
+  assert(autonomes() == expected)
+  local bijoux = false
+  for _, r in ipairs(assistant.state.recipes) do if r.id == "living_trinkets" then bijoux = true end end
+  assert(bijoux == (entry.kind == "spell"), "bijoux sans sort ou absents pour une aide")
+end
+ns.OpenAssistant(nil, nil, true)
+assert(assistant.state.entry == nil and #assistant.state.recipes == 5 and autonomes() == expected and not assistant.intro:IsShown())
+for _, c in ipairs(assistant.cards) do
+  assert(c.living:IsShown() and c.title._w == 220 and c.living._point[2] == 236 and c.living._w == 44)
+  assert(10 + c.title._w < c.living._point[2] and 236 + c.living._w <= 280)
+end
+ns.SetFeature("living", false)
+assert(#assistant.state.recipes == 0 and not assistant.cards[1]:IsShown() and assistant.intro:IsShown())
+ns.SetFeature("living", true)
+assert(#assistant.state.recipes == 5)
+
+-- Journal : bouton dans le panneau, ouvre directement les recettes vivantes sans selection.
+ns.OpenLiving()
+assert(panel.create._text == "Créer une macro vivante" and panel.create._w == 410 and panel.create._point[2] == 12 and panel.create._point[3] == -500)
+assert(12 + panel.create._w <= 428 and -500 - panel.create._h >= -566)
+fire(panel.create, "OnClick")
+assert(not panel:IsShown() and assistant:IsShown() and assistant.cards[1].recipe.standalone and not assistant.state.entry)
+BAGS[0] = { 5000, 159 }
+local meal = assistant.cards[3]
+assert(meal.recipe.id == "living_food_water" and meal.create._text == "Créer la macro")
+fire(meal.create, "OnClick")
+assert(MACROS.Repas and MACROS.Repas.body == "#showtooltip\n/use Fromage inconnu\n/use Eau de source", MACROS.Repas and MACROS.Repas.body)
+assert(not MACROS.Repas.body:find("{bf:", 1, true) and db.living.account.Repas and db.living.account.Repas.template:find("{bf:nourriture}", 1, true))
+-- Accueil vide : la ligne mene elle aussi aux recettes vivantes.
+local account, chars = db.living.account, db.living.chars
+db.living.account, db.living.chars = {}, {}
+ns.Open("home")
+Living.HomeChip()
+line = find(function(x) return x.text and x.text._text == "Macros vivantes : 0 · journal" end)
+fire(line, "OnClick")
+assert(assistant:IsShown() and assistant.cards[1].recipe.standalone and not assistant.state.entry)
+db.living.account, db.living.chars = account, chars
+
+-- Bibliotheque : six recettes dans chaque classe, texte traduit, jetons lisibles, favoris et creation.
+ns.Open("library")
+local livingChip = w.libraryLiving
+local libRows = {}
+for _, row in ipairs(w.libraryList._children) do if row.mark then libRows[#libRows + 1] = row end end
+local function visibleLibrary()
+  local out = {}
+  for _, row in ipairs(libRows) do if row:IsShown() then out[#out + 1] = row end end
+  return out
+end
+assert(livingChip.text._text == "Vivantes" and livingChip:IsShown())
+for _, c in ipairs(w.libraryList._children) do
+  if c.text and not c.mark then
+    assert(c._point[2] >= 8 and c._point[2] + c._w <= 292 and (c._point[3] == -52 or c._point[3] == -74))
+  end
+end
+assert(libRows[1]._point[3] == -96 and libRows[18]._point[3] - libRows[18]._h >= -566)
+fire(livingChip, "OnClick")
+for _, class in ipairs({ "Toutes classes", "Démoniste", "Mage", "Guerrier" }) do
+  fire(byText(class, w.libraryClasses), "OnClick")
+  assert(#visibleLibrary() == 6, "recettes communes absentes : " .. class)
+end
+local search = find(function(x) return x._type == "EditBox" and x._parent == w.libraryList end)
+search:SetText("eau")
+fire(search, "OnTextChanged", true)
+assert(#visibleLibrary() == 1 and visibleLibrary()[1].text._text:find("Manger et boire", 1, true))
+fire(visibleLibrary()[1], "OnClick")
+local code = find(function(x) return x._type == "FontString" and x._text and plain(x._text):find("/use <Eau>", 1, true) and inside(x, w.library) end)
+assert(code and not code._text:find("{bf:", 1, true))
+fire(byText("Ajouter aux favoris", w.library), "OnClick")
+assert(db.favorites["Living/living_food_water"])
+fire(find(function(x) return x.text and x._parent == w.libraryClasses and x.text._text:find("Favoris", 1, true) end), "OnClick")
+assert(#visibleLibrary() == 1)
+DeleteMacro(MACROS.Repas.index)
+fire(byText("Créer", w.library), "OnClick")
+assert(MACROS.Repas and not MACROS.Repas.body:find("{bf:", 1, true) and db.living.account.Repas)
+assert(MACROS.Repas.body == "#showtooltip\n/use Fromage inconnu\n/use Eau de source")
+fire(byText("Ouvrir dans l'éditeur", w.library), "OnClick")
+assert(ns.ed.Name() == "Repas" and text():find("{bf:eau}", 1, true))
+ns.Open("library")
+ns.SetFeature("living", false)
+assert(not livingChip:IsShown() and #visibleLibrary() == 0 and not byText("Créer", w.library):IsShown())
+ns.SetFeature("living", true)
+assert(livingChip:IsShown() and #visibleLibrary() == 1)
+
+-- Assistant : titre de groupe dans le flux ; cartes et titre sans chevauchement.
+ns.OpenAssistant({ name = "Corruption", kind = "spell" })
+assert(not assistant.livingHeading:IsShown())
+for _ = 1, 4 do fire(assistant.deck, "OnMouseWheel", -1) end
+assert(assistant.livingHeading:IsShown() and assistant.livingHeading._text == "Macros vivantes")
+local headingY = -assistant.livingHeading._point[5]
+assert(headingY == 3 * 116 and assistant.cards[4]._point[3] == -(headingY + 18))
+for _ = 1, 20 do fire(assistant.deck, "OnMouseWheel", -1) end
+assert(assistant.livingHeading._point[5] == 0)
+for i, c in ipairs(assistant.cards) do
+  assert(-c._point[3] + c._h <= 482)
+  if i > 1 then assert(-c._point[3] >= -assistant.cards[i - 1]._point[3] + assistant.cards[i - 1]._h + 2) end
+end
+ns.SetFeature("living", false)
+assert(not assistant.livingHeading:IsShown())
+ns.SetFeature("living", true)
+
+-- Mes macros : uniquement les macros du jeu suivies, avec leur portee ; retrait immediat au desabonnement.
+view.SaveMacro("Ordinaire", "/use Eau de source", false, nil, false)
+ns.Open("macros")
+local macroChip = w.macroLiving
+assert(macroChip.text._text == "Vivantes" and macroChip:IsShown())
+fire(macroChip, "OnClick")
+local function trackedRows()
+  local out = {}
+  for _, row in ipairs(macroChip._parent._children) do
+    if row.scope and row:IsShown() then
+      assert(row.text._text ~= "Ordinaire" and ns.LivingLabel(row.text._text, row.scope._text == "Personnage"))
+      out[#out + 1] = row
+    end
+  end
+  return out
+end
+assert(#trackedRows() == #Living.List())
+Living.Forget("Repas", false)
+for _, row in ipairs(trackedRows()) do assert(row.text._text ~= "Repas") end
+ns.SetFeature("living", false)
+assert(not macroChip:IsShown())
+local regular
+for _, row in ipairs(macroChip._parent._children) do if row.scope and row:IsShown() and row.text._text == "Ordinaire" then regular = row end end
+assert(regular, "filtre invisible encore actif")
+ns.SetFeature("living", true)
+assert(macroChip:IsShown())
 `, "=macros vivantes");
 
 // ---------------------------------------------------------------- 13. V1 lot B : kits de personnage

@@ -6,11 +6,12 @@ For WoW Forever only (interface 16001). English/French interface, following your
 
 ## Features in 1.0
 
-- **Assistant.** Choose a spell, pet ability or item and a recipe: mouseover, focus, interrupt, trinkets, sequence or survival button. Preview, create or edit the result.
+- **Assistant.** Choose a spell, pet ability or item and a recipe: mouseover, focus, interrupt, trinkets, sequence, survival button, living mana potion, food and water, living bandage, living healing potion or living trinkets. Living consumable recipes are also available before selecting a spell. Preview, create or edit the result.
 - **My spellbook.** Search spells, pet abilities and usable items. Click to add or fill a block; Shift-click opens the Assistant.
 - **Upgrade my bars.** Turn a spell or item into an Assistant macro in the same bar slot. Convert helpful or harmful spells to mouseover macros together, with a before/after preview.
 - **Health check.** Find broken macros, duplicates, orphans and warnings. Open, repair or archive them; archiving saves a copy in My templates before deletion.
 - **Living macros.** Named tokens follow your potions, healthstones, bandages, food, water, equipped trinkets or weapons, carried mount, pet name and highest spell ranks. Updates happen out of combat, with a journal and protection for external edits.
+- **Living category.** Find survival, mana potion, healing potion, food and water, bandage and trinkets in Library for every class, with search and favorites. Open a recipe in the editor or create it with real item names. The Assistant groups living recipes under Living macros; My macros has a Living filter. These controls disappear when living macros are disabled.
 - **Character kits.** Pick a role, aiming and pet options, then select from 8 to 20 macros. Unlearned spells are unchecked and existing macros stay intact. Installation, optional bar placement and newly learned spell suggestions are separate steps.
 - **Profiles.** Keep macros with optional key bindings and bar positions. Preview activation, copy from another character, export/import or link a profile to a specialization. Switching specialization offers it without automatic activation.
 - **Explain.** Read every line in plain language: actions, conditions, alternatives, sequence resets and living token names. Available in the editor, Library and My macros details, and Assistant card tooltips.
@@ -67,11 +68,12 @@ Pour WoW Forever uniquement (interface 16001). Interface française/anglaise sel
 
 ## Fonctions de la 1.0
 
-- **Assistant.** Choisis un sort, une technique de familier ou un objet et une recette : survol, focus, interruption, bijoux, séquence ou bouton de survie. Vérifie, crée ou retouche le résultat.
+- **Assistant.** Choisis un sort, une technique de familier ou un objet et une recette : survol, focus, interruption, bijoux, séquence, bouton de survie, potion de mana vivante, manger et boire, bandage vivant, potion de soin vivante ou bijoux vivants. Les recettes de consommables vivants sont aussi disponibles avant de choisir un sort. Vérifie, crée ou retouche le résultat.
 - **Mon grimoire.** Cherche dans tes sorts, les techniques du familier et les objets utilisables. Un clic ajoute ou remplit un bloc ; Maj+clic ouvre l’Assistant.
 - **Améliorer ma barre.** Transforme un sort ou un objet en macro de l’Assistant au même emplacement. Passe tes sorts d’aide ou offensifs au survol en une opération, avec un aperçu avant/après.
 - **Bilan de santé.** Repère les macros cassées, doublons, orphelines et avertissements. Ouvre, répare ou archive : une copie rejoint Mes modèles avant toute suppression.
 - **Macros vivantes.** Des jetons nommés suivent tes potions, pierres de soins, bandages, nourriture, eau, bijoux ou armes équipés, monture en sac, nom du familier et meilleurs rangs de sorts. Les mises à jour se font hors combat, avec journal et protection des modifications externes.
+- **Catégorie Vivantes.** Retrouve survie, potion de mana, potion de soin, manger et boire, bandage et bijoux dans la Bibliothèque pour toutes les classes, avec recherche et favoris. Ouvre une recette dans l’éditeur ou crée-la avec de vrais noms d’objets. L’Assistant regroupe les recettes sous Macros vivantes ; Mes macros propose un filtre Vivantes. Ces commandes disparaissent quand les macros vivantes sont désactivées.
 - **Kits de personnage.** Choisis ton rôle, ta visée et les options de familier, puis coche parmi 8 à 20 macros. Les sorts non appris sont décochés et tes macros existantes restent intactes. Installation, pose facultative sur une barre et propositions après apprentissage sont des étapes séparées.
 - **Profils.** Garde tes macros avec leurs touches et emplacements au choix. Vérifie l’activation, copie un autre personnage, exporte, importe ou associe un profil à une spécialisation. Changer de spécialisation le propose sans l’activer automatiquement.
 - **Expliquer.** Lis chaque ligne en clair : actions, conditions, alternatives, remise à zéro des séquences et noms des jetons vivants. Disponible dans l’éditeur, les détails de Bibliothèque et Mes macros, et les infobulles des recettes.

@@ -333,11 +333,21 @@ print("test_core lot 2 OK")
 run(to_luastring(String.raw`
 local ns = NS
 local long = string.rep("x", 30) -- nom de sort de 30 caracteres
+local standalone = {}
+for _, r in ipairs(ns.Recipes) do
+  if r.standalone then
+    assert(r.feature == "living" and r.name and #r.name <= 16, r.id)
+    standalone[r.id] = true
+  end
+end
+for _, id in ipairs({ "survival", "living_mana", "living_food_water", "living_bandage", "living_healing" }) do
+  assert(standalone[id], "recette autonome absente : " .. id)
+end
 local ids, perKind, built = {}, {}, 0
 local function applicable(kind, hasPet)
   local list = {}
   for _, r in ipairs(ns.Recipes) do
-    if r.applies(kind, hasPet) then list[#list + 1] = r.id end
+    if r.standalone or r.applies(kind, hasPet) then list[#list + 1] = r.id end
   end
   return table.concat(list, " ")
 end
@@ -346,7 +356,7 @@ for _, r in ipairs(ns.Recipes) do
   ids[r.id] = true
   for _, kind in ipairs({ "harm", "help", "either", "pet", "item" }) do
     for _, hasPet in ipairs({ true, false }) do
-      if r.applies(kind, hasPet) then
+      if r.standalone or r.applies(kind, hasPet) then
         perKind[kind] = (perKind[kind] or 0) + 1
         for bits = 0, 7 do
           local o = { kind = kind, showtooltip = bits % 2 == 1, nodead = math.floor(bits / 2) % 2 == 1, stopattack = bits >= 4 }
@@ -357,7 +367,7 @@ for _, r in ipairs(ns.Recipes) do
           local _, warnings = ns.Diagnose(ns.Parse(text))
           assert(#warnings == 0, "avertissement « " .. tostring(warnings[1]) .. " » : " .. where)
           assert(r.name or text:find(long, 1, true), "sans le sort : " .. where) -- r.name : recette sans sort (bouton de survie)
-          assert((text:sub(1, 12) == "#showtooltip") == o.showtooltip and (text:find("nodead", 1, true) == nil or o.nodead), where)
+          assert((text:sub(1, 12) == "#showtooltip") == o.showtooltip and (text:find("nodead", 1, true) == nil or o.nodead or r.id == "living_bandage"), where)
           assert((text:find("/stopattack", 1, true) ~= nil) == (o.stopattack and kind ~= "help" and kind ~= "item"), where)
           built = built + 1
         end
@@ -368,10 +378,10 @@ end
 assert(#ns.Recipes >= 10 and built > 300, built)
 for _, kind in ipairs({ "harm", "help", "either", "pet", "item" }) do assert((perKind[kind] or 0) >= 2, "type sans recette : " .. kind) end
 -- recettes proposees selon le type du sort ; « Avec le familier » seulement avec un familier
-assert(applicable("harm", false) == "mouseover_harm focus_mod interrupt_focus nearest trinkets stopcasting sequence living_trinkets", applicable("harm", false))
-assert(applicable("harm", true) == "mouseover_harm focus_mod interrupt_focus nearest with_pet trinkets stopcasting sequence living_trinkets", applicable("harm", true))
-assert(applicable("help", true) == "mouseover_help focus_mod self_alt stopcasting sequence", applicable("help", true))
-assert(applicable("item", true) == "stopcasting item_fallback survival", applicable("item", true))
+assert(applicable("harm", false) == "mouseover_harm focus_mod interrupt_focus nearest trinkets stopcasting sequence living_trinkets survival living_mana living_food_water living_bandage living_healing", applicable("harm", false))
+assert(applicable("harm", true) == "mouseover_harm focus_mod interrupt_focus nearest with_pet trinkets stopcasting sequence living_trinkets survival living_mana living_food_water living_bandage living_healing", applicable("harm", true))
+assert(applicable("help", true) == "mouseover_help focus_mod self_alt stopcasting sequence living_trinkets survival living_mana living_food_water living_bandage living_healing", applicable("help", true))
+assert(applicable("item", true) == "stopcasting item_fallback survival living_mana living_food_water living_bandage living_healing", applicable("item", true))
 local all = applicable("either", true) -- type inconnu : toutes les recettes de sort
 for id in pairs(ids) do assert(id == "item_fallback" or id == "survival" or all:find(id, 1, true), "recette absente pour un sort de type inconnu : " .. id) end
 -- textes exacts

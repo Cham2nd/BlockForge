@@ -50,7 +50,7 @@ ns.TutorialSteps = {
     text = L["Tes sorts, les techniques de ton familier et les objets utilisables de tes sacs, en icônes. Un clic ajoute le sort à ta macro, ou remplit le bloc choisi s'il attend un sort. Maj+clic ouvre l'Assistant pour ce sort."] },
   { new = true, tab = "editor", feature = "assistant", anchor = W("assistantButton"), at = { "TOPRIGHT", "BOTTOMRIGHT", 0, -8 }, -- 564 a 884, -5 a -145
     title = L["L'Assistant"],
-    text = L["Une bonne macro en deux clics : choisis un sort, l'Assistant propose des macros toutes faites (survol, focus, interruption, familier, bijoux…). « Créer la macro » l'enregistre, « Ouvrir dans l'éditeur » te laisse la retoucher."] },
+    text = L["Choisis un sort pour ses recettes (survol, focus, interruption, familier, bijoux…). Les macros vivantes de survie, mana, repas, bandage et soin sont disponibles même sans sort choisi. « Créer la macro » l'enregistre, « Ouvrir dans l'éditeur » te laisse la retoucher."] },
   { tab = "library", anchor = W("libraryList"), at = { "TOPLEFT", "TOPRIGHT", 8, -40 }, -- 490 a 810, -40 a -180
     title = L["La bibliothèque"],
     text = L["Des centaines de macros prêtes, par classe. Cherche par nom, filtre par catégorie, garde tes favoris. « Mes sorts seulement » cache celles que ton personnage ne peut pas lancer. « Mes modèles » : tes propres macros, pour tous tes personnages."] },

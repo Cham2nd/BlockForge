@@ -1,5 +1,32 @@
 
 local ns, L, W = NS, NS.L, NS.Welcome
+ns.Open('library')
+assert(ns.ed.w.libraryLiving and ns.ed.w.libraryLiving:IsShown(), 'categorie vivante absente')
+assert(ns.ed.w.libraryLiving.text._text == L['Vivantes'])
+fire(ns.ed.w.libraryLiving, 'OnClick')
+local livingRows = {}
+for _, row in ipairs(ns.ed.w.libraryList._children) do if row.mark and row:IsShown() then livingRows[#livingRows + 1] = row end end
+assert(#livingRows == 6)
+for i, entry in ipairs(ns.Living.LibraryEntries()) do
+  assert(entry.desc == entry.descEN and not entry.body:find('/cast', 1, true))
+  fire(livingRows[i], 'OnClick')
+  assert(livingRows[i].text._text:find(entry.name, 1, true))
+end
+ns.SetFeature('living', false)
+assert(not ns.ed.w.libraryLiving:IsShown() and not ns.ed.w.macroLiving:IsShown())
+ns.SetFeature('living', true)
+ns.OpenAssistant()
+assert(#ns.assistant.state.recipes == 5 and ns.assistant.cards[1].living:IsShown())
+assert(ns.assistant.livingHeading:IsShown() and ns.assistant.livingHeading._text == L['Macros vivantes'])
+ns.SetFeature('living', false)
+assert(#ns.assistant.state.recipes == 0)
+assert(not ns.assistant.livingHeading:IsShown())
+ns.SetFeature('living', true)
+ns.OpenLiving()
+assert(ns.livingPanel.create._text == L['Créer une macro vivante'])
+fire(ns.livingPanel.create, 'OnClick')
+assert(ns.assistant:IsShown() and ns.assistant.cards[1].recipe.standalone and not ns.livingPanel:IsShown())
+ns.assistant:Hide()
 local calls = #CALLS
 assert(ns.welcomeUpgrading == false and ns.db.welcomeSeen == '')
 ns.SetFeature('welcomeMotion', false)

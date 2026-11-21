@@ -30,7 +30,7 @@ local function Render()
   panel.icon:SetTexture(entry and entry.icon or QUESTION)
   panel.name:SetText(entry and ns.Plain(entry.name) or L["Choisis un sort à gauche."])
   panel.kind:SetText(entry and KIND[state.kind] or "")
-  panel.intro:SetShown(entry == nil)
+  panel.intro:SetShown(entry == nil and #state.recipes == 0)
   local options = { kind = state.kind }
   for _, chip in ipairs(panel.chips) do
     local on = state.options[chip.key]
@@ -41,12 +41,26 @@ local function Render()
   end
   local n = #state.recipes
   state.offset = math.max(0, math.min(state.offset, n - CARDS))
+  local y, heading = 0, false
+  panel.livingHeading:Hide()
   for i, card in ipairs(panel.cards) do
     local recipe = state.recipes[state.offset + i]
     card:SetShown(recipe ~= nil)
     if recipe then
-      card.recipe, card.body = recipe, recipe.build(entry.name, options)
+      if recipe.feature == "living" and not heading then
+        -- Le titre suit la frontiere du groupe, meme lorsque la premiere carte visible est vivante.
+        panel.livingHeading:ClearAllPoints()
+        panel.livingHeading:SetPoint("TOPLEFT", panel.deck, "TOPLEFT", 10, -y)
+        panel.livingHeading:Show()
+        y, heading = y + 18, true
+      end
+      card:ClearAllPoints()
+      card:SetPoint("TOPLEFT", 0, -y)
+      y = y + 116
+      card.recipe, card.body = recipe, recipe.build(entry and entry.name, options)
       card.title:SetText(recipe.title)
+      card.title:SetWidth(recipe.feature == "living" and 220 or 270)
+      card.living:SetShown(recipe.feature == "living")
       card.desc:SetText(recipe.desc)
       card.code:SetText(ns.Code(ns.TokenText(card.body))) -- un jeton vivant se lit « <Potion de soin> »
       card.count:SetText(("%d / %d"):format(#card.body, ns.MAX_CHARS))
@@ -64,25 +78,33 @@ end
 local function Pick(entry, slot)
   state.entry, state.slot = entry, slot
   -- base : nom sans rang, le seul que le jeu sait classer
-  state.kind = entry.kind == "spell" and ns.SpellKind(entry.base or entry.name) or entry.kind
+  state.kind = entry and (entry.kind == "spell" and ns.SpellKind(entry.base or entry.name) or entry.kind) or nil
   state.recipes, state.offset = {}, 0
   local hasPet = ns.HasPet()
-  for _, recipe in ipairs(ns.Recipes) do
-    -- feature : recette d'une fonction que le joueur peut couper (macros vivantes)
-    if (not recipe.feature or ns.Enabled(recipe.feature)) and recipe.applies(state.kind, hasPet) then state.recipes[#state.recipes + 1] = recipe end
+  for _, standalone in ipairs({ false, true }) do
+    for _, recipe in ipairs(ns.Recipes) do
+      -- Recettes autonomes apres celles du sort ; feature : masquees quand la fonction est coupee.
+      if (recipe.standalone == true) == standalone and (not recipe.feature or ns.Enabled(recipe.feature))
+          and (standalone or (entry and recipe.applies(state.kind, hasPet))) then
+        state.recipes[#state.recipes + 1] = recipe
+      end
+    end
   end
   Render()
 end
 
--- Carte de 628 x 119 : titre de 10 a 280 ; compteur fini a 336, « Ouvrir » de 344 a 494, « Creer » de 500 a 620 (de -6 a -28) ;
--- explication de -31 a -43 ; macro de -46 a -114, hauteur fixe pour 5 lignes
+-- Carte de 628 x 114 ; code de -46 a -111 : cinq lignes de 13 px. Titre de groupe : 18 px.
 local function BuildCard(deck, i)
   local ui = ns.ui
-  local card = ui.Panel(deck, 628, 119)
-  card:SetPoint("TOPLEFT", 0, -(i - 1) * 121)
+  local card = ui.Panel(deck, 628, 114)
+  card:SetPoint("TOPLEFT", 0, -(i - 1) * 116)
   card.title = T.AccentText(ui.Label(card, "", 10, -10, "GameFontNormal"))
-  card.title:SetWidth(270)
+  card.title:SetWidth(220)
   card.title:SetWordWrap(false)
+  -- Etiquette de 236 a 280, avant le compteur ; aucun espace pris sur la description ni le code.
+  card.living = ui.Label(card, L["vivante"], 236, -10, "GameFontDisableSmall")
+  card.living:SetWidth(44)
+  card.living:SetWordWrap(false)
   card.create = ui.Button(card, L["Créer la macro"], 120, function()
     local name = card.recipe.name or state.entry.macroName or ns.MacroName(state.entry.name)
     if state.slot then
@@ -110,11 +132,14 @@ local function BuildCard(deck, i)
   card.open:SetPoint("RIGHT", card.create, "LEFT", -6, 0)
   card.count = card:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
   card.count:SetPoint("RIGHT", card.open, "LEFT", -8, 0)
+  card.count:SetWidth(52) -- de 284 a 336, apres l'etiquette vivante (fin a 280)
+  card.count:SetWordWrap(false)
+  card.count:SetJustifyH("RIGHT")
   card.desc = ui.Label(card, "", 10, -31, "GameFontHighlightSmall")
   card.desc:SetWidth(608)
   card.desc:SetWordWrap(false)
   card.code = ui.Label(card, "", 10, -46, "BlockForgeCodeFont")
-  card.code:SetSize(608, 68)
+  card.code:SetSize(608, 65)
   card.code:SetJustifyV("TOP")
   card:EnableMouse(true)
   ui.Tip(card, function()
@@ -175,10 +200,13 @@ local function Build()
     panel.chips[i] = chip
   end
 
-  -- Recettes : 4 cartes de 119 px tous les 121, de -70 a -552 ; position dans la liste dessous, de -551 a -561
+  -- Quatre cartes (4 * 114 + 3 * 2) et un titre (18) : 480 px, de -70 a -550.
   local deck = CreateFrame("Frame", nil, panel)
   deck:SetPoint("TOPLEFT", 248, -70)
   deck:SetSize(628, 482)
+  panel.livingHeading = T.AccentText(ui.Label(deck, L["Macros vivantes"], 10, 0, "GameFontNormal"))
+  panel.livingHeading:SetSize(608, 16)
+  panel.livingHeading:SetWordWrap(false)
   deck:EnableMouseWheel(true)
   deck:SetScript("OnMouseWheel", function(_, delta)
     state.offset = state.offset - delta
@@ -187,7 +215,7 @@ local function Build()
   panel.cards = {}
   for i = 1, CARDS do panel.cards[i] = BuildCard(deck, i) end
   panel.range = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-  panel.range:SetPoint("BOTTOMRIGHT", -8, 5)
+  panel.range:SetPoint("BOTTOMRIGHT", -8, 1)
   panel.intro = ui.Label(panel, L["Choisis à gauche un sort, une technique de ton familier ou un objet : l'Assistant te propose des macros toutes faites. « Créer la macro » l'enregistre tout de suite, « Ouvrir dans l'éditeur » te laisse la retoucher."],
     258, -84, "GameFontHighlight")
   panel.intro:SetWidth(600)
@@ -205,11 +233,12 @@ local function Build()
   ns.OnFeatures(function() bars:SetShown(ns.Enabled("bars")) end, true)
   panel.deck, panel.state, panel.bars = deck, state, bars
   ns.assistant = panel
+  ns.OnFeatures(function() if panel:IsShown() then Pick(state.entry, state.slot) end end)
   T.OnChange(Render)
 end
 
 -- entry (facultatif) : sort choisi dans le grimoire integre (Maj+clic), ou sort d'un emplacement de barre (slot)
-function ns.OpenAssistant(entry, slot)
+function ns.OpenAssistant(entry, slot, living)
   if ns.Off("assistant") then return end
   if InCombatLockdown() then return ns.Msg(L["Impossible de modifier une macro en combat."]) end
   ns.Open("editor")
@@ -223,7 +252,12 @@ function ns.OpenAssistant(entry, slot)
   if entry then
     Pick(entry, slot)
   else
-    state.slot = nil
+    if living then Pick(nil) else Pick(state.entry) end
+  end
+  if living then
+    for i, recipe in ipairs(state.recipes) do
+      if recipe.standalone then state.offset = i - 1 break end
+    end
     Render()
   end
   panel:Show()

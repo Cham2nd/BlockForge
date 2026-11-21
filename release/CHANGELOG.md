@@ -1,5 +1,9 @@
 # BlockForge 1.0.0
 
+- **Catégorie Vivantes** : six recettes communes dans la Bibliothèque avec recherche, favoris et création directe, un groupe Macros vivantes dans l’Assistant et un filtre Vivantes dans Mes macros ; masqués quand la fonction est désactivée.
+
+- **Macros vivantes** : cinq recettes autonomes dans l’Assistant (survie, mana, manger et boire, bandage, soin), accessibles sans sort depuis le journal et l’Accueil ; les bijoux vivants acceptent aussi les sorts d’aide.
+
 ## Créer et comprendre, sans retenir la syntaxe
 
 - **Assistant** : choisis un sort, une technique de familier ou un objet et une recette adaptée : survol, focus, interruption, ciblage, familier, bijoux, séquence, bouton de survie ou bijoux vivants. Les options refont l’aperçu en direct ; crée la macro ou ouvre-la dans l’éditeur.
